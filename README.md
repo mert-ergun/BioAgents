@@ -13,14 +13,13 @@ This repository contains the source code for our final year BBM479 project, `Bio
 
 ---
 
-## 🛠 Technology Stack (To Be Determined)
+## 🛠 Technology Stack
 
-The technologies for this project have not been finalized yet. They will be listed here once decided.
-
--   **Frontend:** (TBD)
--   **Backend:** (TBD)
--   **Database:** (TBD)
--   **Deployment:** (TBD)
+-   **Agent Framework:** LangGraph + LangChain
+-   **LLM Providers:** OpenAI (GPT-4o-mini) / Ollama (local models) / Google Gemini (gemini-2.0-flash-exp)
+-   **Tools:** BioPython, UniProt API
+-   **Language:** Python 3.12+
+-   **Package Manager:** uv
 
 ---
 
@@ -33,6 +32,33 @@ The technologies for this project have not been finalized yet. They will be list
 2.  **Navigate to the project directory:**
     ```bash
     cd BioAgents
+    ```
+
+3. **Install the dependencies:**
+    #### uv
+    ```bash
+    uv sync
+    ```
+
+    #### pip
+    ```bash
+    pip install -r requirements.txt
+    ```
+
+4. **Configure environment variables:**
+    ```bash
+    cp .env.example .env
+    # Edit .env and add your API keys:
+    # - OPENAI_API_KEY (for OpenAI)
+    # - GEMINI_API_KEY (for Google Gemini)
+    # - LLM_PROVIDER (set to 'openai', 'ollama', or 'gemini')
+    ```
+
+5. **Configure Pre-Commits for Development (Optional)**
+    ```bash
+    # After cloning/pulling your changes
+    uv sync --all-groups          # Install dependencies including pre-commit
+    uv run pre-commit install     # Install the git hooks locally
     ```
 
 ---
@@ -104,6 +130,12 @@ git commit -m "fix: Resolve validation error on registration form"
 -   If there are visual changes, include screenshots or GIFs.
 -   Request a review from your teammates by using the "Reviewers" panel on the right.
 -   **Do not merge your own PR** until it has been approved by at least one other person.
+
+---
+
+## 📚 Documentation
+
+- [Development Guide](docs/DEVELOPMENT.md) - Contributing to the project
 
 ---
 
