@@ -1,0 +1,20 @@
+[project]
+name = "bioagents"
+version = "0.1.0"
+description = "Multi Agent System for Bioinformatics"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "biopython>=1.86",
+    "docker>=7.1.0",
+    "ipykernel>=7.1.0",
+    "langchain>=1.0.5",
+    "langchain-openai>=1.0.2",
+    "langgraph>=1.0.3",
+    "litellm>=1.79.3",
+    "notebook>=7.4.7",
+    "pandas>=2.3.3",
+    "pytest>=9.0.1",
+    "python-dotenv>=1.2.1",
+    "pyyaml>=6.0.3",
+]
