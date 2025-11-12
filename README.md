@@ -16,7 +16,7 @@ This repository contains the source code for our final year BBM479 project, `Bio
 ## 🛠 Technology Stack
 
 -   **Agent Framework:** LangGraph + LangChain
--   **LLM Providers:** OpenAI (GPT-4o-mini) / Ollama (local models)
+-   **LLM Providers:** OpenAI (GPT-4o-mini) / Ollama (local models) / Google Gemini (gemini-2.0-flash-exp)
 -   **Tools:** BioPython, UniProt API
 -   **Language:** Python 3.12+
 -   **Package Manager:** uv
@@ -48,7 +48,10 @@ This repository contains the source code for our final year BBM479 project, `Bio
 4. **Configure environment variables:**
     ```bash
     cp .env.example .env
-    # Edit .env and add your OPENAI_API_KEY
+    # Edit .env and add your API keys:
+    # - OPENAI_API_KEY (for OpenAI)
+    # - GEMINI_API_KEY (for Google Gemini)
+    # - LLM_PROVIDER (set to 'openai', 'ollama', or 'gemini')
     ```
 
 5. **Configure Pre-Commits for Development (Optional)**

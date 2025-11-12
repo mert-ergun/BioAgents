@@ -9,12 +9,14 @@ dependencies = [
     "docker>=7.1.0",
     "ipykernel>=7.1.0",
     "langchain>=1.0.5",
+    "langchain-google-genai>=2.0.8",
     "langchain-openai>=1.0.2",
     "langgraph>=1.0.3",
     "litellm>=1.79.3",
     "notebook>=7.4.7",
     "pandas>=2.3.3",
     "pytest>=9.0.1",
+    "pytest-cov>=7.0.0",
     "python-dotenv>=1.2.1",
     "pyyaml>=6.0.3",
 ]
@@ -89,6 +91,7 @@ module = [
     "biopython.*",
     "docker.*",
     "langchain.*",
+    "langchain_google_genai.*",
     "langgraph.*",
     "litellm.*",
 ]
