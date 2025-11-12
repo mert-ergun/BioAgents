@@ -27,12 +27,23 @@ The technologies for this project have not been finalized yet. They will be list
 ## 🚀 Getting Started
 
 1.  **Clone the repository:**
-    ```bash
+    ```prompt
     git clone https://github.com/mert-ergun/BioAgents.git
     ```
 2.  **Navigate to the project directory:**
-    ```bash
+    ```prompt
     cd BioAgents
+    ```
+
+3. **Install the dependencies:**
+    #### uv
+    ```prompt
+    uv sync
+    ```
+
+    #### pip
+    ```prompt
+    pip install -r requirements.txt
     ```
 
 ---
