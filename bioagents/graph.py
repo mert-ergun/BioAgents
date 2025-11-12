@@ -62,7 +62,7 @@ def should_continue_to_tools(state: AgentState) -> Literal["tools", "supervisor"
     Conditional edge that checks if tools need to be called.
 
     Args:
-        state: The current agent statefeat: implement XML-based prompt system for BioAgents with multiple agent configurations
+        state: The current agent state
 
     Returns:
         'tools' if last message has tool calls, 'supervisor' otherwise
