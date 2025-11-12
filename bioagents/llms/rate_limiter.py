@@ -26,7 +26,7 @@ class RateLimiter:
         """
         self.max_requests = max_requests
         self.time_window = time_window
-        self.requests = deque()
+        self.requests: deque[float] = deque()
         self.lock = Lock()
 
     def acquire(self) -> None:
@@ -37,7 +37,7 @@ class RateLimiter:
         waiting until a request slot becomes available.
         """
         while True:
-            sleep_time = 0
+            sleep_time: float = 0
 
             with self.lock:
                 current_time = time.time()

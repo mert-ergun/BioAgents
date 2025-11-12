@@ -86,12 +86,10 @@ def route_supervisor(state: AgentState) -> Literal["research", "analysis", "repo
     Returns:
         The next agent to route to, or 'end' if finished
     """
-    next_agent = state.get("next", "FINISH")
-
-    if next_agent == "FINISH":
-        return "end"
-
-    return next_agent
+    next_agent: Literal["research", "analysis", "report", "end", "FINISH"] = state.get(
+        "next", "FINISH"
+    )
+    return "end" if next_agent == "FINISH" else next_agent
 
 
 def create_graph():

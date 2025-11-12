@@ -47,7 +47,7 @@ repos:
           types-setuptools,
         ]
         args: [--ignore-missing-imports, --show-error-codes]
-        files: '(bioagents|examples|tests|setup\.py)$'
+        files: ^bioagents/
 
   # Pytest - Run tests before commit
   - repo: local
