@@ -13,37 +13,49 @@ This repository contains the source code for our final year BBM479 project, `Bio
 
 ---
 
-## 🛠 Technology Stack (To Be Determined)
+## 🛠 Technology Stack
 
-The technologies for this project have not been finalized yet. They will be listed here once decided.
-
--   **Frontend:** (TBD)
--   **Backend:** (TBD)
--   **Database:** (TBD)
--   **Deployment:** (TBD)
+-   **Agent Framework:** LangGraph + LangChain
+-   **LLM Providers:** OpenAI (GPT-4o-mini) / Ollama (local models)
+-   **Tools:** BioPython, UniProt API
+-   **Language:** Python 3.12+
+-   **Package Manager:** uv
 
 ---
 
 ## 🚀 Getting Started
 
 1.  **Clone the repository:**
-    ```prompt
+    ```bash
     git clone https://github.com/mert-ergun/BioAgents.git
     ```
 2.  **Navigate to the project directory:**
-    ```prompt
+    ```bash
     cd BioAgents
     ```
 
 3. **Install the dependencies:**
     #### uv
-    ```prompt
+    ```bash
     uv sync
     ```
 
     #### pip
-    ```prompt
+    ```bash
     pip install -r requirements.txt
+    ```
+
+4. **Configure environment variables:**
+    ```bash
+    cp .env.example .env
+    # Edit .env and add your OPENAI_API_KEY
+    ```
+
+5. **Configure Pre-Commits for Development (Optional)**
+    ```bash
+    # After cloning/pulling your changes
+    uv sync --all-groups          # Install dependencies including pre-commit
+    uv run pre-commit install     # Install the git hooks locally
     ```
 
 ---
@@ -115,6 +127,12 @@ git commit -m "fix: Resolve validation error on registration form"
 -   If there are visual changes, include screenshots or GIFs.
 -   Request a review from your teammates by using the "Reviewers" panel on the right.
 -   **Do not merge your own PR** until it has been approved by at least one other person.
+
+---
+
+## 📚 Documentation
+
+- [Development Guide](docs/DEVELOPMENT.md) - Contributing to the project
 
 ---
 
