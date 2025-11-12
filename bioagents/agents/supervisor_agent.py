@@ -55,11 +55,11 @@ def create_supervisor_agent(members: list[str]):
             state: The current AgentState
 
         Returns:
-            A dict with next_agent for routing
+            A dict with next_agent and reasoning for routing
         """
         messages = state["messages"]
         result = supervisor_chain.invoke({"messages": messages})
 
-        return {"next": result.next_agent, "messages": []}
+        return {"next": result.next_agent, "reasoning": result.reasoning, "messages": []}
 
     return supervisor_node

@@ -27,10 +27,12 @@ class AgentState(dict):
     Attributes:
         messages: List of messages in the conversation
         next: The next agent to route to (set by supervisor)
+        reasoning: The reasoning behind supervisor's decision
     """
 
     messages: Annotated[list[BaseMessage], add_messages]
     next: str
+    reasoning: str
 
 
 def agent_node(state, agent, name):
