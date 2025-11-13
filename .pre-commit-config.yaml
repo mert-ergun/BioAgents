@@ -47,14 +47,14 @@ repos:
           types-setuptools,
         ]
         args: [--ignore-missing-imports, --show-error-codes]
-        files: '(bioagents|examples|tests|setup\.py)$'
+        files: ^bioagents/
 
   # Pytest - Run tests before commit
   - repo: local
     hooks:
       - id: pytest-check
         name: pytest-check
-        entry: uv run pytest
+        entry: uv run --no-sync pytest
         language: system
         pass_filenames: false
         always_run: true

@@ -135,6 +135,7 @@ git commit -m "fix: Resolve validation error on registration form"
 
 ## 📚 Documentation
 
+- [Prompt Engineering](docs/PROMPT_ENGINEERING.md) - XML-based prompt system
 - [Development Guide](docs/DEVELOPMENT.md) - Contributing to the project
 
 ---
