@@ -45,7 +45,7 @@ def create_sample_data():
 
     # Simulate protein classification data
     np.random.seed(42)
-    n_samples = 100  # Reduced for faster processing
+    n_samples = 100
 
     # Features: length, GC content, hydrophobicity, charge
     data = {
@@ -69,9 +69,8 @@ def create_sample_data():
     df = pd.DataFrame(data)
 
     # Add some noise and class balance
-    df.loc[df.sample(frac=0.1).index, "protein_type"] = (
-        1 - df.loc[df.sample(frac=0.1).index, "protein_type"]
-    )
+    noise_indices = df.sample(frac=0.1).index
+    df.loc[noise_indices, "protein_type"] = 1 - df.loc[noise_indices, "protein_type"]
 
     logger.info(f"Generated {len(df)} samples")
     logger.info(f"Class distribution: {df['protein_type'].value_counts().to_dict()}")
@@ -84,7 +83,6 @@ def should_continue(state):
     messages = state["messages"]
     last_message = messages[-1]
 
-    # If there are no tool calls, we're done
     if not hasattr(last_message, "tool_calls") or not last_message.tool_calls:
         return "end"
 
@@ -93,24 +91,18 @@ def should_continue(state):
 
 def create_ml_workflow():
     """Create the ML workflow graph."""
-    # Define tools
     tools = [design_ml_pipeline, execute_ml_code, optimize_ml_pipeline]
 
-    # Create agent and tool node
     ml_agent = create_ml_agent(tools)
     tool_node = ToolNode(tools)
 
-    # Build graph
     workflow = StateGraph(MessagesState)
 
-    # Add nodes
     workflow.add_node("agent", ml_agent)
     workflow.add_node("tools", tool_node)
 
-    # Set entry point
     workflow.set_entry_point("agent")
 
-    # Add conditional edges
     workflow.add_conditional_edges(
         "agent",
         should_continue,
@@ -120,7 +112,6 @@ def create_ml_workflow():
         },
     )
 
-    # Add edge from tools back to agent
     workflow.add_edge("tools", "agent")
 
     return workflow.compile()
@@ -132,14 +123,11 @@ def run_example_1_basic_pipeline():
     logger.info("EXAMPLE 1: Basic ML Pipeline")
     logger.info("=" * 60 + "\n")
 
-    # Create sample data
     df = create_sample_data()
     data_csv = df.to_csv(index=False)
 
-    # Create workflow
     app = create_ml_workflow()
 
-    # User request
     request = f"""
 I have a protein classification dataset with the following features:
 - length: protein sequence length
@@ -161,7 +149,6 @@ Here's the complete dataset in CSV format:
 {data_csv}
 """
 
-    # Run workflow
     logger.info("Starting ML workflow...")
     logger.info(f"Request size: {len(request)} characters")
 
@@ -191,7 +178,6 @@ Here's the complete dataset in CSV format:
                 if "messages" in node_output:
                     for msg in node_output["messages"]:
                         if hasattr(msg, "content") and msg.content:
-                            # Don't truncate - show everything
                             if node_name == "tools":
                                 logger.info(f"Tool Response:\n{msg.content[:2000]}...")
                             else:
@@ -214,7 +200,6 @@ Here's the complete dataset in CSV format:
         return step_count
 
     try:
-        # Run with timeout using threading
         with ThreadPoolExecutor(max_workers=1) as executor:
             future = executor.submit(run_workflow)
             try:
@@ -243,21 +228,17 @@ def run_example_2_optimization():
     logger.info("EXAMPLE 2: ML Pipeline with Optimization")
     logger.info("=" * 60 + "\n")
 
-    # Create sample data with imbalanced classes
     df = create_sample_data()
-    # Make classes imbalanced
     df_majority = df[df["protein_type"] == 0]
     df_minority = df[df["protein_type"] == 1].sample(n=30, random_state=42)
-    df = pd.concat([df_majority, df_minority])
+    df = pd.concat([df_majority, df_minority], ignore_index=True)
 
     logger.info(f"Imbalanced class distribution: {df['protein_type'].value_counts().to_dict()}")
 
     data_csv = df.to_csv(index=False)
 
-    # Create workflow
     app = create_ml_workflow()
 
-    # User request
     request = f"""
 I have an imbalanced protein classification dataset:
 - Features: length, gc_content, hydrophobicity, charge, alpha_helix_percent, beta_sheet_percent
@@ -274,7 +255,6 @@ Here's the complete dataset in CSV format:
 {data_csv}
 """
 
-    # Run workflow
     logger.info("Starting ML workflow with optimization...")
     logger.info(f"Request size: {len(request)} characters")
     try:
@@ -331,14 +311,11 @@ def run_example_3_algorithm_comparison():
     logger.info("EXAMPLE 3: Algorithm Comparison")
     logger.info("=" * 60 + "\n")
 
-    # Create sample data
     df = create_sample_data()
     data_csv = df.to_csv(index=False)
 
-    # Create workflow
     app = create_ml_workflow()
 
-    # User request
     request = f"""
 I want to compare different ML algorithms for protein classification.
 
@@ -350,7 +327,6 @@ Here's the complete dataset in CSV format:
 {data_csv}
 """
 
-    # Run workflow
     logger.info("Starting algorithm comparison workflow...")
     logger.info(f"Request size: {len(request)} characters")
     try:
@@ -405,7 +381,6 @@ def main():
     """Run the basic ML agent example."""
     import sys
 
-    # Check Docker availability
     try:
         import docker
 
@@ -420,7 +395,6 @@ def main():
         logger.error("  - Mac/Windows: Install Docker Desktop")
         return
 
-    # Parse command line arguments
     example_num = 1
     if len(sys.argv) > 1:
         try:
@@ -429,7 +403,6 @@ def main():
             logger.error("Invalid example number. Usage: python ml_agent_demo.py [1|2|3]")
             return
 
-    # Run selected example
     try:
         if example_num == 1:
             logger.info("Running Example 1: Basic ML Pipeline")
