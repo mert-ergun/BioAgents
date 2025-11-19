@@ -3,6 +3,8 @@
 import xml.etree.ElementTree as ET  # nosec B405  # Internal trusted XML files only
 from pathlib import Path
 
+ModelMap = dict[str, str]
+
 
 class PromptLoader:
     """Loads and parses XML-formatted system prompts."""
@@ -20,6 +22,16 @@ class PromptLoader:
 
         self.prompts_dir = Path(prompts_dir)
 
+    def _get_prompt_root(self, prompt_name: str) -> ET.Element:
+        """Parse a prompt XML file and return the root element."""
+        prompt_file = self.prompts_dir / f"{prompt_name}.xml"
+
+        if not prompt_file.exists():
+            raise FileNotFoundError(f"Prompt file not found: {prompt_file}")
+
+        tree = ET.parse(prompt_file)  # nosec B314  # Internal trusted XML files only
+        return tree.getroot()
+
     def load_prompt(self, prompt_name: str) -> str:
         """
         Load and parse an XML prompt file into a formatted string.
@@ -34,14 +46,7 @@ class PromptLoader:
             FileNotFoundError: If the prompt file doesn't exist
             ET.ParseError: If the XML is malformed
         """
-        prompt_file = self.prompts_dir / f"{prompt_name}.xml"
-
-        if not prompt_file.exists():
-            raise FileNotFoundError(f"Prompt file not found: {prompt_file}")
-
-        # Parse the XML
-        tree = ET.parse(prompt_file)  # nosec B314  # Internal trusted XML files only
-        root = tree.getroot()
+        root = self._get_prompt_root(prompt_name)
 
         # Build the prompt text
         sections = []
@@ -123,6 +128,54 @@ class PromptLoader:
                 lines.append(f"- {capability.text.strip()}")
 
         return "\n".join(lines) if len(lines) > 1 else ""
+
+    def get_llm_models(self, prompt_name: str) -> ModelMap:
+        """
+        Return the preferred LLM models for a given prompt keyed by provider.
+
+        Args:
+            prompt_name: Name of the prompt file (without .xml extension)
+
+        Returns:
+            Mapping of provider → model name (provider keys are lower-case)
+        """
+        root = self._get_prompt_root(prompt_name)
+        metadata = root.find("metadata")
+        if metadata is None:
+            return {}
+
+        llm_models = metadata.find("llm_models")
+        if llm_models is None:
+            return {}
+
+        models: ModelMap = {}
+        for model_elem in llm_models.findall("model"):
+            provider = model_elem.get("provider")
+            if not provider:
+                continue
+            provider_key = provider.lower()
+            if model_elem.text:
+                models[provider_key] = model_elem.text.strip()
+
+        return models
+
+    def get_llm_model(self, prompt_name: str, provider: str | None) -> str | None:
+        """
+        Return the preferred LLM model for a given prompt and provider.
+
+        Args:
+            prompt_name: Name of the prompt file (without .xml extension)
+            provider: Provider identifier (e.g., 'openai', 'gemini', 'ollama')
+
+        Returns:
+            Model name if configured, otherwise None.
+        """
+        if not provider:
+            return None
+
+        provider_key = provider.lower()
+        models = self.get_llm_models(prompt_name)
+        return models.get(provider_key)
 
     def _format_team(self, team: ET.Element) -> str:
         """Format the team section for supervisor."""
@@ -218,3 +271,17 @@ def load_prompt(prompt_name: str) -> str:
         The formatted prompt text
     """
     return _loader.load_prompt(prompt_name)
+
+
+def get_prompt_llm_models(prompt_name: str) -> ModelMap:
+    """
+    Convenience function to fetch LLM model metadata for a prompt.
+    """
+    return _loader.get_llm_models(prompt_name)
+
+
+def get_prompt_llm_model(prompt_name: str, provider: str | None) -> str | None:
+    """
+    Convenience function to fetch a provider-specific model for a prompt.
+    """
+    return _loader.get_llm_model(prompt_name, provider)

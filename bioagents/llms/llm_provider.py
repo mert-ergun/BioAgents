@@ -7,6 +7,7 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_openai import ChatOpenAI
 
 from bioagents.llms.rate_limiter import RateLimitedLLM, RateLimiter
+from bioagents.prompts.prompt_loader import get_prompt_llm_model
 
 # Global rate limiters - shared across all LLM instances
 _rate_limiters: dict[str, RateLimiter] = {}
@@ -49,6 +50,7 @@ def get_llm(
     provider: Literal["openai", "ollama", "gemini"] | None = None,
     model: str | None = None,
     temperature: float = 0.0,
+    prompt_name: str | None = None,
 ):
     """
     Get a configured LLM instance with optional rate limiting.
@@ -56,11 +58,15 @@ def get_llm(
     Args:
         provider: The LLM provider to use ('openai', 'ollama', or 'gemini').
                   If None, reads from LLM_PROVIDER env var (defaults to 'openai')
-        model: The model name. If None, uses defaults:
-               - OpenAI: 'gpt-4o-mini'
-               - Ollama: 'qwen3:14b'
-               - Gemini: 'gemini-2.5-flash'
+        model: The model name. If None, uses defaults or prompt metadata:
+               - Prompt metadata (if prompt_name provided and models defined)
+               - Otherwise provider defaults:
+                 * OpenAI: 'gpt-5.1'
+                 * Ollama: 'qwen3:14b'
+                 * Gemini: 'gemini-2.5-flash'
         temperature: The temperature for generation (0.0 = deterministic)
+        prompt_name: Optional prompt identifier used to look up provider-specific
+                     model recommendations in the XML metadata
 
     Returns:
         A configured LLM instance, optionally wrapped with rate limiting
@@ -77,8 +83,13 @@ def get_llm(
         if provider_str not in ("openai", "ollama", "gemini"):
             raise ValueError(f"Invalid LLM_PROVIDER: {provider_str}")
         provider = provider_str  # type: ignore[assignment]
+    if model is None and prompt_name:
+        prompt_model = get_prompt_llm_model(prompt_name, provider)
+        if prompt_model:
+            model = prompt_model
+
     if provider == "openai":
-        model = model or "gpt-4o-mini"
+        model = model or "gpt-5.1"
         api_key = os.getenv("OPENAI_API_KEY")
         if not api_key:
             raise ValueError("OPENAI_API_KEY environment variable not set")
