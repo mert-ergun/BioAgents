@@ -53,9 +53,7 @@ class ToolUniverseCatalogue:
 
     def __init__(self, catalog_path: Path | None = None):
         self.catalog_path = (
-            catalog_path
-            if catalog_path is not None
-            else Path(__file__).resolve().parents[2] / "tool_universe.md"
+            catalog_path if catalog_path is not None else Path("bioagents/tools/tool_universe.md")
         )
         self._entries: list[CatalogEntry] | None = None
 
@@ -209,7 +207,7 @@ class ToolUniverseWrapper:
         mode = (finder or self._default_finder or "keyword").lower()
         if mode not in self.FINDER_TO_TOOL:
             raise ValueError(
-                f"Unknown ToolUniverse finder strategy '{finder}'. "
+                f"Unknown ToolUniverse finder strategy '{mode}'. "
                 f"Choose from {', '.join(self.FINDER_TO_TOOL)}."
             )
         return mode
