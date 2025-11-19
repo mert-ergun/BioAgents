@@ -3,9 +3,10 @@
 from unittest.mock import Mock, patch
 
 import pytest
-from langchain_core.messages import AIMessage, HumanMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
 from bioagents.agents.analysis_agent import create_analysis_agent
+from bioagents.agents.ml_agent import create_ml_agent
 from bioagents.agents.report_agent import create_report_agent
 from bioagents.agents.research_agent import create_research_agent
 from bioagents.agents.supervisor_agent import RouteResponse, create_supervisor_agent
@@ -132,6 +133,68 @@ class TestAnalysisAgent:
         # Check that invoke was called with messages that include system message
         call_args = mock_bound_llm.invoke.call_args[0][0]
         assert len(call_args) >= 2  # System message + user message
+
+
+class TestMlAgent:
+    """Tests for the ML agent."""
+
+    @patch("bioagents.agents.ml_agent.get_llm")
+    def test_create_ml_agent(self, mock_get_llm):
+        """Test creating an ML agent."""
+        mock_llm = Mock()
+        mock_llm.bind_tools = Mock(return_value=mock_llm)
+        mock_get_llm.return_value = mock_llm
+
+        tools = [Mock()]
+        agent = create_ml_agent(tools)
+
+        assert callable(agent)
+        mock_get_llm.assert_called_once()
+        mock_llm.bind_tools.assert_called_once_with(tools)
+
+    @patch("bioagents.agents.ml_agent.get_llm")
+    def test_ml_agent_invoke(self, mock_get_llm):
+        """Test invoking the ML agent."""
+        mock_llm = Mock()
+        mock_bound_llm = Mock()
+        mock_response = AIMessage(content="Model created", name="ML")
+
+        mock_llm.bind_tools = Mock(return_value=mock_bound_llm)
+        mock_bound_llm.invoke = Mock(return_value=mock_response)
+        mock_get_llm.return_value = mock_llm
+
+        tools = [Mock()]
+        agent = create_ml_agent(tools)
+
+        state = {"messages": [HumanMessage(content="Design model")]}
+        result = agent(state)
+
+        assert "messages" in result
+        assert len(result["messages"]) == 1
+        assert result["messages"][0] == mock_response
+        mock_bound_llm.invoke.assert_called_once()
+
+    @patch("bioagents.agents.ml_agent.get_llm")
+    def test_ml_agent_includes_system_message(self, mock_get_llm):
+        """Test that the ML agent includes its system prompt."""
+        mock_llm = Mock()
+        mock_bound_llm = Mock()
+        mock_response = AIMessage(content="Response")
+
+        mock_llm.bind_tools = Mock(return_value=mock_bound_llm)
+        mock_bound_llm.invoke = Mock(return_value=mock_response)
+        mock_get_llm.return_value = mock_llm
+
+        tools = [Mock()]
+        agent = create_ml_agent(tools)
+
+        state = {"messages": [HumanMessage(content="Test")]}
+        agent(state)
+
+        call_args = mock_bound_llm.invoke.call_args[0][0]
+        assert len(call_args) >= 2
+        assert isinstance(call_args[0], SystemMessage)
+        assert isinstance(call_args[1], HumanMessage)
 
 
 class TestReportAgent:
