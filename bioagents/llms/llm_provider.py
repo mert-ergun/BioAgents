@@ -79,9 +79,11 @@ def get_llm(
         - OLLAMA_RATE_LIMIT: Max requests per minute for Ollama (default: no limit)
     """
     if provider is None:
-        provider_str = os.getenv("LLM_PROVIDER", "openai")
+        provider_str = os.getenv("LLM_PROVIDER", "openai").lower()
         if provider_str not in ("openai", "ollama", "gemini"):
-            raise ValueError(f"Invalid LLM_PROVIDER: {provider_str}")
+            raise ValueError(
+                f"Invalid LLM_PROVIDER: {provider_str}. Must be one of: openai, ollama, gemini"
+            )
         provider = provider_str  # type: ignore[assignment]
     if model is None and prompt_name:
         prompt_model = get_prompt_llm_model(prompt_name, provider)

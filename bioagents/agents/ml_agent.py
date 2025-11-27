@@ -25,7 +25,7 @@ def create_ml_agent(tools: list):
     Returns:
         A function that can be used as a LangGraph node
     """
-    llm = get_llm()
+    llm = get_llm(prompt_name="ml_agent")
     llm_with_tools = llm.bind_tools(tools)
 
     def agent_node(state):
