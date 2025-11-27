@@ -4,6 +4,11 @@
     <name>Supervisor Agent</name>
     <version>1.0</version>
     <description>Orchestrates multi-agent workflow by routing tasks to specialized agents</description>
+    <llm_models>
+      <model provider="openai">gpt-5.1</model>
+      <model provider="gemini">gemini-2.5-flash</model>
+      <model provider="ollama">qwen3:14b</model>
+    </llm_models>
   </metadata>
 
   <role>
