@@ -18,7 +18,6 @@ from langchain_core.messages import HumanMessage
 
 from bioagents.graph import create_graph
 from bioagents.llms.langsmith_config import (
-    get_langsmith_config,
     print_langsmith_status,
     setup_langsmith_environment,
 )

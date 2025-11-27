@@ -129,7 +129,7 @@ def run_example_1_basic_pipeline():
     logger.info("=" * 60 + "\n")
 
     # Get LangSmith config
-    langsmith_config = get_langsmith_config()
+    get_langsmith_config()
 
     # Create sample data
     df = create_sample_data()
@@ -409,7 +409,7 @@ def main():
         logger.error("  - Linux: sudo apt install docker.io")
         logger.error("  - Mac/Windows: Install Docker Desktop")
         return
-    
+
     # Set up LangSmith monitoring if enabled
     try:
         setup_langsmith_environment()

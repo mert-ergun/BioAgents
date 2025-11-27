@@ -81,7 +81,9 @@ def get_llm(
     if provider is None:
         provider_str = os.getenv("LLM_PROVIDER", "openai").lower()
         if provider_str not in ("openai", "ollama", "gemini"):
-            raise ValueError(f"Invalid LLM_PROVIDER: {provider_str}. Must be one of: openai, ollama, gemini")
+            raise ValueError(
+                f"Invalid LLM_PROVIDER: {provider_str}. Must be one of: openai, ollama, gemini"
+            )
         provider = provider_str  # type: ignore[assignment]
     if model is None and prompt_name:
         prompt_model = get_prompt_llm_model(prompt_name, provider)
@@ -99,7 +101,7 @@ def get_llm(
             temperature=temperature,
             api_key=api_key,
         )
-        
+
         rate_limit = os.getenv("OPENAI_RATE_LIMIT")
         if rate_limit:
             requests_per_minute = int(rate_limit)
@@ -119,7 +121,7 @@ def get_llm(
             base_url=base_url,
             api_key="ollama",  # Ollama doesn't require a real API key
         )
-        
+
         rate_limit = os.getenv("OLLAMA_RATE_LIMIT")
         if rate_limit:
             requests_per_minute = int(rate_limit)
@@ -140,7 +142,7 @@ def get_llm(
             temperature=temperature,
             google_api_key=api_key,
         )
-        
+
         rate_limit = os.getenv("GEMINI_RATE_LIMIT", "8")
         requests_per_minute = int(rate_limit)
 

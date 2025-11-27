@@ -75,8 +75,10 @@ def main():
     try:
         # Stream the execution to see each step
         # LangSmith will automatically trace if environment variables are set
-        stream_config = langsmith_config if langsmith_config else None
-        for step_num, step_output in enumerate(graph.stream(initial_state, config=stream_config), 1):
+        stream_config = langsmith_config
+        for step_num, step_output in enumerate(
+            graph.stream(initial_state, config=stream_config), 1
+        ):
             print(f"\n{'=' * 80}")
             print(f"STEP {step_num}: {next(iter(step_output.keys())).upper()}")
             print(f"{'=' * 80}")
@@ -95,7 +97,7 @@ def main():
         print_separator()
 
         # Invoke with LangSmith config for final execution trace
-        final_result = graph.invoke(initial_state, config=langsmith_config if langsmith_config else None)
+        final_result = graph.invoke(initial_state, config=langsmith_config)
 
         # Print all messages with better formatting
         for i, message in enumerate(final_result["messages"], 1):
