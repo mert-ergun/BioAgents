@@ -64,9 +64,7 @@ def test_optimize_ml_pipeline_low_accuracy():
     """Test optimization suggestions for low accuracy."""
     result = optimize_ml_pipeline.invoke(
         {
-            "current_code": "model = RandomForestClassifier()",
             "performance_issue": "low accuracy",
-            "optimization_strategy": "auto",
         }
     )
 
@@ -79,9 +77,7 @@ def test_optimize_ml_pipeline_overfitting():
     """Test optimization suggestions for overfitting."""
     result = optimize_ml_pipeline.invoke(
         {
-            "current_code": "model = RandomForestClassifier()",
             "performance_issue": "overfitting",
-            "optimization_strategy": "auto",
         }
     )
 
@@ -94,9 +90,7 @@ def test_optimize_ml_pipeline_slow_training():
     """Test optimization suggestions for slow training."""
     result = optimize_ml_pipeline.invoke(
         {
-            "current_code": "model = RandomForestClassifier()",
             "performance_issue": "slow training",
-            "optimization_strategy": "auto",
         }
     )
 
@@ -108,9 +102,7 @@ def test_optimize_ml_pipeline_imbalanced():
     """Test optimization suggestions for class imbalance."""
     result = optimize_ml_pipeline.invoke(
         {
-            "current_code": "model = RandomForestClassifier()",
             "performance_issue": "unbalanced classes",
-            "optimization_strategy": "auto",
         }
     )
 

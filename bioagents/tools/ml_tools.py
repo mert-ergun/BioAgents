@@ -538,8 +538,8 @@ def execute_ml_code(
                 try:
                     container.stop(timeout=5)
                     container.remove()
-                except Exception:
-                    return f"Error stopping container: {e!s}"
+                except Exception as cleanup_error:
+                    return f"Error stopping container: {cleanup_error!s}"
                 return f"Error during execution: {e!s}"
 
     except ImportError:
@@ -654,12 +654,12 @@ X_test_selected = selector.transform(X_test)
 ```python
 model = XGBClassifier(
     n_estimators=1000,
-    early_stopping_rounds=10,
     eval_metric='logloss'
 )
 model.fit(
     X_train, y_train,
     eval_set=[(X_test, y_test)],
+    early_stopping_rounds=10,
     verbose=False
 )
 ```
