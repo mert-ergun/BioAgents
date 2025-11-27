@@ -15,7 +15,7 @@ def create_report_agent():
     Returns:
         A function that can be used as a LangGraph node
     """
-    llm = get_llm()
+    llm = get_llm(agent_name="Report")
 
     def agent_node(state):
         """

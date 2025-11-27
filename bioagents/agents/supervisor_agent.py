@@ -29,7 +29,7 @@ def create_supervisor_agent(members: list[str]):
     Returns:
         A function that can be used as a LangGraph node
     """
-    llm = get_llm()
+    llm = get_llm(agent_name="Supervisor")
 
     options = [*members, "FINISH"]
 

@@ -23,6 +23,11 @@ from langgraph.graph import MessagesState, StateGraph
 from langgraph.prebuilt import ToolNode
 
 from bioagents.agents.ml_agent import create_ml_agent
+from bioagents.llms.langsmith_config import (
+    get_langsmith_config,
+    print_langsmith_status,
+    setup_langsmith_environment,
+)
 from bioagents.tools.ml_tools import (
     design_ml_pipeline,
     execute_ml_code,
@@ -132,6 +137,9 @@ def run_example_1_basic_pipeline():
     logger.info("EXAMPLE 1: Basic ML Pipeline")
     logger.info("=" * 60 + "\n")
 
+    # Get LangSmith config
+    langsmith_config = get_langsmith_config()
+
     # Create sample data
     df = create_sample_data()
     data_csv = df.to_csv(index=False)
@@ -175,8 +183,10 @@ Here's the complete dataset in CSV format:
         logger.info("Starting stream iteration...")
         sys.stdout.flush()
 
+        # LangSmith will automatically trace via environment variables set by setup_langsmith_environment
         for event in app.stream(
-            {"messages": [HumanMessage(content=request)]}, {"recursion_limit": 15}
+            {"messages": [HumanMessage(content=request)]},
+            {"recursion_limit": 15},
         ):
             step_count += 1
             logger.info(f"\n{'=' * 60}")
@@ -279,8 +289,10 @@ Here's the complete dataset in CSV format:
     logger.info(f"Request size: {len(request)} characters")
     try:
         step_count = 0
+        # LangSmith will automatically trace via environment variables set by setup_langsmith_environment
         for event in app.stream(
-            {"messages": [HumanMessage(content=request)]}, {"recursion_limit": 15}
+            {"messages": [HumanMessage(content=request)]},
+            {"recursion_limit": 15},
         ):
             step_count += 1
             logger.info(f"\n{'=' * 60}")
@@ -355,8 +367,10 @@ Here's the complete dataset in CSV format:
     logger.info(f"Request size: {len(request)} characters")
     try:
         step_count = 0
+        # LangSmith will automatically trace via environment variables set by setup_langsmith_environment
         for event in app.stream(
-            {"messages": [HumanMessage(content=request)]}, {"recursion_limit": 15}
+            {"messages": [HumanMessage(content=request)]},
+            {"recursion_limit": 15},
         ):
             step_count += 1
             logger.info(f"\n{'=' * 60}")
@@ -419,6 +433,13 @@ def main():
         logger.error("  - Linux: sudo apt install docker.io")
         logger.error("  - Mac/Windows: Install Docker Desktop")
         return
+    
+    # Set up LangSmith monitoring if enabled
+    try:
+        setup_langsmith_environment()
+        print_langsmith_status()
+    except ValueError as e:
+        logger.warning(f"LangSmith setup warning: {e}")
 
     # Parse command line arguments
     example_num = 1

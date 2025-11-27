@@ -4,6 +4,11 @@ from dotenv import load_dotenv
 from langchain_core.messages import HumanMessage
 
 from bioagents.graph import create_graph
+from bioagents.llms.langsmith_config import (
+    get_langsmith_config,
+    print_langsmith_status,
+    setup_langsmith_environment,
+)
 
 
 def print_separator(char="=", length=80):
@@ -35,10 +40,23 @@ def main():
     """Execute a demonstration query through the multi-agent workflow."""
     load_dotenv()
 
+    # Set up LangSmith monitoring if enabled
+    try:
+        setup_langsmith_environment()
+    except ValueError as e:
+        print(f"\n⚠ Warning: {e}")
+        print("   Continuing without LangSmith monitoring...\n")
+
+    # Print LangSmith status
+    print_langsmith_status()
+
     # Create the multi-agent graph
     print("\nInitializing BioAgents Multi-Agent Workflow...")
     print("   - Agents: Supervisor, Research, Analysis, Report")
     graph = create_graph()
+
+    # Get LangSmith config for tracing
+    langsmith_config = get_langsmith_config()
 
     query = """
     I need a comprehensive analysis of the human tumor suppressor protein p53 (P04637).
@@ -56,7 +74,9 @@ def main():
 
     try:
         # Stream the execution to see each step
-        for step_num, step_output in enumerate(graph.stream(initial_state), 1):
+        # LangSmith will automatically trace if environment variables are set
+        stream_config = langsmith_config if langsmith_config else None
+        for step_num, step_output in enumerate(graph.stream(initial_state, config=stream_config), 1):
             print(f"\n{'=' * 80}")
             print(f"STEP {step_num}: {next(iter(step_output.keys())).upper()}")
             print(f"{'=' * 80}")
@@ -74,7 +94,8 @@ def main():
         print("FINAL RESULTS")
         print_separator()
 
-        final_result = graph.invoke(initial_state)
+        # Invoke with LangSmith config for final execution trace
+        final_result = graph.invoke(initial_state, config=langsmith_config if langsmith_config else None)
 
         # Print all messages with better formatting
         for i, message in enumerate(final_result["messages"], 1):

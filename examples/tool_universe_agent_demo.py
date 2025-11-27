@@ -17,6 +17,11 @@ from dotenv import load_dotenv
 from langchain_core.messages import HumanMessage
 
 from bioagents.graph import create_graph
+from bioagents.llms.langsmith_config import (
+    get_langsmith_config,
+    print_langsmith_status,
+    setup_langsmith_environment,
+)
 from bioagents.tools.tool_universe import DEFAULT_WRAPPER
 
 
@@ -69,6 +74,13 @@ def _stringify_content(content) -> str:
 def main():
     load_dotenv()
 
+    # Set up LangSmith monitoring if enabled
+    try:
+        setup_langsmith_environment()
+        print_langsmith_status()
+    except ValueError as e:
+        print(f"\n⚠ Warning: {e}")
+
     if DEFAULT_WRAPPER.client_available:
         print("ToolUniverse SDK detected: live tool execution is enabled.\n")
     else:
@@ -98,6 +110,7 @@ def main():
     print(demo_query)
 
     print_banner("STREAMING EXECUTION")
+    # LangSmith will automatically trace via environment variables set by setup_langsmith_environment
     for step in graph.stream(initial_state):
         node_name = next(iter(step))
         print(f"\n→ Step: {node_name}")

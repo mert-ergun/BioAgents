@@ -49,6 +49,7 @@ def get_llm(
     provider: Literal["openai", "ollama", "gemini"] | None = None,
     model: str | None = None,
     temperature: float = 0.0,
+    agent_name: str | None = None,
 ):
     """
     Get a configured LLM instance with optional rate limiting.
@@ -61,6 +62,7 @@ def get_llm(
                - Ollama: 'qwen3:14b'
                - Gemini: 'gemini-2.5-flash'
         temperature: The temperature for generation (0.0 = deterministic)
+        agent_name: Optional agent name (unused, kept for compatibility)
 
     Returns:
         A configured LLM instance, optionally wrapped with rate limiting
@@ -73,10 +75,11 @@ def get_llm(
         - OLLAMA_RATE_LIMIT: Max requests per minute for Ollama (default: no limit)
     """
     if provider is None:
-        provider_str = os.getenv("LLM_PROVIDER", "openai")
+        provider_str = os.getenv("LLM_PROVIDER", "openai").lower()
         if provider_str not in ("openai", "ollama", "gemini"):
-            raise ValueError(f"Invalid LLM_PROVIDER: {provider_str}")
+            raise ValueError(f"Invalid LLM_PROVIDER: {provider_str}. Must be one of: openai, ollama, gemini")
         provider = provider_str  # type: ignore[assignment]
+    
     if provider == "openai":
         model = model or "gpt-4o-mini"
         api_key = os.getenv("OPENAI_API_KEY")
@@ -88,7 +91,7 @@ def get_llm(
             temperature=temperature,
             api_key=api_key,
         )
-
+        
         rate_limit = os.getenv("OPENAI_RATE_LIMIT")
         if rate_limit:
             requests_per_minute = int(rate_limit)
@@ -108,7 +111,7 @@ def get_llm(
             base_url=base_url,
             api_key="ollama",  # Ollama doesn't require a real API key
         )
-
+        
         rate_limit = os.getenv("OLLAMA_RATE_LIMIT")
         if rate_limit:
             requests_per_minute = int(rate_limit)
@@ -129,7 +132,7 @@ def get_llm(
             temperature=temperature,
             google_api_key=api_key,
         )
-
+        
         rate_limit = os.getenv("GEMINI_RATE_LIMIT", "8")
         requests_per_minute = int(rate_limit)
 

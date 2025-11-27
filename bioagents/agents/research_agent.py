@@ -18,7 +18,7 @@ def create_research_agent(tools: list):
     Returns:
         A function that can be used as a LangGraph node
     """
-    llm = get_llm()
+    llm = get_llm(agent_name="Research")
     llm_with_tools = llm.bind_tools(tools)
 
     def agent_node(state):
