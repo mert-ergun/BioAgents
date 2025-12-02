@@ -56,7 +56,12 @@ def main():
     graph = create_graph()
 
     # Get LangSmith config for tracing
-    langsmith_config = get_langsmith_config()
+    try:
+        langsmith_config = get_langsmith_config()
+    except ValueError as e:
+        langsmith_config = None
+        print(f"\nWarning: {e!s}")
+        print("   Continuing without LangSmith monitoring...\n")
 
     query = """
     I need a comprehensive analysis of the human tumor suppressor protein p53 (P04637).

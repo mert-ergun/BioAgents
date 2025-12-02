@@ -173,20 +173,11 @@ BioAgents includes robust LangSmith integration for monitoring agent execution, 
 
 #### Token Usage Tracking
 
-Token usage is automatically tracked both locally and in LangSmith:
+Token usage is automatically tracked in LangSmith:
 
-- **Local tracking:** Printed summary after each run
 - **LangSmith tracking:** Available in the dashboard with detailed breakdowns
 - **Cost estimation:** Automatic cost calculation based on provider pricing
-
-To view local token usage:
-```python
-from bioagents.llms.token_tracker import get_token_tracker
-
-tracker = get_token_tracker()
-tracker.print_summary()  # Print formatted summary
-tracker.export_json("token_usage.json")  # Export to JSON
-```
+> **Note:** Local token tracking is not yet available. This feature is planned for a future release.
 
 #### Disabling Monitoring
 

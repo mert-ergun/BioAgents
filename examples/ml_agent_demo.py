@@ -24,7 +24,6 @@ from langgraph.prebuilt import ToolNode
 
 from bioagents.agents.ml_agent import create_ml_agent
 from bioagents.llms.langsmith_config import (
-    get_langsmith_config,
     print_langsmith_status,
     setup_langsmith_environment,
 )
@@ -127,9 +126,6 @@ def run_example_1_basic_pipeline():
     logger.info("\n" + "=" * 60)
     logger.info("EXAMPLE 1: Basic ML Pipeline")
     logger.info("=" * 60 + "\n")
-
-    # Get LangSmith config
-    get_langsmith_config()
 
     # Create sample data
     df = create_sample_data()
