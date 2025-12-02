@@ -262,6 +262,11 @@ Be scientific."""
   <metadata>
     <name>Analysis Agent</name>
     <version>1.0</version>
+    <llm_models>
+      <model provider="openai">gpt-5.1</model>
+      <model provider="gemini">gemini-2.5-flash</model>
+      <model provider="ollama">qwen3:14b</model>
+    </llm_models>
   </metadata>
 
   <role>
@@ -293,6 +298,7 @@ Be scientific."""
 - Version tracking with metadata
 - Rich expressiveness with nested elements
 - Consistent format across agents
+- Provider-specific `<llm_models>` metadata so the runtime can pick the best model
 
 ## Loading and Using Prompts
 

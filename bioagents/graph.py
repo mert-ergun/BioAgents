@@ -18,6 +18,7 @@ from bioagents.tools.analysis_tools import (
     calculate_molecular_weight,
 )
 from bioagents.tools.proteomics_tools import fetch_uniprot_fasta
+from bioagents.tools.tool_universe import tool_universe_call_tool, tool_universe_find_tools
 
 
 class AgentState(dict):
@@ -104,7 +105,11 @@ def create_graph():
     Returns:
         A compiled StateGraph ready for execution
     """
-    research_tools = [fetch_uniprot_fasta]
+    research_tools = [
+        fetch_uniprot_fasta,
+        tool_universe_find_tools,
+        tool_universe_call_tool,
+    ]
     analysis_tools = [
         calculate_molecular_weight,
         analyze_amino_acid_composition,

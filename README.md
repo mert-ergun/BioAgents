@@ -52,6 +52,8 @@ This repository contains the source code for our final year BBM479 project, `Bio
     # - OPENAI_API_KEY (for OpenAI)
     # - GEMINI_API_KEY (for Google Gemini)
     # - LLM_PROVIDER (set to 'openai', 'ollama', or 'gemini')
+    # - LANGCHAIN_TRACING_V2 (set to 'true' to enable LangSmith monitoring)
+    # - LANGCHAIN_API_KEY (your LangSmith API key for monitoring)
     ```
 
 5. **Configure Pre-Commits for Development (Optional)**
@@ -133,6 +135,62 @@ git commit -m "fix: Resolve validation error on registration form"
 
 ---
 
+## 📊 Monitoring & Observability
+
+### LangSmith Integration
+
+BioAgents includes robust LangSmith integration for monitoring agent execution, tracking token usage, and debugging workflows. LangSmith provides:
+
+- **Real-time monitoring** of all agent interactions
+- **Token usage tracking** with cost estimation
+- **Execution traces** showing the complete workflow
+- **Performance metrics** for each agent and tool call
+
+#### Setup
+
+1. **Get your LangSmith API key:**
+   - Sign up at [https://smith.langchain.com](https://smith.langchain.com)
+   - Navigate to Settings → API Keys
+   - Copy your API key
+
+2. **Configure environment variables:**
+   ```bash
+   # In your .env file
+   LANGCHAIN_TRACING_V2=true
+   LANGCHAIN_API_KEY=your_langsmith_api_key_here
+   LANGCHAIN_PROJECT=bioagents  # Optional: organize runs by project
+   ```
+
+3. **Run your agents:**
+   ```bash
+   python -m bioagents.main
+   ```
+
+4. **View traces:**
+   - Visit [https://smith.langchain.com](https://smith.langchain.com)
+   - All agent runs will appear in your dashboard
+   - Filter by project, agent, or time range
+
+#### Token Usage Tracking
+
+Token usage is automatically tracked in LangSmith:
+
+- **LangSmith tracking:** Available in the dashboard with detailed breakdowns
+- **Cost estimation:** Automatic cost calculation based on provider pricing
+> **Note:** Local token tracking is not yet available. This feature is planned for a future release.
+
+#### Disabling Monitoring
+
+To disable LangSmith monitoring:
+```bash
+# In your .env file
+LANGCHAIN_TRACING_V2=false
+```
+
+Token tracking will still work locally even if LangSmith is disabled.
+
+---
+
 ## 📚 Documentation
 
 - [Prompt Engineering](docs/PROMPT_ENGINEERING.md) - XML-based prompt system
@@ -146,7 +204,7 @@ git commit -m "fix: Resolve validation error on registration form"
 | -------------------- | --------------------------------------------- |
 | Mert ERGUN           | [mert-ergun](https://github.com/mert-ergun)   |
 | Arya Zeynep Mete     | [aryazeynep](https://github.com/aryazeynep)   |
-| Arın Dal Ahmetoğlu   | [arindalahmetoglu](https://github.com/arindalahmetoglu)|
+| Arın Dalahmetoğlu    | [arindalahmetoglu](https://github.com/arindalahmetoglu)|
 
 ---
 

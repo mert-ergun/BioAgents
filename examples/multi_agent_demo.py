@@ -20,6 +20,10 @@ from dotenv import load_dotenv
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
 from bioagents.graph import create_graph
+from bioagents.llms.langsmith_config import (
+    print_langsmith_status,
+    setup_langsmith_environment,
+)
 
 
 # ANSI color codes for terminal output
@@ -260,6 +264,13 @@ def run_multi_agent_demo(verbose: bool = True, log_to_file: bool = True):
         log_to_file: Save logs to a file in the logs/ directory
     """
     load_dotenv()
+
+    # Set up LangSmith monitoring if enabled
+    try:
+        setup_langsmith_environment()
+        print_langsmith_status()
+    except ValueError as e:
+        print(f"\n{Colors.WARNING}⚠ Warning: {e}{Colors.RESET}")
 
     logger = AgentLogger(log_to_file=log_to_file, verbose=verbose)
 
