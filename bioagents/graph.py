@@ -9,6 +9,7 @@ from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode
 
 from bioagents.agents.analysis_agent import create_analysis_agent
+from bioagents.agents.coder_agent import create_coder_agent, create_coder_node
 from bioagents.agents.report_agent import create_report_agent
 from bioagents.agents.research_agent import create_research_agent
 from bioagents.agents.supervisor_agent import create_supervisor_agent
@@ -29,11 +30,13 @@ class AgentState(dict):
         messages: List of messages in the conversation
         next: The next agent to route to (set by supervisor)
         reasoning: The reasoning behind supervisor's decision
+        output_dir: Directory path for saving output files (optional)
     """
 
     messages: Annotated[list[BaseMessage], add_messages]
     next: str
     reasoning: str
+    output_dir: str | None = None
 
 
 def agent_node(state, agent, name):
@@ -51,7 +54,7 @@ def agent_node(state, agent, name):
     result = agent(state)
 
     # Add agent name to the message metadata for tracking
-    if result["messages"]:
+    if result.get("messages"):
         for msg in result["messages"]:
             msg.name = name
 
@@ -77,7 +80,9 @@ def should_continue_to_tools(state: AgentState) -> Literal["tools", "supervisor"
     return "supervisor"
 
 
-def route_supervisor(state: AgentState) -> Literal["research", "analysis", "report", "end"]:
+def route_supervisor(
+    state: AgentState,
+) -> Literal["research", "analysis", "coder", "report", "end"]:
     """
     Route based on supervisor's decision.
 
@@ -87,7 +92,7 @@ def route_supervisor(state: AgentState) -> Literal["research", "analysis", "repo
     Returns:
         The next agent to route to, or 'end' if finished
     """
-    next_agent: Literal["research", "analysis", "report", "end", "FINISH"] = state.get(
+    next_agent: Literal["research", "analysis", "coder", "report", "end", "FINISH"] = state.get(
         "next", "FINISH"
     )
     return "end" if next_agent == "FINISH" else next_agent
@@ -119,8 +124,10 @@ def create_graph():
     research_agent = create_research_agent(research_tools)
     analysis_agent = create_analysis_agent(analysis_tools)
     report_agent = create_report_agent()
+    coder_agent = create_coder_agent()
+    coder_node_func = create_coder_node(coder_agent)
 
-    members = ["research", "analysis", "report"]
+    members = ["research", "analysis", "coder", "report"]
     supervisor_agent = create_supervisor_agent(members)
 
     research_tool_node = ToolNode(research_tools)
@@ -131,6 +138,7 @@ def create_graph():
     workflow.add_node("supervisor", supervisor_agent)
     workflow.add_node("research", partial(agent_node, agent=research_agent, name="Research"))
     workflow.add_node("analysis", partial(agent_node, agent=analysis_agent, name="Analysis"))
+    workflow.add_node("coder", partial(agent_node, agent=coder_node_func, name="Coder"))
     workflow.add_node("report", partial(agent_node, agent=report_agent, name="Report"))
 
     workflow.add_node("research_tools", research_tool_node)
@@ -145,6 +153,7 @@ def create_graph():
         {
             "research": "research",
             "analysis": "analysis",
+            "coder": "coder",
             "report": "report",
             "end": END,
         },
@@ -169,6 +178,8 @@ def create_graph():
             "supervisor": "supervisor",
         },
     )
+
+    workflow.add_edge("coder", "supervisor")
 
     workflow.add_edge("research_tools", "research")
     workflow.add_edge("analysis_tools", "analysis")

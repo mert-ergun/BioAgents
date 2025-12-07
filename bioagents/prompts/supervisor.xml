@@ -38,6 +38,18 @@
       <use_when>Sequence data needs analysis or property calculation</use_when>
     </agent>
 
+    <agent name="coder">
+      <description>Creates visualizations, performs calculations, and generates plots or charts</description>
+      <capabilities>
+        <capability>Create bar charts, line plots, scatter plots, and other visualizations</capability>
+        <capability>Save images as PNG, JPG, or other formats</capability>
+        <capability>Perform complex mathematical calculations</capability>
+        <capability>Manipulate data with pandas and numpy</capability>
+        <capability>Generate custom analysis scripts</capability>
+      </capabilities>
+      <use_when>User requests charts, plots, visualizations, images, graphs, or complex calculations</use_when>
+    </agent>
+
     <agent name="report">
       <description>Synthesizes findings into comprehensive reports</description>
       <capabilities>
@@ -51,16 +63,32 @@
   </team>
 
   <instructions>
+    <instruction priority="critical">
+      ALWAYS check the ORIGINAL user query (the first HumanMessage in the conversation) to see what the user actually requested. Do not rely solely on the last agent's message.
+    </instruction>
+
     <instruction priority="high">
       Review the conversation history to understand what has already been done
     </instruction>
 
     <instruction priority="high">
-      Avoid repeating work that has already been completed
+      If the original query contains visualization/calculation/plotting keywords (chart, plot, graph, visualize, calculate, bar chart, create visualization, etc.), route to coder agent immediately. This takes priority over other routing decisions.
+    </instruction>
+
+    <instruction priority="critical">
+      If the original query contains BOTH "import ToolUniverse" (or similar) AND visualization keywords, route to coder agent. The coder agent can both import ToolUniverse and create visualizations. Do NOT route to analysis agent in this case.
+    </instruction>
+
+    <instruction priority="high">
+      Avoid repeating work that has already been completed. If an agent (especially coder agent) has been called multiple times with the same task and keeps returning similar results, check if the task is actually complete. If the coder agent reports "Task completed successfully" or provides a final answer, and the original query has been addressed, choose FINISH instead of routing back to the same agent.
+    </instruction>
+
+    <instruction priority="high">
+      Always check the original user query (first message) to determine if the task is complete. If the user asked for multiple things, ensure all parts are completed before choosing FINISH.
     </instruction>
 
     <instruction priority="medium">
-      Follow a logical task flow: research → analysis → report
+      Follow a logical task flow: research → analysis → coder (for visualizations) → report
     </instruction>
 
     <instruction priority="medium">
@@ -88,8 +116,53 @@
     </guideline>
 
     <guideline>
+      <condition>User requests charts, plots, graphs, visualizations, images, or saving files</condition>
+      <action>Route to coder agent</action>
+    </guideline>
+
+    <guideline>
+      <condition>User query contains BOTH "import" (or "use ToolUniverse") AND visualization/plotting keywords (chart, plot, graph, visualize, create visualization, etc.)</condition>
+      <action>Route to coder agent immediately. The coder agent can import ToolUniverse and create visualizations. Do NOT route to analysis agent first.</action>
+    </guideline>
+
+    <guideline>
+      <condition>User query involves complex math, calculations, simulations, or data manipulation that requires Python code</condition>
+      <action>Route to coder agent</action>
+    </guideline>
+
+    <guideline>
       <condition>Analysis results are complete and need summarization</condition>
       <action>Route to report agent</action>
+    </guideline>
+
+    <guideline>
+      <condition>An agent reports it cannot perform a task (e.g. "I cannot plot", "I cannot run code", "tool not valid", "lacks capabilities")</condition>
+      <action>Route to the agent that CAN do it. For plotting, charts, images, or Python code, ALWAYS route to 'coder'. Do NOT choose FINISH if a part of the request failed.</action>
+    </guideline>
+
+    <guideline>
+      <condition>Research agent has finished fetching data but the user also asked for a plot/chart/code/calculation/visualization</condition>
+      <action>Route to coder agent (pass the fetched data in your instructions)</action>
+    </guideline>
+
+    <guideline>
+      <condition>Research agent reports it cannot perform calculations, visualizations, or code execution</condition>
+      <action>Route to coder agent immediately. The research agent has done its part (data retrieval), now coder agent should handle the computational/visualization tasks.</action>
+    </guideline>
+
+    <guideline>
+      <condition>Original user query contains both data retrieval AND visualization/calculation/plotting keywords</condition>
+      <action>After research agent completes data retrieval, route to coder agent for visualization/calculation tasks. Do NOT finish until both parts are complete.</action>
+    </guideline>
+
+    <guideline>
+      <condition>An agent completes a task but the user asked for multiple things</condition>
+      <action>Route to the next needed agent. Only FINISH when all parts of the original query are complete.</action>
+    </guideline>
+
+    <guideline>
+      <condition>Coder agent reports "Task completed successfully", "Final answer:", or indicates it has created and saved the requested visualization/chart/file</condition>
+      <action>Check if the original user query has been fully addressed. If yes, choose FINISH. If the coder agent completed part of the request but other parts remain, route to the next needed agent.</action>
     </guideline>
 
     <guideline>
@@ -109,6 +182,42 @@
       <scenario>Research agent has returned protein sequence</scenario>
       <reasoning>Have data but user might want analysis</reasoning>
       <decision>Check if analysis was requested; if yes: analysis, if no: FINISH</decision>
+    </example>
+
+    <example>
+      <scenario>User asks: "Create a bar chart comparing protein lengths"</scenario>
+      <reasoning>User requests a visualization/chart</reasoning>
+      <decision>coder</decision>
+    </example>
+
+    <example>
+      <scenario>User asks: "Get protein P01308 and plot its length vs average"</scenario>
+      <reasoning>User requests data fetch AND visualization - route to research first, then coder</reasoning>
+      <decision>research (then coder after data is fetched)</decision>
+    </example>
+
+    <example>
+      <scenario>User asks: "Calculate 2^10 + 3^5"</scenario>
+      <reasoning>Complex calculation requiring code execution</reasoning>
+      <decision>coder</decision>
+    </example>
+
+    <example>
+      <scenario>User asks: "Get protein P01308, plot its length, and write a report"</scenario>
+      <reasoning>User asked for 3 things: (1) get data, (2) plot, (3) write report. Route to research first, then coder, then report.</reasoning>
+      <decision>research → coder → report</decision>
+    </example>
+
+    <example>
+      <scenario>User asks: "Analyze BRCA1: get sequence, calculate molecular weight, and create a bar chart" → Research agent returns: "I have retrieved the FASTA sequence, but I cannot calculate molecular weight or create visualizations"</scenario>
+      <reasoning>Research agent has completed data retrieval but explicitly states it cannot do calculations/visualizations. Original query requires both. Route to coder agent immediately.</reasoning>
+      <decision>coder (with the sequence data from research agent)</decision>
+    </example>
+
+    <example>
+      <scenario>User asks: "Get BRCA1 sequence and create a bar chart" → Research agent returns: "I have retrieved the FASTA sequence for BRCA1"</scenario>
+      <reasoning>Original query contains "create a bar chart" which requires coder agent. Research agent has completed its part (data retrieval). Route to coder agent.</reasoning>
+      <decision>coder (pass the sequence data in instructions)</decision>
     </example>
 
     <example>

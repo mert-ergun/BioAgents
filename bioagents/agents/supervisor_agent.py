@@ -12,7 +12,7 @@ from bioagents.prompts.prompt_loader import load_prompt
 class RouteResponse(BaseModel):
     """Response from supervisor for routing."""
 
-    next_agent: Literal["research", "analysis", "report", "FINISH"]
+    next_agent: Literal["research", "analysis", "coder", "report", "FINISH"]
     reasoning: str
 
 
