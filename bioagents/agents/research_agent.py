@@ -1,4 +1,4 @@
-"""Research Agent for fetching biological data."""
+"""Research Agent for fetching biological data and conducting literature searches."""
 
 from langchain_core.messages import SystemMessage
 
