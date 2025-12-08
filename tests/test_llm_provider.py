@@ -53,7 +53,7 @@ class TestGetLLM:
 
             mock_openai.assert_called_once()
             call_kwargs = mock_openai.call_args[1]
-            assert call_kwargs["model"] == "gpt-4o-mini"
+            assert call_kwargs["model"] == "gpt-5.1"
             assert call_kwargs["temperature"] == 0.0
             assert call_kwargs["api_key"] == "test-key"
 
@@ -69,6 +69,24 @@ class TestGetLLM:
             call_kwargs = mock_openai.call_args[1]
             assert call_kwargs["model"] == "gpt-4"
             assert call_kwargs["temperature"] == 0.7
+
+    @patch.dict(os.environ, {"OPENAI_API_KEY": "test-key"}, clear=True)
+    def test_openai_prompt_metadata_model(self):
+        """Test that prompt metadata overrides the default model."""
+        with (
+            patch("bioagents.llms.llm_provider.ChatOpenAI") as mock_openai,
+            patch(
+                "bioagents.llms.llm_provider.get_prompt_llm_model", return_value="custom-model"
+            ) as mock_metadata,
+        ):
+            mock_llm = Mock()
+            mock_openai.return_value = mock_llm
+
+            get_llm(provider="openai", prompt_name="analysis")
+
+            mock_metadata.assert_called_once_with("analysis", "openai")
+            call_kwargs = mock_openai.call_args[1]
+            assert call_kwargs["model"] == "custom-model"
 
     @patch.dict(os.environ, {}, clear=True)
     def test_openai_provider_missing_api_key(self):

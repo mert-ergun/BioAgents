@@ -6,7 +6,12 @@ from tempfile import TemporaryDirectory
 
 import pytest
 
-from bioagents.prompts.prompt_loader import PromptLoader, load_prompt
+from bioagents.prompts.prompt_loader import (
+    PromptLoader,
+    get_prompt_llm_model,
+    get_prompt_llm_models,
+    load_prompt,
+)
 
 
 class TestPromptLoader:
@@ -274,6 +279,48 @@ class TestPromptLoader:
             # Sections should be separated by double newlines
             assert "\n\n" in result
 
+    def test_get_llm_models(self):
+        """Test extracting LLM models from metadata."""
+        with TemporaryDirectory() as tmpdir:
+            prompt_file = Path(tmpdir) / "test_prompt.xml"
+            prompt_file.write_text("""<?xml version="1.0" encoding="UTF-8"?>
+<prompt>
+    <metadata>
+        <name>Test Agent</name>
+        <llm_models>
+            <model provider="openai">gpt-5.1</model>
+            <model provider="Gemini">gemini-2.5-flash</model>
+        </llm_models>
+    </metadata>
+    <role>Test role</role>
+</prompt>
+""")
+
+            loader = PromptLoader(prompts_dir=tmpdir)
+            models = loader.get_llm_models("test_prompt")
+
+            assert models == {"openai": "gpt-5.1", "gemini": "gemini-2.5-flash"}
+
+    def test_get_llm_model_with_provider(self):
+        """Test retrieving a specific provider model."""
+        with TemporaryDirectory() as tmpdir:
+            prompt_file = Path(tmpdir) / "test_prompt.xml"
+            prompt_file.write_text("""<?xml version="1.0" encoding="UTF-8"?>
+<prompt>
+    <metadata>
+        <name>Test Agent</name>
+        <llm_models>
+            <model provider="openai">gpt-5.1</model>
+        </llm_models>
+    </metadata>
+    <role>Test role</role>
+</prompt>
+""")
+
+            loader = PromptLoader(prompts_dir=tmpdir)
+            assert loader.get_llm_model("test_prompt", "OpenAI") == "gpt-5.1"
+            assert loader.get_llm_model("test_prompt", "gemini") is None
+
 
 class TestLoadPromptFunction:
     """Tests for the convenience load_prompt function."""
@@ -349,3 +396,28 @@ class TestPromptIntegrity:
             assert any(keyword in result.lower() for keyword in ["report", "synthesize", "present"])
         except FileNotFoundError:
             pytest.skip("Report prompt file not found")
+
+
+class TestPromptLLMMetadataHelpers:
+    """Tests for the convenience LLM metadata helpers."""
+
+    def test_get_prompt_llm_models_helper(self):
+        """Test helper returns expected providers for actual prompt file."""
+        try:
+            models = get_prompt_llm_models("analysis")
+        except FileNotFoundError:
+            pytest.skip("Analysis prompt file not found")
+
+        assert models["openai"] == "gpt-5.1"
+        assert models["gemini"] == "gemini-2.5-flash"
+        assert models["ollama"] == "qwen3:14b"
+
+    def test_get_prompt_llm_model_helper(self):
+        """Test helper returns provider-specific model or None."""
+        try:
+            model = get_prompt_llm_model("analysis", "openai")
+        except FileNotFoundError:
+            pytest.skip("Analysis prompt file not found")
+
+        assert model == "gpt-5.1"
+        assert get_prompt_llm_model("analysis", "missing") is None

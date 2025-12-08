@@ -199,9 +199,14 @@ class TestCreateGraph:
 
         create_graph()
 
-        # Check research agent was created with correct tools
+        # Check research agent was created with ToolUniverse + UniProt tools
         research_call_args = mock_research.call_args[0][0]
-        assert len(research_call_args) == 1  # fetch_uniprot_fasta
+        research_tool_names = {tool.name for tool in research_call_args}
+        assert {
+            "fetch_uniprot_fasta",
+            "tool_universe_find_tools",
+            "tool_universe_call_tool",
+        }.issubset(research_tool_names)
 
         # Check analysis agent was created with correct tools
         analysis_call_args = mock_analysis.call_args[0][0]
