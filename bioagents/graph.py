@@ -10,6 +10,7 @@ from langgraph.prebuilt import ToolNode
 
 from bioagents.agents.analysis_agent import create_analysis_agent
 from bioagents.agents.coder_agent import create_coder_agent, create_coder_node
+from bioagents.agents.critic_agent import create_critic_agent
 from bioagents.agents.protein_design_agent import (
     create_protein_design_agent,
     get_all_protein_design_tools,
@@ -92,7 +93,9 @@ def should_continue_to_tools(state: AgentState) -> Literal["tools", "supervisor"
 
 def route_supervisor(
     state: AgentState,
-) -> Literal["research", "analysis", "coder", "report", "tool_builder", "protein_design", "end"]:
+) -> Literal[
+    "research", "analysis", "coder", "report", "tool_builder", "protein_design", "critic", "end"
+]:
     """
     Route based on supervisor's decision.
 
@@ -103,7 +106,15 @@ def route_supervisor(
         The next agent to route to, or 'end' if finished
     """
     next_agent: Literal[
-        "research", "analysis", "coder", "report", "tool_builder", "protein_design", "end", "FINISH"
+        "research",
+        "analysis",
+        "coder",
+        "report",
+        "tool_builder",
+        "protein_design",
+        "critic",
+        "end",
+        "FINISH",
     ] = state.get("next", "FINISH")
     return "end" if next_agent == "FINISH" else next_agent
 
@@ -143,8 +154,17 @@ def create_graph():
     coder_node_func = create_coder_node(coder_agent)
     tool_builder_agent = create_tool_builder_agent()
     protein_design_agent = create_protein_design_agent()
+    critic_agent = create_critic_agent()
 
-    members = ["research", "analysis", "coder", "report", "tool_builder", "protein_design"]
+    members = [
+        "research",
+        "analysis",
+        "coder",
+        "report",
+        "tool_builder",
+        "protein_design",
+        "critic",
+    ]
     supervisor_agent = create_supervisor_agent(members)
 
     research_tool_node = ToolNode(research_tools)
@@ -165,6 +185,7 @@ def create_graph():
     workflow.add_node(
         "protein_design", partial(agent_node, agent=protein_design_agent, name="ProteinDesign")
     )
+    workflow.add_node("critic", partial(agent_node, agent=critic_agent, name="Critic"))
 
     workflow.add_node("research_tools", research_tool_node)
     workflow.add_node("analysis_tools", analysis_tool_node)
@@ -184,6 +205,7 @@ def create_graph():
             "report": "report",
             "tool_builder": "tool_builder",
             "protein_design": "protein_design",
+            "critic": "critic",
             "end": END,
         },
     )
@@ -254,6 +276,7 @@ def create_graph():
     workflow.add_edge("analysis_tools", "analysis")
     workflow.add_edge("tool_builder_tools", "tool_builder")
     workflow.add_edge("protein_design_tools", "protein_design")
+    workflow.add_edge("critic", "supervisor")
 
     workflow.add_edge("report", "supervisor")
 
