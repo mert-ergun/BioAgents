@@ -23,14 +23,14 @@ from bioagents.tools.analysis_tools import (
     calculate_isoelectric_point,
     calculate_molecular_weight,
 )
+from bioagents.tools.pdf_tools import (
+    extract_pdf_text_spacy_layout,
+    fetch_webpage_as_pdf_text,
+)
 from bioagents.tools.proteomics_tools import fetch_uniprot_fasta
 from bioagents.tools.tool_builder_tools import get_tool_builder_tools
 from bioagents.tools.tool_universe import tool_universe_call_tool, tool_universe_find_tools
 
-from bioagents.tools.pdf_tools import (
-    fetch_webpage_as_pdf_text,
-    extract_pdf_text_spacy_layout,
-)
 
 class AgentState(dict):
     """
@@ -125,8 +125,8 @@ def create_graph():
         fetch_uniprot_fasta,
         tool_universe_find_tools,
         tool_universe_call_tool,
-        fetch_webpage_as_pdf_text,           # <- NEW
-        extract_pdf_text_spacy_layout,       # <- NEW
+        fetch_webpage_as_pdf_text,  # <- NEW
+        extract_pdf_text_spacy_layout,  # <- NEW
     ]
     analysis_tools = [
         calculate_molecular_weight,
