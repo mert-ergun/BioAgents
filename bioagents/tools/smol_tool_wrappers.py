@@ -1,5 +1,7 @@
 """Wrappers for ToolUniverse tools to be used with smolagents."""
 
+from typing import Any, ClassVar
+
 from smolagents import Tool
 
 
@@ -8,14 +10,19 @@ class ToolUniverseSearchTool(Tool):
 
     name = "tool_universe_find_tools"
     description = "Search for bioinformatics tools in ToolUniverse."
-    inputs = {
+    inputs: ClassVar[dict[str, Any]] = {
         "description": {"type": "string", "description": "Description of the capability needed."},
-        "limit": {"type": "integer", "description": "Max number of tools to return (default 5).", "nullable": True}
+        "limit": {
+            "type": "integer",
+            "description": "Max number of tools to return (default 5).",
+            "nullable": True,
+        },
     }
     output_type = "string"
 
     def forward(self, description: str, limit: int = 5) -> str:
         from bioagents.tools.tool_universe import DEFAULT_WRAPPER
+
         return DEFAULT_WRAPPER.find_tools(description, limit=limit)
 
 
@@ -24,13 +31,17 @@ class ToolUniverseExecuteTool(Tool):
 
     name = "tool_universe_call_tool"
     description = "Execute a specific ToolUniverse tool."
-    inputs = {
+    inputs: ClassVar[dict[str, Any]] = {
         "tool_name": {"type": "string", "description": "Exact name of the tool."},
-        "arguments_json": {"type": "string", "description": "JSON string of arguments.", "nullable": True}
+        "arguments_json": {
+            "type": "string",
+            "description": "JSON string of arguments.",
+            "nullable": True,
+        },
     }
     output_type = "string"
 
     def forward(self, tool_name: str, arguments_json: str = "{}") -> str:
         from bioagents.tools.tool_universe import DEFAULT_WRAPPER
-        return DEFAULT_WRAPPER.execute_tool(tool_name, arguments_json)
 
+        return DEFAULT_WRAPPER.execute_tool(tool_name, arguments_json)

@@ -1,11 +1,11 @@
 """Docker executor setup for coder agent."""
 
 import contextlib
-import os
+import shutil
 import socket
-import subprocess
+import subprocess  # nosec B404
 import sys
-from typing import Union
+from pathlib import Path
 
 from rich.console import Console
 from smolagents import AgentLogger, DockerExecutor, LocalPythonExecutor, LogLevel
@@ -29,10 +29,12 @@ def find_available_port(start_port: int = 8888, max_retries: int = 100) -> int:
         with contextlib.closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as sock:
             if sock.connect_ex(("127.0.0.1", port)) != 0:
                 return port
-    raise RuntimeError(f"Could not find an available port in range {start_port}-{start_port + max_retries}")
+    raise RuntimeError(
+        f"Could not find an available port in range {start_port}-{start_port + max_retries}"
+    )
 
 
-def create_executor(additional_imports: list) -> Union[DockerExecutor, LocalPythonExecutor]:
+def create_executor(additional_imports: list) -> DockerExecutor | LocalPythonExecutor:
     """
     Create a Docker executor for code execution, falling back to LocalExecutor if Docker fails.
 
@@ -43,23 +45,6 @@ def create_executor(additional_imports: list) -> Union[DockerExecutor, LocalPyth
         DockerExecutor or LocalPythonExecutor instance
     """
     try:
-        log_file_path = None
-        try:
-            import logging
-            root_logger = logging.getLogger()
-            for handler in root_logger.handlers:
-                if hasattr(handler, 'log_file_path'):
-                    log_file_path = handler.log_file_path
-                    break
-                elif hasattr(handler, 'baseFilename'):
-                    log_file_path = handler.baseFilename
-                    break
-                elif hasattr(handler, 'stream') and hasattr(handler.stream, 'name'):
-                    log_file_path = handler.stream.name
-                    break
-        except Exception:
-            pass
-        
         terminal_console = Console(
             file=sys.stdout,
             width=None,
@@ -67,7 +52,7 @@ def create_executor(additional_imports: list) -> Union[DockerExecutor, LocalPyth
         )
         logger = AgentLogger(level=LogLevel.INFO, console=terminal_console)
         port = find_available_port()
-        
+
         # Filter imports for pip install (remove wildcards and stdlib modules)
         pip_packages = []
         for imp in additional_imports:
@@ -78,31 +63,38 @@ def create_executor(additional_imports: list) -> Union[DockerExecutor, LocalPyth
             elif imp not in ["typing", "json", "os", "os.path", "sys", "pathlib"]:
                 if not imp.startswith("bioagents"):
                     pip_packages.append(imp)
-        
+
         dockerfile_content = f"""
         FROM python:3.12-bullseye
-        
+
         WORKDIR /app
-        
+
         ENV PYTHONPATH=/app:$PYTHONPATH
-        
-        RUN pip install jupyter_kernel_gateway jupyter_client ipykernel {' '.join(pip_packages)}
-        
+
+        RUN pip install jupyter_kernel_gateway jupyter_client ipykernel {" ".join(pip_packages)}
+
         EXPOSE 8888
         CMD ["jupyter", "kernelgateway", "--KernelGatewayApp.ip='0.0.0.0'", "--KernelGatewayApp.port=8888", "--KernelGatewayApp.allow_origin='*'"]
         """
-        
-        try:
-            subprocess.run(["docker", "image", "inspect", "bioagents-coder"], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            should_build = False
-        except subprocess.CalledProcessError:
+
+        docker_path = shutil.which("docker")
+        if docker_path:
+            try:
+                subprocess.run(  # nosec B603
+                    [docker_path, "image", "inspect", "bioagents-coder"],
+                    check=True,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+                should_build = False
+            except subprocess.CalledProcessError:
+                should_build = True
+        else:
             should_build = True
 
-        cwd = os.getcwd()
-        container_run_kwargs = {
-            "volumes": {cwd: {"bind": "/app", "mode": "rw"}}
-        }
-        
+        cwd = str(Path.cwd())
+        container_run_kwargs = {"volumes": {cwd: {"bind": "/app", "mode": "rw"}}}
+
         return DockerExecutor(
             image_name="bioagents-coder",
             dockerfile_content=dockerfile_content,
@@ -110,10 +102,9 @@ def create_executor(additional_imports: list) -> Union[DockerExecutor, LocalPyth
             logger=logger,
             port=port,
             build_new_image=should_build,
-            container_run_kwargs=container_run_kwargs
+            container_run_kwargs=container_run_kwargs,
         )
     except Exception as e:
         print(f"Warning: Could not initialize DockerExecutor: {e}")
         print("Falling back to LocalExecutor (NOT SANDBOXED) for development purposes.")
         return LocalPythonExecutor(additional_authorized_imports=additional_imports)
-

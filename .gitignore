@@ -3,6 +3,10 @@ __pycache__/
 *.py[codz]
 *$py.class
 
+# Protein Fold Design
+*.pdb
+*.trb
+
 # C extensions
 *.so
 

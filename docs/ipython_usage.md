@@ -311,7 +311,7 @@ IPython provides a powerful development environment for BioAgents that **elimina
 
 **Without IPython**: Every query = 5+ minutes of waiting (Docker startup + model loading + graph initialization)
 
-**With IPython**: 
+**With IPython**:
 - First query = 5+ minutes (one-time cost)
 - All subsequent queries = Only execution time (~5-30 seconds)
 - **10 queries**: 50+ minutes → ~6-7 minutes total
@@ -330,4 +330,3 @@ IPython provides a powerful development environment for BioAgents that **elimina
 - **Production/One-off**: Direct execution is fine if you only need one query
 
 **Bottom Line**: If you're running multiple queries or testing, IPython is **essential** - it transforms a 50+ minute testing session into a 6-7 minute one.
-
