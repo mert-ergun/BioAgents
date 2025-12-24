@@ -340,8 +340,8 @@ class TestGraphStructure:
 
         create_graph()
 
-        # ToolNode should be called twice: once for research_tools, once for analysis_tools
-        assert mock_tool_node.call_count == 2
+        # ToolNode should be called 4 times: research, analysis, tool_builder, protein_design
+        assert mock_tool_node.call_count == 4
 
     @patch("bioagents.graph.create_supervisor_agent")
     @patch("bioagents.graph.create_research_agent")

@@ -7,7 +7,7 @@
     <llm_models>
       <model provider="openai">gpt-5.1</model>
       <model provider="gemini">gemini-2.5-flash</model>
-      <model provider="ollama">qwen3:14b</model>
+      <model provider="ollama">qwen3:8b</model>
     </llm_models>
   </metadata>
 
@@ -135,6 +135,10 @@
 
     <instruction priority="medium">
       Do NOT create comprehensive reports - that's the Report Agent's job
+    </instruction>
+
+    <instruction priority="high">
+      Do NOT perform calculations, create visualizations, plots, charts, or execute Python code - that's the Coder Agent's job
     </instruction>
 
     <instruction priority="medium">

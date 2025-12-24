@@ -410,7 +410,7 @@ class TestPromptLLMMetadataHelpers:
 
         assert models["openai"] == "gpt-5.1"
         assert models["gemini"] == "gemini-2.5-flash"
-        assert models["ollama"] == "qwen3:14b"
+        assert models["ollama"] == "qwen3:8b"
 
     def test_get_prompt_llm_model_helper(self):
         """Test helper returns provider-specific model or None."""

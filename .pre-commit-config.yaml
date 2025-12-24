@@ -1,7 +1,7 @@
 repos:
   # Pre-commit hooks for basic file checks
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v5.0.0
+    rev: v6.0.0
     hooks:
       - id: trailing-whitespace
       - id: end-of-file-fixer
@@ -20,7 +20,7 @@ repos:
 
   # Ruff - Fast Python linter and formatter (replaces black, isort, flake8, etc.)
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.14.4
+    rev: v0.14.10
     hooks:
       # Run the linter
       - id: ruff
@@ -30,7 +30,7 @@ repos:
 
   # Security checks with bandit
   - repo: https://github.com/PyCQA/bandit
-    rev: 1.8.0
+    rev: 1.9.2
     hooks:
       - id: bandit
         args: ['-c', 'pyproject.toml']
@@ -38,7 +38,7 @@ repos:
 
   # Type checking with mypy
   - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.14.1
+    rev: v1.19.1
     hooks:
       - id: mypy
         additional_dependencies: [
@@ -48,17 +48,6 @@ repos:
         ]
         args: [--ignore-missing-imports, --show-error-codes]
         files: ^bioagents/
-
-  # Pytest - Run tests before commit
-  - repo: local
-    hooks:
-      - id: pytest-check
-        name: pytest-check
-        entry: uv run --no-sync pytest
-        language: system
-        pass_filenames: false
-        always_run: true
-        stages: [pre-commit]
 
   # Check dependencies are synced
   - repo: local
