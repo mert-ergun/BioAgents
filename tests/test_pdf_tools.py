@@ -88,7 +88,13 @@ class TestPdfToolsIntegration:
 
     def test_extract_real_pdf(self):
         """Real PDF reading."""
-        from bioagents.tools.pdf_tools import extract_pdf_text_spacy_layout
+        from bioagents.tools.pdf_tools import (
+            HAS_PDF_LIBRARIES,
+            extract_pdf_text_spacy_layout,
+        )
+
+        if not HAS_PDF_LIBRARIES:
+            pytest.skip("Required libraries not installed ('spacy', 'spacy_layout')")
 
         print("\n📄 Searching for PDF file...")
 
