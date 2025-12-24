@@ -17,7 +17,14 @@ class RouteResponse(BaseModel):
     """Response from supervisor for routing."""
 
     next_agent: Literal[
-        "research", "analysis", "coder", "report", "tool_builder", "protein_design", "FINISH"
+        "research",
+        "analysis",
+        "coder",
+        "report",
+        "tool_builder",
+        "protein_design",
+        "critic",
+        "FINISH",
     ]
     reasoning: str
 

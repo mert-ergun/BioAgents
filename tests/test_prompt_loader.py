@@ -279,6 +279,141 @@ class TestPromptLoader:
             # Sections should be separated by double newlines
             assert "\n\n" in result
 
+    def test_load_prompt_with_evaluation_criteria(self):
+        """Test loading a prompt with evaluation criteria section."""
+        with TemporaryDirectory() as tmpdir:
+            prompt_file = Path(tmpdir) / "test_prompt.xml"
+            prompt_file.write_text("""<?xml version="1.0" encoding="UTF-8"?>
+<prompt>
+    <role>Critic Agent</role>
+    <evaluation_criteria>
+        <criterion name="Plausibility">Is it plausible?</criterion>
+        <criterion>General check</criterion>
+    </evaluation_criteria>
+</prompt>
+""")
+            loader = PromptLoader(prompts_dir=tmpdir)
+            result = loader.load_prompt("test_prompt")
+
+            assert "Evaluation Criteria:" in result
+            assert "- Plausibility: Is it plausible?" in result
+            assert "- General check" in result
+
+    def test_load_prompt_with_output_format(self):
+        """Test loading a prompt with output format section."""
+        with TemporaryDirectory() as tmpdir:
+            prompt_file = Path(tmpdir) / "test_prompt.xml"
+            prompt_file.write_text("""<?xml version="1.0" encoding="UTF-8"?>
+<prompt>
+    <role>Agent</role>
+    <output_format>
+        <requirement>Must be JSON</requirement>
+        <section name="Summary">
+            <description>A brief summary</description>
+        </section>
+    </output_format>
+</prompt>
+""")
+            loader = PromptLoader(prompts_dir=tmpdir)
+            result = loader.load_prompt("test_prompt")
+
+            assert "Output Format:" in result
+            assert "- Must be JSON" in result
+            assert "- Summary: A brief summary" in result
+
+    def test_load_prompt_with_data_formats(self):
+        """Test loading a prompt with data formats section."""
+        with TemporaryDirectory() as tmpdir:
+            prompt_file = Path(tmpdir) / "test_prompt.xml"
+            prompt_file.write_text("""<?xml version="1.0" encoding="UTF-8"?>
+<prompt>
+    <role>Agent</role>
+    <data_formats>
+        <format name="FASTA">
+            <description>Protein sequence</description>
+            <structure>>ID\nSEQUENCE</structure>
+        </format>
+    </data_formats>
+</prompt>
+""")
+            loader = PromptLoader(prompts_dir=tmpdir)
+            result = loader.load_prompt("test_prompt")
+
+            assert "Data Formats:" in result
+            assert "FASTA:" in result
+            assert "Description: Protein sequence" in result
+            assert "Structure:" in result
+            assert "    >ID" in result
+
+    def test_load_prompt_with_error_handling(self):
+        """Test loading a prompt with error handling section."""
+        with TemporaryDirectory() as tmpdir:
+            prompt_file = Path(tmpdir) / "test_prompt.xml"
+            prompt_file.write_text("""<?xml version="1.0" encoding="UTF-8"?>
+<prompt>
+    <role>Agent</role>
+    <error_handling>
+        <error type="Timeout">
+            <response>Wait longer</response>
+        </error>
+    </error_handling>
+</prompt>
+""")
+            loader = PromptLoader(prompts_dir=tmpdir)
+            result = loader.load_prompt("test_prompt")
+
+            assert "Error Handling:" in result
+            assert "- Timeout:" in result
+            assert "Response: Wait longer" in result
+
+    def test_load_prompt_with_best_practices(self):
+        """Test loading a prompt with best practices section."""
+        with TemporaryDirectory() as tmpdir:
+            prompt_file = Path(tmpdir) / "test_prompt.xml"
+            prompt_file.write_text("""<?xml version="1.0" encoding="UTF-8"?>
+<prompt>
+    <role>Agent</role>
+    <best_practices>
+        <practice>Use descriptive names</practice>
+    </best_practices>
+</prompt>
+""")
+            loader = PromptLoader(prompts_dir=tmpdir)
+            result = loader.load_prompt("test_prompt")
+
+            assert "Best Practices:" in result
+            assert "- Use descriptive names" in result
+
+    def test_load_prompt_with_complex_examples(self):
+        """Test loading a prompt with complex examples (nested tags)."""
+        with TemporaryDirectory() as tmpdir:
+            prompt_file = Path(tmpdir) / "test_prompt.xml"
+            prompt_file.write_text("""<?xml version="1.0" encoding="UTF-8"?>
+<prompt>
+    <role>Agent</role>
+    <examples>
+        <example>
+            <request>Complex task</request>
+            <actions>
+                <action order="1">Step one</action>
+                <action order="2">Step two</action>
+            </actions>
+            <response>Done</response>
+        </example>
+    </examples>
+</prompt>
+""")
+            loader = PromptLoader(prompts_dir=tmpdir)
+            result = loader.load_prompt("test_prompt")
+
+            assert "Examples:" in result
+            assert "Example 1:" in result
+            assert "Request: Complex task" in result
+            assert "Actions:" in result
+            assert "1. Step one" in result
+            assert "2. Step two" in result
+            assert "Response: Done" in result
+
     def test_get_llm_models(self):
         """Test extracting LLM models from metadata."""
         with TemporaryDirectory() as tmpdir:

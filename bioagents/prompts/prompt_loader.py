@@ -77,12 +77,40 @@ class PromptLoader:
             if resp_text:
                 sections.append(resp_text)
 
+        # Add evaluation criteria (if present)
+        evaluation_criteria = root.find("evaluation_criteria")
+        if evaluation_criteria is not None:
+            eval_text = self._format_evaluation_criteria(evaluation_criteria)
+            if eval_text:
+                sections.append(eval_text)
+
+        # Add output format (if present)
+        output_format = root.find("output_format")
+        if output_format is not None:
+            out_text = self._format_output_format(output_format)
+            if out_text:
+                sections.append(out_text)
+
+        # Add data formats (if present)
+        data_formats = root.find("data_formats")
+        if data_formats is not None:
+            df_text = self._format_data_formats(data_formats)
+            if df_text:
+                sections.append(df_text)
+
         # Add instructions
         instructions = root.find("instructions")
         if instructions is not None:
             inst_text = self._format_instructions(instructions)
             if inst_text:
                 sections.append(inst_text)
+
+        # Add error handling
+        error_handling = root.find("error_handling")
+        if error_handling is not None:
+            err_text = self._format_error_handling(error_handling)
+            if err_text:
+                sections.append(err_text)
 
         # Add workflow (if present)
         workflow = root.find("workflow")
@@ -104,6 +132,20 @@ class PromptLoader:
             style_text = self._format_communication_style(comm_style)
             if style_text:
                 sections.append(style_text)
+
+        # Add best practices
+        best_practices = root.find("best_practices")
+        if best_practices is not None:
+            bp_text = self._format_best_practices(best_practices)
+            if bp_text:
+                sections.append(bp_text)
+
+        # Add examples (if present)
+        examples = root.find("examples")
+        if examples is not None:
+            examples_text = self._format_examples(examples)
+            if examples_text:
+                sections.append(examples_text)
 
         # Join all sections with double newlines
         return "\n\n".join(sections)
@@ -252,6 +294,123 @@ class PromptLoader:
         for principle in comm_style.findall("principle"):
             if principle.text:
                 lines.append(f"- {principle.text.strip()}")
+
+        return "\n".join(lines) if len(lines) > 1 else ""
+
+    def _format_evaluation_criteria(self, criteria: ET.Element) -> str:
+        """Format the evaluation criteria section."""
+        lines = ["Evaluation Criteria:"]
+
+        for criterion in criteria.findall("criterion"):
+            name = criterion.get("name")
+            if name and criterion.text:
+                lines.append(f"- {name}: {criterion.text.strip()}")
+            elif criterion.text:
+                lines.append(f"- {criterion.text.strip()}")
+
+        return "\n".join(lines) if len(lines) > 1 else ""
+
+    def _format_output_format(self, output_format: ET.Element) -> str:
+        """Format the output format section."""
+        lines = ["Output Format:"]
+
+        # Handle requirements
+        for req in output_format.findall("requirement"):
+            if req.text:
+                lines.append(f"- {req.text.strip()}")
+
+        # Handle sections
+        for section in output_format.findall("section"):
+            name = section.get("name")
+            desc = section.find("description")
+            if name:
+                line = f"- {name}"
+                if desc is not None and desc.text:
+                    line += f": {desc.text.strip()}"
+                lines.append(line)
+
+        return "\n".join(lines) if len(lines) > 1 else ""
+
+    def _format_data_formats(self, data_formats: ET.Element) -> str:
+        """Format the data formats section."""
+        lines = ["Data Formats:"]
+
+        for fmt in data_formats.findall("format"):
+            name = fmt.get("name")
+            if name:
+                lines.append(f"\n{name}:")
+                desc = fmt.find("description")
+                if desc is not None and desc.text:
+                    lines.append(f"  Description: {desc.text.strip()}")
+
+                struct = fmt.find("structure")
+                if struct is not None and struct.text:
+                    struct_text = struct.text.strip()
+                    indented_struct = "\n".join(f"    {line}" for line in struct_text.split("\n"))
+                    lines.append(f"  Structure:\n{indented_struct}")
+
+        return "\n".join(lines) if len(lines) > 1 else ""
+
+    def _format_error_handling(self, error_handling: ET.Element) -> str:
+        """Format the error handling section."""
+        lines = ["Error Handling:"]
+
+        for error in error_handling.findall("error"):
+            err_type = error.get("type", "Error")
+            lines.append(f"\n- {err_type}:")
+
+            for child in error:
+                if child.text:
+                    lines.append(f"  {child.tag.capitalize()}: {child.text.strip()}")
+
+        return "\n".join(lines) if len(lines) > 1 else ""
+
+    def _format_best_practices(self, best_practices: ET.Element) -> str:
+        """Format the best practices section."""
+        lines = ["Best Practices:"]
+
+        for practice in best_practices.findall("practice"):
+            if practice.text:
+                lines.append(f"- {practice.text.strip()}")
+
+        return "\n".join(lines) if len(lines) > 1 else ""
+
+    def _format_examples(self, examples: ET.Element) -> str:
+        """Format the examples section."""
+        lines = ["Examples:"]
+
+        for i, example in enumerate(examples.findall("example"), 1):
+            lines.append(f"\nExample {i}:")
+
+            # Format all sub-elements of the example
+            for child in example:
+                tag = child.tag
+                label = tag.capitalize()
+
+                # If child has nested elements (like <actions><action>...</actions>)
+                if len(child) > 0:
+                    lines.append(f"  {label}:")
+                    for subchild in child:
+                        if subchild.text and subchild.text.strip():
+                            text = subchild.text.strip()
+                            order = subchild.get("order")
+                            prefix = f"{order}. " if order else "- "
+
+                            if "\n" in text:
+                                indented_text = "\n".join(
+                                    f"      {line}" for line in text.split("\n")
+                                )
+                                lines.append(f"    {prefix}{indented_text.lstrip()}")
+                            else:
+                                lines.append(f"    {prefix}{text}")
+                # If child only has text
+                elif child.text and child.text.strip():
+                    text = child.text.strip()
+                    if "\n" in text:
+                        indented_text = "\n".join(f"    {line}" for line in text.split("\n"))
+                        lines.append(f"  {label}:\n{indented_text}")
+                    else:
+                        lines.append(f"  {label}: {text}")
 
         return "\n".join(lines) if len(lines) > 1 else ""
 

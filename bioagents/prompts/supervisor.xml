@@ -86,6 +86,18 @@
       </capabilities>
       <use_when>User needs protein structure analysis, binder design, or AlphaFold predictions</use_when>
     </agent>
+
+    <agent name="critic">
+      <description>Validates scientific accuracy, biological plausibility, and domain standards</description>
+      <capabilities>
+        <capability>Detect hallucinations in biological data</capability>
+        <capability>Verify biological plausibility of designs</capability>
+        <capability>Check for internal consistency across agent outputs</capability>
+        <capability>Validate structural metrics (iPTM, ipSAE, pLDDT)</capability>
+        <capability>Ensure adherence to domain standards</capability>
+      </capabilities>
+      <use_when>Results from research, analysis, or design need validation before reporting</use_when>
+    </agent>
   </team>
 
   <instructions>
@@ -200,6 +212,23 @@
       <action>Route to tool_builder agent for literature mining</action>
     </guideline>
     <!-- END TOOL_BUILDER GUIDELINES -->
+
+    <!-- CRITIC GUIDELINES -->
+    <guideline priority="high">
+      <condition>An analysis, research, or protein design task has just been completed and requires validation</condition>
+      <action>Route to critic agent for scientific validation</action>
+    </guideline>
+
+    <guideline priority="high">
+      <condition>Critic agent has flagged errors or inconsistencies</condition>
+      <action>Route back to the responsible agent (research, analysis, coder, or protein_design) with the critic's feedback for correction</action>
+    </guideline>
+
+    <guideline priority="high">
+      <condition>Critic agent has successfully validated the results</condition>
+      <action>Route to report agent for final synthesis or choose FINISH</action>
+    </guideline>
+    <!-- END CRITIC GUIDELINES -->
 
     <!-- PROTEIN DESIGN GUIDELINES - CHECK BEFORE RESEARCH -->
     <guideline priority="critical">
