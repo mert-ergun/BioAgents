@@ -15,8 +15,20 @@ class TestBasicWorkflow:
     @patch("bioagents.graph.create_research_agent")
     @patch("bioagents.graph.create_analysis_agent")
     @patch("bioagents.graph.create_report_agent")
+    @patch("bioagents.graph.create_critic_agent")
+    @patch("bioagents.graph.create_tool_builder_agent")
+    @patch("bioagents.graph.create_protein_design_agent")
+    @patch("bioagents.graph.create_coder_agent")
     def test_graph_creation_integration(
-        self, mock_report, mock_analysis, mock_research, mock_supervisor
+        self,
+        mock_coder,
+        mock_protein,
+        mock_builder,
+        mock_critic,
+        mock_report,
+        mock_analysis,
+        mock_research,
+        mock_supervisor,
     ):
         """Test that graph can be created with all components."""
         # Setup all mocks
@@ -24,6 +36,10 @@ class TestBasicWorkflow:
         mock_research.return_value = Mock()
         mock_analysis.return_value = Mock()
         mock_report.return_value = Mock()
+        mock_critic.return_value = Mock()
+        mock_builder.return_value = Mock()
+        mock_protein.return_value = Mock()
+        mock_coder.return_value = Mock()
 
         # Create graph - should not raise any errors
         graph = create_graph()
@@ -132,8 +148,20 @@ class TestEndToEndWorkflow:
     @patch("bioagents.graph.create_research_agent")
     @patch("bioagents.graph.create_analysis_agent")
     @patch("bioagents.graph.create_report_agent")
+    @patch("bioagents.graph.create_critic_agent")
+    @patch("bioagents.graph.create_tool_builder_agent")
+    @patch("bioagents.graph.create_protein_design_agent")
+    @patch("bioagents.graph.create_coder_agent")
     def test_simple_query_workflow(
-        self, mock_report, mock_analysis, mock_research, mock_supervisor
+        self,
+        mock_coder,
+        mock_protein,
+        mock_builder,
+        mock_critic,
+        mock_report,
+        mock_analysis,
+        mock_research,
+        mock_supervisor,
     ):
         """Test a simple query workflow."""
         # Mock supervisor routing: research -> FINISH
@@ -155,6 +183,10 @@ class TestEndToEndWorkflow:
         mock_research.return_value = mock_research_agent
         mock_analysis.return_value = Mock()
         mock_report.return_value = Mock()
+        mock_critic.return_value = Mock()
+        mock_builder.return_value = Mock()
+        mock_protein.return_value = Mock()
+        mock_coder.return_value = Mock()
 
         graph = create_graph()
 
@@ -172,7 +204,21 @@ class TestEndToEndWorkflow:
     @patch("bioagents.graph.create_research_agent")
     @patch("bioagents.graph.create_analysis_agent")
     @patch("bioagents.graph.create_report_agent")
-    def test_multi_step_workflow(self, mock_report, mock_analysis, mock_research, mock_supervisor):
+    @patch("bioagents.graph.create_critic_agent")
+    @patch("bioagents.graph.create_tool_builder_agent")
+    @patch("bioagents.graph.create_protein_design_agent")
+    @patch("bioagents.graph.create_coder_agent")
+    def test_multi_step_workflow(
+        self,
+        mock_coder,
+        mock_protein,
+        mock_builder,
+        mock_critic,
+        mock_report,
+        mock_analysis,
+        mock_research,
+        mock_supervisor,
+    ):
         """Test a multi-step workflow: research -> analysis -> report -> finish."""
         # Mock supervisor routing through all agents
         supervisor_calls = [
@@ -203,6 +249,10 @@ class TestEndToEndWorkflow:
         mock_research.return_value = mock_research_agent
         mock_analysis.return_value = mock_analysis_agent
         mock_report.return_value = mock_report_agent
+        mock_critic.return_value = Mock()
+        mock_builder.return_value = Mock()
+        mock_protein.return_value = Mock()
+        mock_coder.return_value = Mock()
 
         graph = create_graph()
 
