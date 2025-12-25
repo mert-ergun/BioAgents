@@ -1,0 +1,508 @@
+"""Tool Registry for storing, managing, and loading custom-generated tools.
+
+This module provides a persistent registry system for custom tools created by
+the Tool Builder Agent. It handles:
+- Saving tool definitions and code to disk
+- Loading tools dynamically at runtime
+- Validating tool schemas
+- Providing tool metadata for RAG retrieval
+"""
+
+from __future__ import annotations
+
+import importlib.util
+import json
+import logging
+import re
+import sys
+from dataclasses import asdict, dataclass, field
+from datetime import datetime
+from pathlib import Path
+from threading import Lock
+from typing import TYPE_CHECKING, Any, cast
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+logger = logging.getLogger(__name__)
+
+# Default directory for custom tools
+DEFAULT_TOOLS_DIR = Path(__file__).parent / "custom_tools"
+
+
+@dataclass
+class ToolParameter:
+    """Definition of a tool parameter."""
+
+    name: str
+    type: str  # "string", "integer", "number", "boolean", "array", "object"
+    description: str
+    required: bool = True
+    default: Any = None
+    enum: list[str] | None = None
+
+    def to_schema(self) -> dict[str, Any]:
+        """Convert to JSON Schema format."""
+        schema: dict[str, Any] = {
+            "type": self.type,
+            "description": self.description,
+        }
+        if self.default is not None:
+            schema["default"] = self.default
+        if self.enum:
+            schema["enum"] = self.enum
+        return schema
+
+
+@dataclass
+class ToolDefinition:
+    """Complete definition of a custom tool."""
+
+    name: str
+    description: str
+    category: str  # e.g., "genomics", "proteomics", "structural", "ml"
+    parameters: list[ToolParameter]
+    return_type: str  # e.g., "string", "dict", "DataFrame"
+    return_description: str
+
+    # Source information
+    source_paper: str | None = None  # DOI or bioRxiv ID
+    source_url: str | None = None  # GitHub, documentation URL
+    source_software: str | None = None  # Original software name
+
+    # Implementation details
+    code: str = ""  # Python code for the tool wrapper
+    dependencies: list[str] = field(default_factory=list)  # pip packages
+    system_dependencies: list[str] = field(default_factory=list)  # apt packages
+
+    # Metadata
+    created_at: str = field(default_factory=lambda: datetime.now().isoformat())
+    updated_at: str = field(default_factory=lambda: datetime.now().isoformat())
+    version: str = "1.0.0"
+    validated: bool = False
+    validation_error: str | None = None
+
+    # Usage statistics
+    usage_count: int = 0
+    last_used: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for JSON serialization."""
+        data = asdict(self)
+        data["parameters"] = [asdict(p) for p in self.parameters]
+        return data
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> ToolDefinition:
+        """Create from dictionary."""
+        params = [ToolParameter(**p) for p in data.pop("parameters", [])]
+        return cls(parameters=params, **data)
+
+    def get_schema(self) -> dict[str, Any]:
+        """Get JSON Schema for the tool's parameters."""
+        properties = {}
+        required = []
+
+        for param in self.parameters:
+            properties[param.name] = param.to_schema()
+            if param.required:
+                required.append(param.name)
+
+        return {
+            "type": "object",
+            "properties": properties,
+            "required": required,
+        }
+
+    def get_function_signature(self) -> str:
+        """Generate Python function signature."""
+        params = []
+        for p in self.parameters:
+            if p.required:
+                params.append(f"{p.name}: {self._type_hint(p.type)}")
+            else:
+                default = repr(p.default) if p.default is not None else "None"
+                params.append(f"{p.name}: {self._type_hint(p.type)} = {default}")
+
+        return (
+            f"def {self._safe_name()}({', '.join(params)}) -> {self._type_hint(self.return_type)}:"
+        )
+
+    def _safe_name(self) -> str:
+        """Convert tool name to valid Python function name."""
+        name = re.sub(r"[^a-zA-Z0-9_]", "_", self.name)
+        if name[0].isdigit():
+            name = "_" + name
+        return name.lower()
+
+    @staticmethod
+    def _type_hint(type_str: str) -> str:
+        """Convert type string to Python type hint."""
+        type_map = {
+            "string": "str",
+            "integer": "int",
+            "number": "float",
+            "boolean": "bool",
+            "array": "list",
+            "object": "dict",
+            "DataFrame": "pd.DataFrame",
+            "dict": "dict[str, Any]",
+        }
+        return type_map.get(type_str, "Any")
+
+
+class ToolRegistry:
+    """Registry for managing custom tools.
+
+    Provides persistent storage and dynamic loading of custom tools
+    generated by the Tool Builder Agent.
+    """
+
+    REGISTRY_FILE = "registry.json"
+
+    def __init__(self, tools_dir: Path | None = None):
+        """Initialize the tool registry.
+
+        Args:
+            tools_dir: Directory for storing tool files. Defaults to custom_tools/.
+        """
+        self.tools_dir = tools_dir or DEFAULT_TOOLS_DIR
+        self.tools_dir.mkdir(parents=True, exist_ok=True)
+
+        self._registry: dict[str, ToolDefinition] = {}
+        self._loaded_modules: dict[str, Any] = {}
+        self._lock = Lock()
+
+        self._load_registry()
+
+    def _registry_path(self) -> Path:
+        """Get path to registry JSON file."""
+        return self.tools_dir / self.REGISTRY_FILE
+
+    def _load_registry(self) -> None:
+        """Load registry from disk."""
+        registry_path = self._registry_path()
+        if not registry_path.exists():
+            logger.info("No existing registry found, starting fresh")
+            return
+
+        try:
+            with registry_path.open("r", encoding="utf-8") as f:
+                data = json.load(f)
+
+            for name, tool_data in data.get("tools", {}).items():
+                try:
+                    self._registry[name] = ToolDefinition.from_dict(tool_data)
+                except Exception as e:
+                    logger.warning(f"Failed to load tool '{name}': {e}")
+
+            logger.info(f"Loaded {len(self._registry)} tools from registry")
+        except Exception as e:
+            logger.error(f"Failed to load registry: {e}")
+
+    def _save_registry(self) -> None:
+        """Save registry to disk."""
+        data = {
+            "version": "1.0",
+            "updated_at": datetime.now().isoformat(),
+            "tools": {name: tool.to_dict() for name, tool in self._registry.items()},
+        }
+
+        try:
+            with self._registry_path().open("w", encoding="utf-8") as f:
+                json.dump(data, f, indent=2, ensure_ascii=False)
+        except Exception as e:
+            logger.error(f"Failed to save registry: {e}")
+
+    def register_tool(
+        self,
+        definition: ToolDefinition,
+        overwrite: bool = False,
+    ) -> bool:
+        """Register a new tool in the registry.
+
+        Args:
+            definition: The tool definition to register
+            overwrite: Whether to overwrite existing tool with same name
+
+        Returns:
+            True if registration succeeded
+        """
+        with self._lock:
+            if definition.name in self._registry and not overwrite:
+                logger.warning(f"Tool '{definition.name}' already exists")
+                return False
+
+            # Save the Python code to a file
+            if definition.code:
+                code_path = self._get_code_path(definition.name)
+                try:
+                    code_path.write_text(definition.code, encoding="utf-8")
+                    logger.info(f"Saved tool code to {code_path}")
+                except Exception as e:
+                    logger.error(f"Failed to save tool code: {e}")
+                    return False
+
+            # Update registry
+            definition.updated_at = datetime.now().isoformat()
+            self._registry[definition.name] = definition
+            self._save_registry()
+
+            logger.info(f"Registered tool: {definition.name}")
+            return True
+
+    def unregister_tool(self, name: str) -> bool:
+        """Remove a tool from the registry.
+
+        Args:
+            name: Name of the tool to remove
+
+        Returns:
+            True if tool was removed
+        """
+        with self._lock:
+            if name not in self._registry:
+                return False
+
+            # Remove code file
+            code_path = self._get_code_path(name)
+            if code_path.exists():
+                code_path.unlink()
+
+            # Remove from registry
+            del self._registry[name]
+            if name in self._loaded_modules:
+                del self._loaded_modules[name]
+
+            self._save_registry()
+            logger.info(f"Unregistered tool: {name}")
+            return True
+
+    def get_tool(self, name: str) -> ToolDefinition | None:
+        """Get a tool definition by name."""
+        return self._registry.get(name)
+
+    def list_tools(
+        self,
+        category: str | None = None,
+        validated_only: bool = False,
+    ) -> list[ToolDefinition]:
+        """List all registered tools.
+
+        Args:
+            category: Filter by category
+            validated_only: Only return validated tools
+
+        Returns:
+            List of tool definitions
+        """
+        tools = list(self._registry.values())
+
+        if category:
+            tools = [t for t in tools if t.category == category]
+
+        if validated_only:
+            tools = [t for t in tools if t.validated]
+
+        return tools
+
+    def search_tools(
+        self,
+        query: str,
+        limit: int = 5,
+    ) -> list[tuple[ToolDefinition, float]]:
+        """Search tools by description similarity.
+
+        Simple keyword-based search. For production, integrate with
+        a vector database for semantic search.
+
+        Args:
+            query: Search query
+            limit: Maximum results to return
+
+        Returns:
+            List of (tool, score) tuples
+        """
+        query_tokens = set(query.lower().split())
+        scored_tools: list[tuple[ToolDefinition, float]] = []
+
+        for tool in self._registry.values():
+            # Score based on keyword overlap
+            text = f"{tool.name} {tool.description} {tool.category}".lower()
+            text_tokens = set(text.split())
+
+            overlap = len(query_tokens & text_tokens)
+            if overlap > 0:
+                score = overlap / len(query_tokens)
+                scored_tools.append((tool, score))
+
+        # Sort by score descending
+        scored_tools.sort(key=lambda x: x[1], reverse=True)
+        return scored_tools[:limit]
+
+    def _get_code_path(self, name: str) -> Path:
+        """Get path to tool's Python code file."""
+        safe_name = re.sub(r"[^a-zA-Z0-9_]", "_", name).lower()
+        return self.tools_dir / f"{safe_name}.py"
+
+    def load_tool_function(self, name: str) -> Callable | None:
+        """Dynamically load and return a tool's function.
+
+        Args:
+            name: Name of the tool to load
+
+        Returns:
+            The callable tool function, or None if load failed
+        """
+        if name in self._loaded_modules:
+            module = self._loaded_modules[name]
+            func_name = self._registry[name]._safe_name()
+            func = getattr(module, func_name, None)
+            return cast("Callable[..., Any]", func) if func is not None else None
+
+        tool = self._registry.get(name)
+        if not tool:
+            logger.error(f"Tool '{name}' not found in registry")
+            return None
+
+        code_path = self._get_code_path(name)
+        if not code_path.exists():
+            logger.error(f"Tool code file not found: {code_path}")
+            return None
+
+        try:
+            # Create a unique module name
+            module_name = f"bioagents_custom_tool_{name}"
+
+            spec = importlib.util.spec_from_file_location(module_name, code_path)
+            if spec is None or spec.loader is None:
+                raise ImportError(f"Cannot create module spec for {code_path}")
+
+            module = importlib.util.module_from_spec(spec)
+            sys.modules[module_name] = module
+            spec.loader.exec_module(module)
+
+            self._loaded_modules[name] = module
+
+            func_name = tool._safe_name()
+            func = getattr(module, func_name, None)
+
+            if func is None:
+                # Try to find any callable
+                for attr_name in dir(module):
+                    if not attr_name.startswith("_"):
+                        attr = getattr(module, attr_name)
+                        if callable(attr):
+                            return cast("Callable[..., Any]", attr)
+
+            return cast("Callable[..., Any]", func) if func is not None else None
+
+        except Exception as e:
+            logger.error(f"Failed to load tool '{name}': {e}")
+            return None
+
+    def validate_tool(self, name: str, test_args: dict[str, Any] | None = None) -> bool:
+        """Validate a tool by attempting to load and optionally run it.
+
+        Args:
+            name: Name of the tool to validate
+            test_args: Optional test arguments to run the tool with
+
+        Returns:
+            True if validation passed
+        """
+        tool = self._registry.get(name)
+        if not tool:
+            return False
+
+        try:
+            # Try to load the function
+            func = self.load_tool_function(name)
+            if func is None:
+                tool.validated = False
+                tool.validation_error = "Failed to load function"
+                self._save_registry()
+                return False
+
+            # Optionally run with test args
+            if test_args is not None:
+                func(**test_args)
+
+            tool.validated = True
+            tool.validation_error = None
+            tool.updated_at = datetime.now().isoformat()
+            self._save_registry()
+
+            logger.info(f"Tool '{name}' validated successfully")
+            return True
+
+        except Exception as e:
+            tool.validated = False
+            tool.validation_error = str(e)
+            self._save_registry()
+            logger.error(f"Tool '{name}' validation failed: {e}")
+            return False
+
+    def record_usage(self, name: str) -> None:
+        """Record that a tool was used."""
+        tool = self._registry.get(name)
+        if tool:
+            tool.usage_count += 1
+            tool.last_used = datetime.now().isoformat()
+            self._save_registry()
+
+    def get_categories(self) -> list[str]:
+        """Get all unique tool categories."""
+        return list({t.category for t in self._registry.values()})
+
+    def export_for_context(self, names: list[str] | None = None) -> str:
+        """Export tool documentation for LLM context injection.
+
+        Args:
+            names: Specific tools to export, or None for all
+
+        Returns:
+            Formatted string with tool documentation
+        """
+        tools = (
+            [self._registry[n] for n in names if n in self._registry]
+            if names
+            else list(self._registry.values())
+        )
+
+        if not tools:
+            return "No custom tools available."
+
+        lines = ["# Available Custom Tools\n"]
+
+        for tool in tools:
+            lines.append(f"## {tool.name}")
+            lines.append(f"**Category:** {tool.category}")
+            lines.append(f"**Description:** {tool.description}")
+
+            if tool.parameters:
+                lines.append("\n**Parameters:**")
+                for p in tool.parameters:
+                    req = "(required)" if p.required else "(optional)"
+                    lines.append(f"- `{p.name}` ({p.type}) {req}: {p.description}")
+
+            lines.append(f"\n**Returns:** {tool.return_type} - {tool.return_description}")
+
+            if tool.source_software:
+                lines.append(f"\n**Wraps:** {tool.source_software}")
+
+            lines.append("")
+
+        return "\n".join(lines)
+
+
+# Global registry instance
+_registry: ToolRegistry | None = None
+
+
+def get_registry() -> ToolRegistry:
+    """Get or create the global tool registry."""
+    global _registry
+    if _registry is None:
+        _registry = ToolRegistry()
+    return _registry

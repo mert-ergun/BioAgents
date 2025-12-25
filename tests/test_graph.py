@@ -154,6 +154,12 @@ class TestRouteSupervisor:
         result = route_supervisor(state)
         assert result == "end"
 
+    def test_route_to_critic(self):
+        """Test routing to critic agent."""
+        state = {"next": "critic", "messages": []}
+        result = route_supervisor(state)
+        assert result == "critic"
+
     def test_route_with_missing_next(self):
         """Test routing when next is not in state."""
         state = {"messages": []}
@@ -168,13 +174,31 @@ class TestCreateGraph:
     @patch("bioagents.graph.create_research_agent")
     @patch("bioagents.graph.create_analysis_agent")
     @patch("bioagents.graph.create_report_agent")
-    def test_create_graph_basic(self, mock_report, mock_analysis, mock_research, mock_supervisor):
+    @patch("bioagents.graph.create_critic_agent")
+    @patch("bioagents.graph.create_tool_builder_agent")
+    @patch("bioagents.graph.create_protein_design_agent")
+    @patch("bioagents.graph.create_coder_agent")
+    def test_create_graph_basic(
+        self,
+        mock_coder,
+        mock_protein,
+        mock_builder,
+        mock_critic,
+        mock_report,
+        mock_analysis,
+        mock_research,
+        mock_supervisor,
+    ):
         """Test basic graph creation."""
         # Setup mocks
         mock_supervisor.return_value = Mock()
         mock_research.return_value = Mock()
         mock_analysis.return_value = Mock()
         mock_report.return_value = Mock()
+        mock_critic.return_value = Mock()
+        mock_builder.return_value = Mock()
+        mock_protein.return_value = Mock()
+        mock_coder.return_value = Mock()
 
         graph = create_graph()
 
@@ -188,14 +212,30 @@ class TestCreateGraph:
     @patch("bioagents.graph.create_research_agent")
     @patch("bioagents.graph.create_analysis_agent")
     @patch("bioagents.graph.create_report_agent")
+    @patch("bioagents.graph.create_critic_agent")
+    @patch("bioagents.graph.create_tool_builder_agent")
+    @patch("bioagents.graph.create_protein_design_agent")
+    @patch("bioagents.graph.create_coder_agent")
     def test_create_graph_agent_creation_with_tools(
-        self, mock_report, mock_analysis, mock_research, mock_supervisor
+        self,
+        mock_coder,
+        mock_protein,
+        mock_builder,
+        mock_critic,
+        mock_report,
+        mock_analysis,
+        mock_research,
+        mock_supervisor,
     ):
         """Test that agents are created with correct tools."""
         mock_supervisor.return_value = Mock()
         mock_research.return_value = Mock()
         mock_analysis.return_value = Mock()
         mock_report.return_value = Mock()
+        mock_critic.return_value = Mock()
+        mock_builder.return_value = Mock()
+        mock_protein.return_value = Mock()
+        mock_coder.return_value = Mock()
 
         create_graph()
 
@@ -217,19 +257,39 @@ class TestCreateGraph:
         assert "research" in supervisor_call_args
         assert "analysis" in supervisor_call_args
         assert "report" in supervisor_call_args
+        assert "critic" in supervisor_call_args
+        assert "tool_builder" in supervisor_call_args
+        assert "protein_design" in supervisor_call_args
+        assert "coder" in supervisor_call_args
 
     @patch("bioagents.graph.create_supervisor_agent")
     @patch("bioagents.graph.create_research_agent")
     @patch("bioagents.graph.create_analysis_agent")
     @patch("bioagents.graph.create_report_agent")
+    @patch("bioagents.graph.create_critic_agent")
+    @patch("bioagents.graph.create_tool_builder_agent")
+    @patch("bioagents.graph.create_protein_design_agent")
+    @patch("bioagents.graph.create_coder_agent")
     def test_create_graph_returns_compiled(
-        self, mock_report, mock_analysis, mock_research, mock_supervisor
+        self,
+        mock_coder,
+        mock_protein,
+        mock_builder,
+        mock_critic,
+        mock_report,
+        mock_analysis,
+        mock_research,
+        mock_supervisor,
     ):
         """Test that create_graph returns a compiled graph."""
         mock_supervisor.return_value = Mock()
         mock_research.return_value = Mock()
         mock_analysis.return_value = Mock()
         mock_report.return_value = Mock()
+        mock_critic.return_value = Mock()
+        mock_builder.return_value = Mock()
+        mock_protein.return_value = Mock()
+        mock_coder.return_value = Mock()
 
         graph = create_graph()
 
@@ -245,8 +305,20 @@ class TestGraphWorkflow:
     @patch("bioagents.graph.create_research_agent")
     @patch("bioagents.graph.create_analysis_agent")
     @patch("bioagents.graph.create_report_agent")
+    @patch("bioagents.graph.create_critic_agent")
+    @patch("bioagents.graph.create_tool_builder_agent")
+    @patch("bioagents.graph.create_protein_design_agent")
+    @patch("bioagents.graph.create_coder_agent")
     def test_graph_workflow_simple(
-        self, mock_report, mock_analysis, mock_research, mock_supervisor
+        self,
+        mock_coder,
+        mock_protein,
+        mock_builder,
+        mock_critic,
+        mock_report,
+        mock_analysis,
+        mock_research,
+        mock_supervisor,
     ):
         """Test a simple workflow through the graph."""
         # Create mock agents that return appropriate responses
@@ -265,6 +337,10 @@ class TestGraphWorkflow:
         mock_research.return_value = mock_research_agent
         mock_analysis.return_value = Mock()
         mock_report.return_value = Mock()
+        mock_critic.return_value = Mock()
+        mock_builder.return_value = Mock()
+        mock_protein.return_value = Mock()
+        mock_coder.return_value = Mock()
 
         graph = create_graph()
 
@@ -275,12 +351,30 @@ class TestGraphWorkflow:
     @patch("bioagents.graph.create_research_agent")
     @patch("bioagents.graph.create_analysis_agent")
     @patch("bioagents.graph.create_report_agent")
-    def test_graph_entry_point(self, mock_report, mock_analysis, mock_research, mock_supervisor):
+    @patch("bioagents.graph.create_critic_agent")
+    @patch("bioagents.graph.create_tool_builder_agent")
+    @patch("bioagents.graph.create_protein_design_agent")
+    @patch("bioagents.graph.create_coder_agent")
+    def test_graph_entry_point(
+        self,
+        mock_coder,
+        mock_protein,
+        mock_builder,
+        mock_critic,
+        mock_report,
+        mock_analysis,
+        mock_research,
+        mock_supervisor,
+    ):
         """Test that graph has correct entry point."""
         mock_supervisor.return_value = Mock()
         mock_research.return_value = Mock()
         mock_analysis.return_value = Mock()
         mock_report.return_value = Mock()
+        mock_critic.return_value = Mock()
+        mock_builder.return_value = Mock()
+        mock_protein.return_value = Mock()
+        mock_coder.return_value = Mock()
 
         graph = create_graph()
 
@@ -314,6 +408,7 @@ class TestGraphEdges:
         assert route_supervisor({"next": "research"}) == "research"
         assert route_supervisor({"next": "analysis"}) == "analysis"
         assert route_supervisor({"next": "report"}) == "report"
+        assert route_supervisor({"next": "critic"}) == "critic"
         assert route_supervisor({"next": "FINISH"}) == "end"
 
         # Test default case
@@ -327,34 +422,67 @@ class TestGraphStructure:
     @patch("bioagents.graph.create_research_agent")
     @patch("bioagents.graph.create_analysis_agent")
     @patch("bioagents.graph.create_report_agent")
+    @patch("bioagents.graph.create_critic_agent")
+    @patch("bioagents.graph.create_tool_builder_agent")
+    @patch("bioagents.graph.create_protein_design_agent")
+    @patch("bioagents.graph.create_coder_agent")
     @patch("bioagents.graph.ToolNode")
     def test_tool_nodes_created(
-        self, mock_tool_node, mock_report, mock_analysis, mock_research, mock_supervisor
+        self,
+        mock_tool_node,
+        mock_coder,
+        mock_protein,
+        mock_builder,
+        mock_critic,
+        mock_report,
+        mock_analysis,
+        mock_research,
+        mock_supervisor,
     ):
         """Test that tool nodes are created for research and analysis."""
         mock_supervisor.return_value = Mock()
         mock_research.return_value = Mock()
         mock_analysis.return_value = Mock()
         mock_report.return_value = Mock()
+        mock_critic.return_value = Mock()
+        mock_builder.return_value = Mock()
+        mock_protein.return_value = Mock()
+        mock_coder.return_value = Mock()
         mock_tool_node.return_value = Mock()
 
         create_graph()
 
-        # ToolNode should be called twice: once for research_tools, once for analysis_tools
-        assert mock_tool_node.call_count == 2
+        # ToolNode should be called 4 times: research, analysis, tool_builder, protein_design
+        assert mock_tool_node.call_count == 4
 
     @patch("bioagents.graph.create_supervisor_agent")
     @patch("bioagents.graph.create_research_agent")
     @patch("bioagents.graph.create_analysis_agent")
     @patch("bioagents.graph.create_report_agent")
+    @patch("bioagents.graph.create_critic_agent")
+    @patch("bioagents.graph.create_tool_builder_agent")
+    @patch("bioagents.graph.create_protein_design_agent")
+    @patch("bioagents.graph.create_coder_agent")
     def test_partial_agent_node_wrapping(
-        self, mock_report, mock_analysis, mock_research, mock_supervisor
+        self,
+        mock_coder,
+        mock_protein,
+        mock_builder,
+        mock_critic,
+        mock_report,
+        mock_analysis,
+        mock_research,
+        mock_supervisor,
     ):
         """Test that agents are wrapped with partial function for naming."""
         mock_supervisor.return_value = Mock()
         mock_research.return_value = Mock()
         mock_analysis.return_value = Mock()
         mock_report.return_value = Mock()
+        mock_critic.return_value = Mock()
+        mock_builder.return_value = Mock()
+        mock_protein.return_value = Mock()
+        mock_coder.return_value = Mock()
 
         # This should not raise any errors
         graph = create_graph()

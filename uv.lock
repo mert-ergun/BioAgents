@@ -348,6 +348,7 @@ dependencies = [
     { name = "pytest-cov" },
     { name = "python-dotenv" },
     { name = "pyyaml" },
+    { name = "smolagents", extra = ["docker"] },
     { name = "tooluniverse" },
 ]
 
@@ -375,6 +376,7 @@ requires-dist = [
     { name = "pytest-cov", specifier = ">=7.0.0" },
     { name = "python-dotenv", specifier = ">=1.2.1" },
     { name = "pyyaml", specifier = ">=6.0.3" },
+    { name = "smolagents", extras = ["docker"], specifier = ">=1.23.0" },
     { name = "tooluniverse", specifier = ">=1.0.3" },
 ]
 
@@ -4977,6 +4979,29 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/94/e7/b2c673351809dca68a0e064b6af791aa332cf192da575fd474ed7d6f16a2/six-1.17.0.tar.gz", hash = "sha256:ff70335d468e7eb6ec65b95b99d3a2836546063f63acc5171de367e834932a81", size = 34031, upload-time = "2024-12-04T17:35:28.174Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/b7/ce/149a00dd41f10bc29e5921b496af8b574d8413afcd5e30dfa0ed46c2cc5e/six-1.17.0-py2.py3-none-any.whl", hash = "sha256:4721f391ed90541fddacab5acf947aa0d3dc7d27b2e1e8eda2be8970586c3274", size = 11050, upload-time = "2024-12-04T17:35:26.475Z" },
+]
+
+[[package]]
+name = "smolagents"
+version = "1.23.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "huggingface-hub" },
+    { name = "jinja2" },
+    { name = "pillow" },
+    { name = "python-dotenv" },
+    { name = "requests" },
+    { name = "rich" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/e3/73/7283781e61b71ca20d263b9ab96fed60cb474d5bfa612a705c5fd0277496/smolagents-1.23.0.tar.gz", hash = "sha256:a8ead28a85a02a9f1bcf25016db6bdc3ba2cb456912e336fa7fabd9acf4203bc", size = 215259, upload-time = "2025-11-17T14:20:27.876Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/82/ed/35eb943115bb8a1b97ebcf12a3013306e37a4ac5fa5f5c2016ed5ea1264e/smolagents-1.23.0-py3-none-any.whl", hash = "sha256:4851cb6a27e5adc1b916b61991d1d2a7cedf4947677d0ae92b3a9cc6d29c5528", size = 148412, upload-time = "2025-11-17T14:20:26.231Z" },
+]
+
+[package.optional-dependencies]
+docker = [
+    { name = "docker" },
+    { name = "websocket-client" },
 ]
 
 [[package]]

@@ -1,5 +1,7 @@
 """Main entry point for the BioAgents multi-agent system."""
 
+import sys
+
 from dotenv import load_dotenv
 from langchain_core.messages import HumanMessage
 
@@ -63,7 +65,10 @@ def main():
         print(f"\nWarning: {e!s}")
         print("   Continuing without LangSmith monitoring...\n")
 
-    query = """
+    if len(sys.argv) > 1:
+        query = sys.argv[1]
+    else:
+        query = """
     I need a comprehensive analysis of the human tumor suppressor protein p53 (P04637).
     Please fetch the sequence, analyze its properties, and provide a detailed report.
     """

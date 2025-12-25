@@ -226,6 +226,9 @@ class ToolUniverseWrapper:
 
         if self.client_available:
             client = self._ensure_client()
+
+            logger.info(f"ToolUniverse search query: '{description}' (limit={limit})")
+
             payload = {
                 "name": self.FINDER_TO_TOOL[finder_mode],
                 "arguments": {
