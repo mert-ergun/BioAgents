@@ -11,10 +11,7 @@ from langgraph.prebuilt import ToolNode
 from bioagents.agents.analysis_agent import create_analysis_agent
 from bioagents.agents.coder_agent import create_coder_agent, create_coder_node
 from bioagents.agents.critic_agent import create_critic_agent
-from bioagents.agents.protein_design_agent import (
-    create_protein_design_agent,
-    get_all_protein_design_tools,
-)
+from bioagents.agents.protein_design_agent import create_protein_design_agent
 from bioagents.agents.report_agent import create_report_agent
 from bioagents.agents.research_agent import create_research_agent
 from bioagents.agents.supervisor_agent import create_supervisor_agent
@@ -28,7 +25,13 @@ from bioagents.tools.pdf_tools import (
     extract_pdf_text_spacy_layout,
     fetch_webpage_as_pdf_text,
 )
+from bioagents.tools.protein_design_tools import get_all_protein_design_tools
 from bioagents.tools.proteomics_tools import fetch_uniprot_fasta
+from bioagents.tools.structural_tools import (
+    download_structure_file,
+    fetch_alphafold_structure,
+    fetch_pdb_structure,
+)
 from bioagents.tools.tool_builder_tools import get_tool_builder_tools
 from bioagents.tools.tool_universe import tool_universe_call_tool, tool_universe_find_tools
 
@@ -136,8 +139,11 @@ def create_graph():
         fetch_uniprot_fasta,
         tool_universe_find_tools,
         tool_universe_call_tool,
-        fetch_webpage_as_pdf_text,  # <- NEW
-        extract_pdf_text_spacy_layout,  # <- NEW
+        fetch_webpage_as_pdf_text,
+        extract_pdf_text_spacy_layout,
+        fetch_alphafold_structure,
+        fetch_pdb_structure,
+        download_structure_file,
     ]
     analysis_tools = [
         calculate_molecular_weight,

@@ -173,6 +173,21 @@
     <instruction priority="high">
       Always provide clear reasoning for your routing decision
     </instruction>
+
+    <instruction priority="critical">
+      ALWAYS provide a specific task_for_agent that tells the next agent EXACTLY what they need to do.
+      This is crucial because agents cannot read your mind - they only see the conversation history.
+
+      Examples of GOOD task_for_agent:
+      - "Use fetch_uniprot_fasta tool to retrieve the FASTA sequence for protein P04637"
+      - "Calculate the molecular weight and amino acid composition for the provided sequence"
+      - "Create a bar chart showing amino acid frequencies and save it as amino_acids.png"
+
+      Examples of BAD task_for_agent (too vague):
+      - "Help with the analysis"
+      - "Complete the task"
+      - "Do what the user asked"
+    </instruction>
   </instructions>
 
   <decision_guidelines>

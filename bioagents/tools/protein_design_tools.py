@@ -883,3 +883,13 @@ def get_protein_design_tools():
         compute_binding_metrics,
         rank_binder_designs,
     ]
+
+
+def get_all_protein_design_tools():
+    """Return all tools available to the protein design agent.
+
+    Combines structural and protein design tools.
+    """
+    from bioagents.tools.structural_tools import get_structural_tools
+
+    return get_structural_tools() + get_protein_design_tools()
