@@ -19,8 +19,12 @@ class TestBasicWorkflow:
     @patch("bioagents.graph.create_tool_builder_agent")
     @patch("bioagents.graph.create_protein_design_agent")
     @patch("bioagents.graph.create_coder_agent")
+    @patch("bioagents.graph.create_ml_agent")
+    @patch("bioagents.graph.create_dl_agent")
     def test_graph_creation_integration(
         self,
+        mock_dl,
+        mock_ml,
         mock_coder,
         mock_protein,
         mock_builder,
@@ -40,6 +44,8 @@ class TestBasicWorkflow:
         mock_builder.return_value = Mock()
         mock_protein.return_value = Mock()
         mock_coder.return_value = Mock()
+        mock_ml.return_value = Mock()
+        mock_dl.return_value = Mock()
 
         # Create graph - should not raise any errors
         graph = create_graph()
@@ -152,8 +158,12 @@ class TestEndToEndWorkflow:
     @patch("bioagents.graph.create_tool_builder_agent")
     @patch("bioagents.graph.create_protein_design_agent")
     @patch("bioagents.graph.create_coder_agent")
+    @patch("bioagents.graph.create_ml_agent")
+    @patch("bioagents.graph.create_dl_agent")
     def test_simple_query_workflow(
         self,
+        mock_dl,
+        mock_ml,
         mock_coder,
         mock_protein,
         mock_builder,
@@ -187,6 +197,8 @@ class TestEndToEndWorkflow:
         mock_builder.return_value = Mock()
         mock_protein.return_value = Mock()
         mock_coder.return_value = Mock()
+        mock_ml.return_value = Mock()
+        mock_dl.return_value = Mock()
 
         graph = create_graph()
 
@@ -208,8 +220,12 @@ class TestEndToEndWorkflow:
     @patch("bioagents.graph.create_tool_builder_agent")
     @patch("bioagents.graph.create_protein_design_agent")
     @patch("bioagents.graph.create_coder_agent")
+    @patch("bioagents.graph.create_ml_agent")
+    @patch("bioagents.graph.create_dl_agent")
     def test_multi_step_workflow(
         self,
+        mock_dl,
+        mock_ml,
         mock_coder,
         mock_protein,
         mock_builder,
@@ -253,6 +269,8 @@ class TestEndToEndWorkflow:
         mock_builder.return_value = Mock()
         mock_protein.return_value = Mock()
         mock_coder.return_value = Mock()
+        mock_ml.return_value = Mock()
+        mock_dl.return_value = Mock()
 
         graph = create_graph()
 
