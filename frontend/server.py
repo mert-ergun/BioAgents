@@ -340,6 +340,9 @@ async def run_bioagents_query(query: str, websocket: WebSocket | None = None):
                         "type": m.__class__.__name__,
                         "content": m.content if hasattr(m, "content") else str(m),
                     }
+                    if getattr(m, "additional_kwargs", {}).get("show_ui", True) is False:
+                        continue
+
                     if hasattr(m, "tool_calls") and m.tool_calls:
                         msg_info["tool_calls"] = m.tool_calls
                     step_messages.append(msg_info)
@@ -430,6 +433,7 @@ async def run_bioagents_query(query: str, websocket: WebSocket | None = None):
                         hasattr(m, "content")
                         and m.content
                         and not isinstance(m, (HumanMessage, ToolMessage))
+                        and getattr(m, "additional_kwargs", {}).get("show_ui", True) is not False
                     ):
                         content = m.content
                         if isinstance(content, list):
@@ -575,7 +579,12 @@ async def query_bioagents(request: QueryRequest):
                     and "messages" in node_output
                 ):
                     for m in node_output["messages"]:
-                        if isinstance(m, AIMessage) and m.content:
+                        if (
+                            isinstance(m, AIMessage)
+                            and m.content
+                            and getattr(m, "additional_kwargs", {}).get("show_ui", True)
+                            is not False
+                        ):
                             content = m.content
                             if isinstance(content, list):
                                 text_parts = [
@@ -885,6 +894,7 @@ async def run_bioagents_streaming(query: str, websocket: WebSocket):
                         hasattr(m, "content")
                         and m.content
                         and not isinstance(m, (HumanMessage, ToolMessage))
+                        and getattr(m, "additional_kwargs", {}).get("show_ui", True) is not False
                     ):
                         content = m.content
                         if isinstance(content, list):
