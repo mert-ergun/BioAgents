@@ -25,6 +25,8 @@ class RouteResponse(BaseModel):
         "research",
         "analysis",
         "coder",
+        "ml",
+        "dl",
         "report",
         "tool_builder",
         "protein_design",
@@ -82,14 +84,12 @@ def create_supervisor_agent(members: list[str]):
         """
         messages = state["messages"]
 
-        # Check for loop conditions FIRST (before other routing logic)
         is_empty_loop, empty_agent = check_for_empty_response_loop(messages)
         if is_empty_loop:
             logger.error(
                 f"Supervisor: Detected empty response loop from agent '{empty_agent}'. "
                 "Terminating to prevent infinite loop."
             )
-            # Add an error message to the conversation and finish
             error_msg = SystemMessage(
                 content=f"[SYSTEM] Workflow terminated: Agent '{empty_agent}' failed to produce "
                 "a response after multiple attempts. This may indicate a configuration issue "
@@ -108,7 +108,6 @@ def create_supervisor_agent(members: list[str]):
                 f"Supervisor: Detected repeated routing to agent '{looping_agent}'. "
                 "Attempting to break the loop."
             )
-            # Try escalating to a different agent or finishing
             if looping_agent != "report" and "report" in members:
                 return {
                     "next": "report",
@@ -140,10 +139,8 @@ def create_supervisor_agent(members: list[str]):
         # Normal LLM-based routing
         result = supervisor_chain.invoke({"messages": messages})
 
-        # Create a handoff message to give clear context to the next agent
         handoff_messages = []
         if result.next_agent != "FINISH" and result.task_for_agent:
-            # Add a HumanMessage that gives the next agent a clear directive
             handoff_msg = HumanMessage(
                 content=f"[SUPERVISOR TASK] {result.task_for_agent}", name="Supervisor"
             )
