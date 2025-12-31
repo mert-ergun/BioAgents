@@ -180,6 +180,34 @@ output_path.write_text(json.dumps(data, indent=2))
     </capability>
 
     <capability>
+      <name>Environment Management</name>
+      <description>Install and manage Python packages in the sandboxed environment</description>
+      <workflow>
+        <step order="1">Identify missing libraries needed for the task</step>
+        <step order="2">Install using subprocess: subprocess.run([sys.executable, "-m", "pip", "install", "package_name"])</step>
+        <step order="3">Import and use the package</step>
+      </workflow>
+      <examples>
+        <example>
+          <query>Install scanpy and use it to load a dataset</query>
+          <action>
+```python
+import subprocess
+import sys
+
+# Install package
+subprocess.run([sys.executable, "-m", "pip", "install", "scanpy"], capture_output=True)
+
+# Now import and use
+import scanpy as sc
+# ...
+```
+          </action>
+        </example>
+      </examples>
+    </capability>
+
+    <capability>
       <name>Code Generation and Execution</name>
       <description>Generate Python code and execute it in a sandboxed Jupyter notebook environment</description>
       <workflow>

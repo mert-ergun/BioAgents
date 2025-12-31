@@ -11,13 +11,54 @@ DEFAULT_CODER_IMPORTS = [
     "matplotlib.*",
     "scipy.*",
     "bioagents.*",
+    "Bio",
+    "Bio.*",
     "typing",
     "json",
     "os",
     "os.path",
+    "posixpath",
+    "ntpath",
     "sys",
     "pathlib",
+    "io",
+    "base64",
+    "binascii",
+    "subprocess",
+    "importlib",
+    "pkg_resources",
 ]
+
+DEFAULT_ML_IMPORTS = [
+    *DEFAULT_CODER_IMPORTS,
+    "sklearn.*",
+    "xgboost",
+    "lightgbm",
+    "catboost",
+    "seaborn",
+    "joblib",
+    "statsmodels.*",
+]
+
+DEFAULT_DL_IMPORTS = [
+    *DEFAULT_ML_IMPORTS,
+    "torch.*",
+    "torchvision.*",
+    "torchaudio.*",
+    "tensorflow.*",
+    "keras.*",
+    "tensorboard",
+    "transformers",
+    "datasets",
+    "tqdm",
+]
+
+
+class PermissiveList(list):
+    """A list that contains everything, used to allow all imports in sandboxed environments."""
+
+    def __contains__(self, item: Any) -> bool:
+        return True
 
 
 def extract_original_query(messages: list) -> str | None:
@@ -133,9 +174,21 @@ def format_coder_result(result: Any) -> str:
     Returns:
         A string representation of the result
     """
-    if hasattr(result, "final_answer") and result.final_answer:
-        return f"Task completed successfully.\n\nFinal answer: {result.final_answer}"
-    elif hasattr(result, "output") and result.output:
-        return str(result.output)
-    else:
-        return str(result)
+    final_answer = getattr(result, "final_answer", None)
+    if not final_answer:
+        output = getattr(result, "output", None)
+        return str(output) if output else str(result)
+
+    if isinstance(final_answer, dict):
+        lines = ["Task completed successfully.\n"]
+        for key, value in final_answer.items():
+            formatted_key = key.replace("_", " ").title()
+            if isinstance(value, str) and (
+                value.endswith(".png") or value.endswith(".jpg") or value.endswith(".pdf")
+            ):
+                lines.append(f"- **{formatted_key}**: `{value}`")
+            else:
+                lines.append(f"- **{formatted_key}**:\n{value}")
+        return "\n".join(lines)
+
+    return f"Task completed successfully.\n\nFinal answer: {final_answer}"

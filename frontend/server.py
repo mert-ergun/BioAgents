@@ -12,13 +12,13 @@ from pathlib import Path
 from typing import Any
 
 import requests
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, File, HTTPException, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 # Import BioAgents components
-from langchain_core.messages import AIMessage, HumanMessage
+from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from pydantic import BaseModel
 
 from bioagents.graph import create_graph
@@ -103,6 +103,35 @@ manager = ConnectionManager()
 
 ARTIFACTS_DIR = Path("generated_artifacts")
 ARTIFACTS_DIR.mkdir(exist_ok=True)
+
+UPLOADS_DIR = Path("uploads")
+UPLOADS_DIR.mkdir(exist_ok=True)
+
+
+@app.post("/api/upload")
+async def upload_file(file: UploadFile = File(...)):
+    """Upload a file for processing by agents."""
+    try:
+        file_path = UPLOADS_DIR / file.filename
+        with file_path.open("wb") as buffer:
+            import shutil
+
+            shutil.copyfileobj(file.file, buffer)
+
+        # Return path relative to project root
+        try:
+            rel_path = file_path.relative_to(Path.cwd())
+        except ValueError:
+            rel_path = file_path
+
+        return {
+            "status": "success",
+            "filename": file.filename,
+            "path": str(rel_path),
+            "size": file_path.stat().st_size,
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to upload file: {e!s}") from e
 
 
 def extract_artifacts_from_content(content: str, agent_name: str) -> list:
@@ -248,6 +277,23 @@ def extract_artifacts_from_content(content: str, agent_name: str) -> list:
 # =====================================================
 
 
+def extract_metrics_from_content(content: str) -> dict | None:
+    """Extract metrics like loss and accuracy from agent content."""
+    metrics = {}
+    # Look for "METRIC: loss=0.5, accuracy=0.8" or similar
+    metric_match = re.search(
+        r"METRIC:.*?loss=([0-9\.]+).*?accuracy=([0-9\.]+)", content, re.IGNORECASE
+    )
+    if metric_match:
+        try:
+            metrics["loss"] = float(metric_match.group(1))
+            metrics["accuracy"] = float(metric_match.group(2))
+            return metrics
+        except (ValueError, IndexError):
+            pass
+    return None
+
+
 async def run_bioagents_query(query: str, websocket: WebSocket | None = None):
     """
     Execute a BioAgents query and stream results.
@@ -274,6 +320,17 @@ async def run_bioagents_query(query: str, websocket: WebSocket | None = None):
 
             # Send agent update
             await send_update({"type": "agent_update", "agent": node_name}).__anext__()
+
+            # Send a notification that the agent is starting if it's ML or DL
+            if node_name in ["ml", "dl"]:
+                msg = (
+                    "Initializing training environment and loading data..."
+                    if node_name == "ml"
+                    else "Designing neural network architecture and preparing data loaders..."
+                )
+                await send_update(
+                    {"type": "message", "agent": node_name, "content": f"_System: {msg}_"}
+                ).__anext__()
 
             # Process messages
             step_messages = []
@@ -317,10 +374,10 @@ async def run_bioagents_query(query: str, websocket: WebSocket | None = None):
                                         logger.error(f"Failed to load PDB: {e}")
 
                         # Find other file types
-                        for ext in [".csv", ".png", ".jpg", ".json", ".txt"]:
+                        for ext in [".csv", ".png", ".jpg", ".json", ".txt", ".pdf"]:
                             if ext in content.lower():
                                 matches = re.findall(
-                                    rf'(/[^\s\'"]+{ext}|(?:\.\/)?[^\s\'"]+{ext})',
+                                    rf'(/[^\s\'"]+{ext}|(?:\.\/)?[^\s\'"]+{ext}|(?:[a-zA-Z0-9_\-]+/)+[^\s\'"]+{ext})',
                                     content,
                                     re.IGNORECASE,
                                 )
@@ -362,11 +419,18 @@ async def run_bioagents_query(query: str, websocket: WebSocket | None = None):
                     "protein_design",
                     "coder",
                     "tool_builder",
+                    "ml",
+                    "dl",
                 ]
                 and "messages" in node_output
             ):
                 for m in node_output["messages"]:
-                    if isinstance(m, AIMessage) and m.content:
+                    # Skip HumanMessages (usually handoffs) and ToolMessages
+                    if (
+                        hasattr(m, "content")
+                        and m.content
+                        and not isinstance(m, (HumanMessage, ToolMessage))
+                    ):
                         content = m.content
                         if isinstance(content, list):
                             text_parts = []
@@ -380,6 +444,13 @@ async def run_bioagents_query(query: str, websocket: WebSocket | None = None):
                             await send_update(
                                 {"type": "message", "agent": node_name, "content": content}
                             ).__anext__()
+
+                            # Extract metrics
+                            metrics = extract_metrics_from_content(content)
+                            if metrics:
+                                await send_update(
+                                    {"type": "metrics", "metrics": metrics}
+                                ).__anext__()
 
             # Small delay to prevent overwhelming the client
             await asyncio.sleep(0.1)
@@ -447,7 +518,8 @@ async def query_bioagents(request: QueryRequest):
                         if isinstance(content, str) and ".pdb" in content.lower():
                             # Check local paths
                             local_matches = re.findall(
-                                r'(/[^\s\'"]+\.pdb|(?:\.\/)?[^\s\'"]+\.pdb)', content
+                                r'(/[^\s\'"]+\.pdb|(?:\.\/)?[^\s\'"]+\.pdb|(?:[a-zA-Z0-9_\-]+/)+[^\s\'"]+\.pdb)',
+                                content,
                             )
                             for path_str in local_matches:
                                 path = Path(path_str)
@@ -482,6 +554,10 @@ async def query_bioagents(request: QueryRequest):
                 full_audit.append(audit_entry)
                 yield f"data: {json.dumps({'type': 'audit', 'entries': full_audit})}\n\n"
 
+                # Send code steps if available
+                if "code_steps" in node_output:
+                    yield f"data: {json.dumps({'type': 'code_execution', 'agent': node_name, 'steps': node_output['code_steps']})}\n\n"
+
                 # Send messages
                 if (
                     node_name
@@ -493,6 +569,8 @@ async def query_bioagents(request: QueryRequest):
                         "protein_design",
                         "coder",
                         "tool_builder",
+                        "ml",
+                        "dl",
                     ]
                     and "messages" in node_output
                 ):
@@ -552,7 +630,14 @@ async def download_file(path: str):
     if not any(abs_path.startswith(d) for d in allowed_dirs):
         raise HTTPException(status_code=403, detail="Access denied")
 
-    return FileResponse(path, filename=path_obj.name, media_type="application/octet-stream")
+    # Determine media type based on extension
+    import mimetypes
+
+    content_type, _ = mimetypes.guess_type(path)
+    if not content_type:
+        content_type = "application/octet-stream"
+
+    return FileResponse(path, filename=path_obj.name, media_type=content_type)
 
 
 @app.get("/api/artifact/{filename}")
@@ -656,7 +741,8 @@ async def run_bioagents_streaming(query: str, websocket: WebSocket):
                     if isinstance(content, str) and ".pdb" in content.lower():
                         # Check for local file paths
                         local_matches = re.findall(
-                            r'(/[^\s\'"]+\.pdb|(?:\.\/)?[^\s\'"]+\.pdb)', content
+                            r'(/[^\s\'"]+\.pdb|(?:\.\/)?[^\s\'"]+\.pdb|(?:[a-zA-Z0-9_\-]+/)+[^\s\'"]+\.pdb)',
+                            content,
                         )
                         for path_str in local_matches:
                             path = Path(path_str)
@@ -735,10 +821,10 @@ async def run_bioagents_streaming(query: str, websocket: WebSocket):
 
                     # Check for other artifacts
                     if isinstance(content, str):
-                        for ext in [".csv", ".png", ".jpg", ".json"]:
+                        for ext in [".csv", ".png", ".jpg", ".json", ".pdf"]:
                             if ext in content.lower():
                                 matches = re.findall(
-                                    rf'(/[^\s\'"]+{ext}|(?:\.\/)?[^\s\'"]+{ext})',
+                                    rf'(/[^\s\'"]+{ext}|(?:\.\/)?[^\s\'"]+{ext}|(?:[a-zA-Z0-9_\-]+/)+[^\s\'"]+{ext})',
                                     content,
                                     re.IGNORECASE,
                                 )
@@ -757,7 +843,7 @@ async def run_bioagents_streaming(query: str, websocket: WebSocket):
                                             }
                                         )
 
-            # Audit entry
+            # Build audit entry
             audit_entry = {
                 "agent": node_name,
                 "decision": node_output.get("next", "Continue"),
@@ -766,6 +852,16 @@ async def run_bioagents_streaming(query: str, websocket: WebSocket):
             }
             full_audit.append(audit_entry)
             await websocket.send_json({"type": "audit", "entries": full_audit})
+
+            # Send code steps if available (from coder, ml, or dl agents)
+            if "code_steps" in node_output:
+                await websocket.send_json(
+                    {
+                        "type": "code_execution",
+                        "agent": node_name,
+                        "steps": node_output["code_steps"],
+                    }
+                )
 
             # Send messages from user-facing agents
             if (
@@ -778,11 +874,18 @@ async def run_bioagents_streaming(query: str, websocket: WebSocket):
                     "protein_design",
                     "coder",
                     "tool_builder",
+                    "ml",
+                    "dl",
                 ]
                 and "messages" in node_output
             ):
                 for m in node_output["messages"]:
-                    if isinstance(m, AIMessage) and m.content:
+                    # Skip HumanMessages (usually handoffs) and ToolMessages
+                    if (
+                        hasattr(m, "content")
+                        and m.content
+                        and not isinstance(m, (HumanMessage, ToolMessage))
+                    ):
                         content = m.content
                         if isinstance(content, list):
                             text_parts = [
@@ -795,6 +898,11 @@ async def run_bioagents_streaming(query: str, websocket: WebSocket):
                             await websocket.send_json(
                                 {"type": "message", "agent": node_name, "content": content}
                             )
+
+                            # Extract metrics
+                            metrics = extract_metrics_from_content(content)
+                            if metrics:
+                                await websocket.send_json({"type": "metrics", "metrics": metrics})
 
                             # Extract and send artifacts from content (with deduplication)
                             extracted_artifacts = extract_artifacts_from_content(content, node_name)

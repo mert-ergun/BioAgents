@@ -25,7 +25,8 @@ const AGENTS = {
     tool_builder: { label: 'ToolBuilder', icon: 'build', color: 'indigo', description: 'Building tools...' },
     protein_design: { label: 'ProteinFolder', icon: 'polymer', color: 'primary', description: 'Folding protein...' },
     critic: { label: 'Validator', icon: 'fact_check', color: 'rose', description: 'Validating results...' },
-    ml_agent: { label: 'MLAgent', icon: 'psychology', color: 'purple', description: 'Running ML model...' },
+    ml: { label: 'ML-Expert', icon: 'psychology', color: 'purple', description: 'Training ML model...', isTraining: true },
+    dl: { label: 'DL-Specialist', icon: 'memory', color: 'cyan', description: 'Designing neural network...', isTraining: true },
 };
 
 // =====================================================
@@ -42,6 +43,7 @@ const state = {
     messages: [],
     auditLog: [],
     artifacts: [],
+    codeSteps: [],
     currentAgent: null,
     agentProgress: {},
     nglStage: null,
@@ -155,6 +157,7 @@ async function startNewSession() {
     state.messages = [];
     state.artifacts = [];  // Clear artifacts for new session
     state.auditLog = [];
+    state.codeSteps = [];
     state.currentAgent = null;
     state.currentPdbContent = null;  // Clear loaded structure
 
@@ -193,6 +196,7 @@ function loadSession(sessionId) {
     state.messages = session.messages || [];
     state.artifacts = session.artifacts || [];
     state.auditLog = session.auditLog || [];
+    state.codeSteps = session.codeSteps || [];
 
     elements.projectTitle.textContent = session.title;
 
@@ -208,6 +212,7 @@ function loadSession(sessionId) {
 
     renderArtifacts();
     updateAuditLog(state.auditLog);
+    renderCodeExecution(state.codeSteps, state.currentAgent);
     renderRecentSessions();
 
     showToast('Session loaded', 'success');
@@ -220,6 +225,7 @@ function saveCurrentSession() {
         session.messages = state.messages;
         session.artifacts = state.artifacts;
         session.auditLog = state.auditLog;
+        session.codeSteps = state.codeSteps;
 
         // Update title from first user message
         if (state.messages.length > 0) {
@@ -359,6 +365,119 @@ function handleMessage(data) {
         case 'log':
             logTerminal(data.message);
             break;
+        case 'metrics':
+            updateLiveMetrics(data.metrics);
+            break;
+        case 'code_execution':
+            renderCodeExecution(data.steps, data.agent);
+            break;
+    }
+}
+
+function renderCodeExecution(steps, agentId) {
+    state.codeSteps = steps; // Save to state
+    const list = document.getElementById('codeExecutionList');
+    if (!list) return;
+
+    if (!steps || steps.length === 0) {
+        list.innerHTML = `
+            <div class="text-center py-6 text-text-subtle text-xs">
+                <span class="material-symbols-outlined text-2xl text-border-dark mb-2 block">terminal</span>
+                No code executed yet
+            </div>
+        `;
+        return;
+    }
+
+    const agent = AGENTS[agentId] || { label: agentId, color: 'slate' };
+    const colorClass = getColorClass(agent.color);
+
+    const html = steps.map(step => {
+        let contentHtml = '';
+
+        if (step.thought) {
+            contentHtml += `
+                <div class="mb-3">
+                    <p class="text-[9px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">Reasoning</p>
+                    <div class="bg-surface-dark/50 rounded-lg p-3 border border-white/5 text-xs text-slate-300 italic leading-relaxed">
+                        ${escapeHtml(step.thought)}
+                    </div>
+                </div>
+            `;
+        }
+
+        if (step.code) {
+            contentHtml += `
+                <div class="mb-3">
+                    <p class="text-[9px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">Generated Code</p>
+                    <div class="bg-black/60 rounded-lg p-3 border border-white/5 font-mono text-[11px] text-amber-200/90 overflow-x-auto">
+                        <pre><code>${escapeHtml(step.code)}</code></pre>
+                    </div>
+                </div>
+            `;
+        }
+
+        if (step.output) {
+            contentHtml += `
+                <div class="mb-3">
+                    <p class="text-[9px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">Standard Output</p>
+                    <div class="bg-slate-900/80 rounded-lg p-3 border border-white/5 font-mono text-[11px] text-emerald-400/90 overflow-x-auto whitespace-pre">
+                        <code>${escapeHtml(step.output)}</code>
+                    </div>
+                </div>
+            `;
+        }
+
+        if (step.logs && step.logs.length > 50) { // Only show significant logs
+            contentHtml += `
+                <div>
+                    <p class="text-[9px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">Execution Logs</p>
+                    <div class="bg-slate-950/50 rounded-lg p-3 border border-white/5 font-mono text-[10px] text-slate-500 overflow-x-auto whitespace-pre">
+                        <code>${escapeHtml(step.logs)}</code>
+                    </div>
+                </div>
+            `;
+        }
+
+        return `
+            <div class="p-4 rounded-xl bg-surface-dark border border-white/5 animate-fadeIn">
+                <div class="flex items-center gap-2 mb-3">
+                    <div class="h-6 w-6 rounded-full ${colorClass.bg} flex items-center justify-center border ${colorClass.border}">
+                        <span class="text-[10px] font-bold ${colorClass.text}">${step.step}</span>
+                    </div>
+                    <span class="text-[11px] font-bold text-white uppercase tracking-tight">Step ${step.step} — ${agent.label}</span>
+                </div>
+                ${contentHtml}
+            </div>
+        `;
+    }).join('');
+
+    list.innerHTML = html;
+
+    // Switch to Code tab automatically when code is executed
+    const codeTabBtn = document.querySelector('.tab-btn[data-tab="code"]');
+    if (codeTabBtn) codeTabBtn.click();
+}
+
+function updateLiveMetrics(metrics) {
+    if (!metrics) return;
+
+    const lossEl = document.getElementById('live-loss');
+    const lossBar = document.getElementById('loss-bar');
+    const accEl = document.getElementById('live-accuracy');
+    const accBar = document.getElementById('accuracy-bar');
+
+    if (metrics.loss !== undefined && lossEl && lossBar) {
+        lossEl.textContent = metrics.loss.toFixed(4);
+        // Normalize loss for bar (assume max loss 2.0 for visualization)
+        const lossPercent = Math.max(0, Math.min(100, (metrics.loss / 2.0) * 100));
+        lossBar.style.width = lossPercent + '%';
+    }
+
+    if (metrics.accuracy !== undefined && accEl && accBar) {
+        const accVal = metrics.accuracy > 1 ? metrics.accuracy : metrics.accuracy * 100;
+        accEl.textContent = accVal.toFixed(2) + '%';
+        accBar.style.width = accVal + '%';
     }
 }
 
@@ -482,7 +601,7 @@ function initFileAttachment() {
     // Create hidden file input
     const fileInput = document.createElement('input');
     fileInput.type = 'file';
-    fileInput.accept = '.pdb,.fasta,.fa,.csv,.json,.txt';
+    fileInput.accept = '.pdb,.fasta,.fa,.csv,.json,.txt,.pdf,.xlsx,.tsv';
     fileInput.style.display = 'none';
     fileInput.id = 'fileInput';
     document.body.appendChild(fileInput);
@@ -496,26 +615,58 @@ function initFileAttachment() {
         if (!file) return;
 
         try {
-            const content = await file.text();
+            showToast(`Uploading: ${file.name}...`, 'info');
+            logTerminal(`Uploading file: ${file.name}`);
+
+            const formData = new FormData();
+            formData.append('file', file);
+
+            const response = await fetch(`${CONFIG.apiBaseUrl}/api/upload`, {
+                method: 'POST',
+                body: formData,
+            });
+
+            if (!response.ok) {
+                throw new Error(`Upload failed: ${response.statusText}`);
+            }
+
+            const data = await response.json();
             const ext = file.name.split('.').pop().toLowerCase();
 
             let prompt = '';
             if (ext === 'pdb') {
-                prompt = `Analyze this PDB structure:\n\nFilename: ${file.name}\n\n\`\`\`\n${content.substring(0, 1000)}...\n\`\`\``;
+                prompt = `I have uploaded a PDB structure: ${file.name}\nPath: ${data.path}\n\nPlease analyze this structure.`;
                 // Also try to load it in the viewer
+                const content = await file.text();
                 loadStructure(content);
+            } else if (ext === 'pdf') {
+                prompt = `I have uploaded a PDF document: ${file.name}\nPath: ${data.path}\n\nPlease extract and summarize the information from this PDF.`;
+            } else if (ext === 'csv' || ext === 'xlsx' || ext === 'tsv') {
+                prompt = `I have uploaded a dataset: ${file.name}\nPath: ${data.path}\n\nPlease load this data and perform analysis/modeling.`;
             } else if (ext === 'fasta' || ext === 'fa') {
-                prompt = `Analyze this FASTA sequence:\n\n\`\`\`\n${content}\n\`\`\``;
+                const content = await file.text();
+                prompt = `I have uploaded a FASTA sequence: ${file.name}\nPath: ${data.path}\n\nContent:\n\`\`\`\n${content}\n\`\`\``;
             } else {
-                prompt = `Analyze this file (${file.name}):\n\n\`\`\`\n${content.substring(0, 2000)}\n\`\`\``;
+                prompt = `I have uploaded a file: ${file.name}\nPath: ${data.path}\n\nPlease process this file.`;
             }
 
             elements.queryInput.value = prompt;
             autoResizeTextarea();
-            showToast(`File loaded: ${file.name}`, 'success');
-            logTerminal(`File attached: ${file.name}`);
+            showToast(`File uploaded successfully: ${file.name}`, 'success');
+            logTerminal(`File uploaded to: ${data.path}`);
+
+            // Add to artifacts list so user can see it
+            addArtifact({
+                name: file.name,
+                path: data.path,
+                type: ext,
+                size: file.size,
+                isUpload: true
+            });
+
         } catch (error) {
-            showToast('Failed to read file', 'error');
+            console.error('Upload error:', error);
+            showToast('Failed to upload file: ' + error.message, 'error');
         }
 
         fileInput.value = '';
@@ -676,6 +827,17 @@ function resetChatUI() {
     elements.quickChips?.classList.remove('hidden');
     renderAgentList();
     renderArtifacts();
+
+    // Clear code execution
+    const codeList = document.getElementById('codeExecutionList');
+    if (codeList) {
+        codeList.innerHTML = `
+            <div class="text-center py-6 text-text-subtle text-xs">
+                <span class="material-symbols-outlined text-2xl text-border-dark mb-2 block">terminal</span>
+                No code executed yet
+            </div>
+        `;
+    }
 }
 
 // =====================================================
@@ -691,6 +853,43 @@ function renderAgentList() {
         const colorClass = getColorClass(agent.color);
 
         if (isActive) {
+            let trainingVisual = '';
+            if (agent.isTraining) {
+                trainingVisual = `
+                    <div class="mt-3 p-3 bg-black/40 rounded-lg border border-white/5 overflow-hidden relative">
+                        <div class="flex justify-between items-center mb-2">
+                            <span class="text-[10px] font-mono text-slate-400 uppercase tracking-wider">Live Monitor</span>
+                            <div class="flex gap-1">
+                                <span class="w-1 h-3 bg-primary/40 animate-[bounce_1s_infinite]"></span>
+                                <span class="w-1 h-3 bg-primary/60 animate-[bounce_1.2s_infinite]"></span>
+                                <span class="w-1 h-3 bg-primary/80 animate-[bounce_0.8s_infinite]"></span>
+                            </div>
+                        </div>
+                        <div class="space-y-2">
+                            <div class="flex justify-between text-[10px] font-mono">
+                                <span class="text-slate-500">Loss</span>
+                                <span class="text-rose-400" id="live-loss">0.0000</span>
+                            </div>
+                            <div class="h-1 w-full bg-slate-800 rounded-full overflow-hidden">
+                                <div class="h-full bg-rose-500/50 transition-all duration-1000" id="loss-bar" style="width: 0%"></div>
+                            </div>
+                            <div class="flex justify-between text-[10px] font-mono">
+                                <span class="text-slate-500">Accuracy</span>
+                                <span class="text-emerald-400" id="live-accuracy">0.00%</span>
+                            </div>
+                            <div class="h-1 w-full bg-slate-800 rounded-full overflow-hidden">
+                                <div class="h-full bg-emerald-500/50 transition-all duration-1000" id="accuracy-bar" style="width: 0%"></div>
+                            </div>
+                        </div>
+                        <div class="mt-3 flex justify-center">
+                            <svg class="w-full h-8 opacity-50" viewBox="0 0 100 20">
+                                <path d="M0 10 Q 10 2, 20 10 T 40 10 T 60 10 T 80 10 T 100 10" fill="none" stroke="currentColor" stroke-width="0.5" class="text-primary animate-[pulse_2s_infinite]"></path>
+                            </svg>
+                        </div>
+                    </div>
+                `;
+            }
+
             return `
                 <div class="relative flex flex-col gap-2 p-4 rounded-xl border border-primary/50 bg-primary/5 shadow-[0_0_20px_rgba(7,182,213,0.1)] transition-all duration-300">
                     <div class="absolute top-4 right-4 h-2 w-2">
@@ -705,6 +904,7 @@ function renderAgentList() {
                         <div class="h-full bg-primary transition-all duration-500" style="width: ${progress || 50}%"></div>
                     </div>
                     <p class="text-xs text-primary font-medium">${agent.description}</p>
+                    ${trainingVisual}
                     <div class="flex gap-2 mt-1">
                         <span class="text-[10px] font-mono text-slate-400 bg-black/20 px-1.5 py-0.5 rounded border border-white/5">CPU: ${Math.floor(Math.random() * 30 + 60)}%</span>
                     </div>
@@ -729,6 +929,8 @@ function renderAgentList() {
     elements.agentList.innerHTML = html;
 }
 
+let metricsInterval = null;
+
 function setActiveAgent(agentId, progress = 50) {
     state.currentAgent = agentId;
     if (agentId) {
@@ -736,10 +938,27 @@ function setActiveAgent(agentId, progress = 50) {
     }
     renderAgentList();
 
+    // Clear existing interval
+    if (metricsInterval) {
+        clearInterval(metricsInterval);
+        metricsInterval = null;
+    }
+
     if (agentId) {
         const agent = AGENTS[agentId] || { label: agentId };
         updateStatus('processing');
         logTerminal(`Agent: ${agent.label} activated`);
+
+        // Start simulated metrics if it's a training agent
+        if (agent.isTraining) {
+            let simLoss = 1.2;
+            let simAcc = 45;
+            metricsInterval = setInterval(() => {
+                simLoss = Math.max(0.1, simLoss - (Math.random() * 0.05));
+                simAcc = Math.min(99, simAcc + (Math.random() * 2));
+                updateLiveMetrics({ loss: simLoss, accuracy: simAcc });
+            }, 2000);
+        }
     }
 }
 
@@ -775,8 +994,9 @@ function addArtifact(artifact) {
     if (!isDuplicate) {
         state.artifacts.push(artifact);
         renderArtifacts();
-        addNotification(`Artifact generated: ${artifact.name}`, 'success');
-        logTerminal(`Generated: ${artifact.name}`);
+        const action = artifact.isUpload ? 'Uploaded' : 'Generated';
+        addNotification(`${action}: ${artifact.name}`, 'success');
+        logTerminal(`${action}: ${artifact.name}`);
     }
 }
 
@@ -895,11 +1115,8 @@ function previewArtifact(artifact) {
         } else if (state.currentPdbContent) {
             showToast('Structure displayed in viewer', 'info');
         }
-    } else if (artifact.type === 'png' || artifact.type === 'jpg' || artifact.type === 'jpeg') {
-        // Open image in new tab
-        window.open(`${CONFIG.apiBaseUrl}/api/download?path=${encodeURIComponent(artifact.path)}`, '_blank');
     } else {
-        // Show preview modal for text-based artifacts
+        // Show preview modal for text-based and image artifacts
         showArtifactPreviewModal(artifact);
     }
 }
@@ -951,6 +1168,15 @@ function showArtifactPreviewModal(artifact) {
                 previewHtml += `<p class="text-xs text-slate-500 mt-2">... and ${lines.length - 15} more rows</p>`;
             }
         }
+    } else if (artifact.type === 'png' || artifact.type === 'jpg' || artifact.type === 'jpeg') {
+        // Render image
+        const imgUrl = `${CONFIG.apiBaseUrl}/api/download?path=${encodeURIComponent(artifact.path)}`;
+        previewHtml = `
+            <div class="flex flex-col items-center justify-center p-4">
+                <img src="${imgUrl}" class="max-w-full max-h-[60vh] rounded shadow-lg border border-white/10" alt="${escapeHtml(artifact.name)}" />
+                <p class="text-[10px] text-slate-500 mt-4 font-mono">${artifact.path}</p>
+            </div>
+        `;
     } else if (artifact.type === 'json') {
         // Syntax highlight JSON
         const highlighted = preview
@@ -1028,6 +1254,9 @@ function getFileIconInfo(type) {
         'txt': { icon: 'article', bg: 'bg-slate-500/20', text: 'text-slate-400', border: 'border-slate-500/30', label: 'Text' },
         'fasta': { icon: 'genetics', bg: 'bg-primary/20', text: 'text-primary', border: 'border-primary/30', label: 'Sequence' },
         'md': { icon: 'description', bg: 'bg-blue-500/20', text: 'text-blue-400', border: 'border-blue-500/30', label: 'Report' },
+        'pdf': { icon: 'picture_as_pdf', bg: 'bg-rose-500/20', text: 'text-rose-400', border: 'border-rose-500/30', label: 'PDF Document' },
+        'xlsx': { icon: 'table_view', bg: 'bg-emerald-500/20', text: 'text-emerald-400', border: 'border-emerald-500/30', label: 'Excel' },
+        'xls': { icon: 'table_view', bg: 'bg-emerald-500/20', text: 'text-emerald-400', border: 'border-emerald-500/30', label: 'Excel' },
         'py': { icon: 'code', bg: 'bg-yellow-500/20', text: 'text-yellow-400', border: 'border-yellow-500/30', label: 'Python' },
         'js': { icon: 'javascript', bg: 'bg-yellow-500/20', text: 'text-yellow-400', border: 'border-yellow-500/30', label: 'JavaScript' },
         'sh': { icon: 'terminal', bg: 'bg-green-500/20', text: 'text-green-400', border: 'border-green-500/30', label: 'Script' },
@@ -1491,6 +1720,7 @@ function exportCurrentSession() {
         messages: state.messages,
         artifacts: state.artifacts.map(a => ({ name: a.name, type: a.type, size: a.size })),
         auditLog: state.auditLog,
+        codeSteps: state.codeSteps,
     };
 
     const blob = new Blob([JSON.stringify(session, null, 2)], { type: 'application/json' });

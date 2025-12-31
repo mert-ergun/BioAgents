@@ -263,12 +263,16 @@
                                 Literature Search
                             </div>
                             <div class="flex items-center gap-2 px-3 py-2 rounded-lg bg-surface-card/50 border border-border-dark text-xs text-text-subtle">
-                                <span class="material-symbols-outlined text-amber-400 text-sm">code</span>
-                                Code Generation
+                                <span class="material-symbols-outlined text-purple-400 text-sm">psychology</span>
+                                Machine Learning
                             </div>
                             <div class="flex items-center gap-2 px-3 py-2 rounded-lg bg-surface-card/50 border border-border-dark text-xs text-text-subtle">
-                                <span class="material-symbols-outlined text-pink-400 text-sm">analytics</span>
-                                Data Analysis
+                                <span class="material-symbols-outlined text-cyan-400 text-sm">memory</span>
+                                Deep Learning
+                            </div>
+                            <div class="flex items-center gap-2 px-3 py-2 rounded-lg bg-surface-card/50 border border-border-dark text-xs text-text-subtle">
+                                <span class="material-symbols-outlined text-amber-400 text-sm">code</span>
+                                Code Generation
                             </div>
                         </div>
                     </div>
@@ -286,9 +290,17 @@
                             <span class="material-symbols-outlined text-sm text-purple-400">view_in_ar</span>
                             View Insulin 3D
                         </button>
-                        <button class="example-chip flex items-center gap-2 px-3 py-1.5 rounded-full bg-surface-card border border-border-dark hover:border-primary/50 text-xs text-text-subtle hover:text-white transition-all hidden md:flex" data-query="Search recent literature on CRISPR-Cas9 applications in cancer immunotherapy. Summarize key findings.">
+                        <button class="example-chip flex items-center gap-2 px-3 py-1.5 rounded-full bg-surface-card border border-border-dark hover:border-primary/50 text-xs text-text-subtle hover:text-white transition-all" data-query="Search recent literature on CRISPR-Cas9 applications in cancer immunotherapy. Summarize key findings.">
                             <span class="material-symbols-outlined text-sm text-green-400">menu_book</span>
                             CRISPR Literature
+                        </button>
+                        <button class="example-chip flex items-center gap-2 px-3 py-1.5 rounded-full bg-surface-card border border-border-dark hover:border-primary/50 text-xs text-text-subtle hover:text-white transition-all" data-query="Build a machine learning model to predict protein solubility from a CSV containing sequence features. Use XGBoost and provide feature importance.">
+                            <span class="material-symbols-outlined text-sm text-purple-400">psychology</span>
+                            ML Solubility Predictor
+                        </button>
+                        <button class="example-chip flex items-center gap-2 px-3 py-1.5 rounded-full bg-surface-card border border-border-dark hover:border-primary/50 text-xs text-text-subtle hover:text-white transition-all" data-query="Design a PyTorch neural network to classify protein sequences into families. Use an embedding layer followed by an LSTM.">
+                            <span class="material-symbols-outlined text-sm text-cyan-400">memory</span>
+                            DL Sequence Classifier
                         </button>
                     </div>
 
@@ -369,6 +381,12 @@
                                 Artifacts
                             </span>
                         </button>
+                        <button class="tab-btn flex-1 py-3 text-xs font-medium text-slate-500 hover:text-slate-300 border-b-2 border-transparent transition-all" data-tab="code">
+                            <span class="flex items-center justify-center gap-1.5">
+                                <span class="material-symbols-outlined text-[16px]">terminal</span>
+                                Code
+                            </span>
+                        </button>
                         <button class="tab-btn flex-1 py-3 text-xs font-medium text-slate-500 hover:text-slate-300 border-b-2 border-transparent transition-all" data-tab="logs">
                             <span class="flex items-center justify-center gap-1.5">
                                 <span class="material-symbols-outlined text-[16px]">code</span>
@@ -384,6 +402,17 @@
                             <div class="text-center py-6 text-text-subtle text-xs">
                                 <span class="material-symbols-outlined text-2xl text-border-dark mb-2 block">folder_off</span>
                                 No artifacts generated yet
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Tab Content: Code -->
+                    <div class="flex-1 overflow-y-auto p-3 custom-scrollbar tab-content hidden min-h-0" id="codeTab">
+                        <h4 class="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-3">Code Execution</h4>
+                        <div class="flex flex-col gap-4" id="codeExecutionList">
+                            <div class="text-center py-6 text-text-subtle text-xs">
+                                <span class="material-symbols-outlined text-2xl text-border-dark mb-2 block">terminal</span>
+                                No code executed yet
                             </div>
                         </div>
                     </div>
