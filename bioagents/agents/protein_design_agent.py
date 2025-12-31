@@ -16,8 +16,7 @@ from langchain_core.messages import SystemMessage
 
 from bioagents.llms.llm_provider import get_llm
 from bioagents.prompts.prompt_loader import load_prompt
-from bioagents.tools.protein_design_tools import get_protein_design_tools
-from bioagents.tools.structural_tools import get_structural_tools
+from bioagents.tools.protein_design_tools import get_all_protein_design_tools
 
 logger = logging.getLogger(__name__)
 
@@ -34,8 +33,7 @@ def create_protein_design_agent():
     """
     llm = get_llm(prompt_name="protein_design")
 
-    # Combine structural and design tools
-    tools = get_structural_tools() + get_protein_design_tools()
+    tools = get_all_protein_design_tools()
     llm_with_tools = llm.bind_tools(tools)
 
     def protein_design_node(state):
@@ -48,8 +46,3 @@ def create_protein_design_agent():
         return {"messages": [response]}
 
     return protein_design_node
-
-
-def get_all_protein_design_tools():
-    """Return all tools available to the protein design agent."""
-    return get_structural_tools() + get_protein_design_tools()

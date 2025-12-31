@@ -66,6 +66,37 @@
     </capability>
 
     <capability>
+      <name>Protein Structure Retrieval</name>
+      <description>Fetch and download protein structures from PDB and AlphaFold</description>
+      <tools>
+        <tool>fetch_alphafold_structure</tool>
+        <tool>fetch_pdb_structure</tool>
+        <tool>download_structure_file</tool>
+      </tools>
+      <workflow>
+        <step order="1">Use fetch_alphafold_structure or fetch_pdb_structure to get structure info</step>
+        <step order="2">Use download_structure_file to download the actual PDB file to disk</step>
+        <step order="3">Report the file path so the UI can display the 3D structure</step>
+      </workflow>
+      <examples>
+        <example>
+          <query>Get the structure of p53 protein</query>
+          <action>
+            1. fetch_alphafold_structure(uniprot_id="P04637")
+            2. download_structure_file(uniprot_id="P04637", output_dir="data")
+          </action>
+        </example>
+        <example>
+          <query>Fetch the PDB structure 1YCR</query>
+          <action>
+            1. fetch_pdb_structure(pdb_id="1YCR")
+            2. download_structure_file(pdb_id="1YCR", output_dir="data")
+          </action>
+        </example>
+      </examples>
+    </capability>
+
+    <capability>
       <name>Multi-Source Literature Synthesis</name>
       <description>Search multiple literature databases and synthesize findings</description>
       <tools>
@@ -111,6 +142,11 @@
 
     <instruction priority="critical">
       For literature searches, use tool_universe_call_tool with the appropriate tool name (e.g., PubMed_search_articles, ArXiv_search_papers)
+    </instruction>
+
+    <instruction priority="critical">
+      When asked about a specific protein by name or UniProt ID, ALWAYS download the 3D structure using download_structure_file.
+      This allows the UI to display an interactive 3D molecular viewer. Example: download_structure_file(uniprot_id="P04637", output_dir="data")
     </instruction>
 
     <instruction priority="high">

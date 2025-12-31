@@ -10,7 +10,6 @@ from bioagents.tools.tool_builder_tools import get_tool_builder_tools
 
 logger = logging.getLogger(__name__)
 
-# Load the tool builder prompt from XML
 TOOL_BUILDER_PROMPT = load_prompt("tool_builder")
 
 

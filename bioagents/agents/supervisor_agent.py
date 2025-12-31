@@ -1,12 +1,17 @@
 """Supervisor Agent for routing tasks to specialized agents."""
 
 import logging
-import re
 from typing import Literal
 
+from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
+from bioagents.agents.supervisor_helpers import (
+    check_for_empty_response_loop,
+    check_for_missing_tool,
+    check_for_repeated_routing,
+)
 from bioagents.llms.llm_provider import get_llm
 from bioagents.prompts.prompt_loader import load_prompt
 
@@ -27,55 +32,14 @@ class RouteResponse(BaseModel):
         "FINISH",
     ]
     reasoning: str
+    task_for_agent: str = Field(
+        default="",
+        description="A clear, specific instruction for the next agent explaining what task they should perform. "
+        "This should be actionable and explicit about what data to fetch, analyze, or produce.",
+    )
 
 
 SUPERVISOR_PROMPT = load_prompt("supervisor")
-
-TOOL_MISSING_PATTERNS = [
-    r"no suitable tool found",
-    r"no tool found",
-    r"tool not available",
-    r"cannot find a tool",
-    r"no tools found",
-    r"failed to find.*tool",
-    r"could not find a suitable",
-    r"no suitable.*found",
-    r"cannot.*search.*by gene name",
-    r"missing required parameters",
-    r"tool.*not.*exist",
-    r"no.*capability",
-    r"lacks.*capability",
-]
-
-
-def _check_for_missing_tool(messages) -> tuple[bool, str]:
-    """
-    Check recent messages for patterns indicating a tool is missing.
-
-    Args:
-        messages: List of conversation messages
-
-    Returns:
-        Tuple of (should_route_to_tool_builder, reason)
-    """
-    # Check last 3 messages for tool missing patterns
-    recent_messages = messages[-3:] if len(messages) >= 3 else messages
-
-    for msg in recent_messages:
-        content = ""
-        if hasattr(msg, "content"):
-            content = msg.content if isinstance(msg.content, str) else str(msg.content)
-        elif isinstance(msg, dict):
-            content = msg.get("content", "")
-
-        content_lower = content.lower()
-
-        for pattern in TOOL_MISSING_PATTERNS:
-            if re.search(pattern, content_lower):
-                logger.info(f"Detected missing tool pattern: '{pattern}' in message")
-                return True, f"Detected missing tool: pattern '{pattern}' matched"
-
-    return False, ""
 
 
 def create_supervisor_agent(members: list[str]):
@@ -118,8 +82,53 @@ def create_supervisor_agent(members: list[str]):
         """
         messages = state["messages"]
 
+        # Check for loop conditions FIRST (before other routing logic)
+        is_empty_loop, empty_agent = check_for_empty_response_loop(messages)
+        if is_empty_loop:
+            logger.error(
+                f"Supervisor: Detected empty response loop from agent '{empty_agent}'. "
+                "Terminating to prevent infinite loop."
+            )
+            # Add an error message to the conversation and finish
+            error_msg = SystemMessage(
+                content=f"[SYSTEM] Workflow terminated: Agent '{empty_agent}' failed to produce "
+                "a response after multiple attempts. This may indicate a configuration issue "
+                "or the agent lacks the necessary tools to complete the task."
+            )
+            return {
+                "next": "FINISH",
+                "reasoning": f"Loop detected: agent '{empty_agent}' returned empty responses repeatedly. "
+                "Terminating to prevent infinite loop.",
+                "messages": [error_msg],
+            }
+
+        is_routing_loop, looping_agent = check_for_repeated_routing(messages)
+        if is_routing_loop:
+            logger.warning(
+                f"Supervisor: Detected repeated routing to agent '{looping_agent}'. "
+                "Attempting to break the loop."
+            )
+            # Try escalating to a different agent or finishing
+            if looping_agent != "report" and "report" in members:
+                return {
+                    "next": "report",
+                    "reasoning": f"Loop detected: agent '{looping_agent}' was called repeatedly without progress. "
+                    "Escalating to report agent to summarize current state.",
+                    "messages": [],
+                }
+            else:
+                error_msg = SystemMessage(
+                    content=f"[SYSTEM] Workflow terminated: Detected repeated routing to agent "
+                    f"'{looping_agent}' without progress. The task may require manual intervention."
+                )
+                return {
+                    "next": "FINISH",
+                    "reasoning": f"Loop detected: agent '{looping_agent}' was called repeatedly. Terminating.",
+                    "messages": [error_msg],
+                }
+
         if "tool_builder" in members:
-            should_route_to_builder, reason = _check_for_missing_tool(messages)
+            should_route_to_builder, reason = check_for_missing_tool(messages)
             if should_route_to_builder:
                 logger.info(f"Supervisor: Overriding to route to tool_builder - {reason}")
                 return {
@@ -131,6 +140,20 @@ def create_supervisor_agent(members: list[str]):
         # Normal LLM-based routing
         result = supervisor_chain.invoke({"messages": messages})
 
-        return {"next": result.next_agent, "reasoning": result.reasoning, "messages": []}
+        # Create a handoff message to give clear context to the next agent
+        handoff_messages = []
+        if result.next_agent != "FINISH" and result.task_for_agent:
+            # Add a HumanMessage that gives the next agent a clear directive
+            handoff_msg = HumanMessage(
+                content=f"[SUPERVISOR TASK] {result.task_for_agent}", name="Supervisor"
+            )
+            handoff_messages.append(handoff_msg)
+            logger.info(f"Supervisor handoff to {result.next_agent}: {result.task_for_agent}")
+
+        return {
+            "next": result.next_agent,
+            "reasoning": result.reasoning,
+            "messages": handoff_messages,
+        }
 
     return supervisor_node
