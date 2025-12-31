@@ -13,6 +13,7 @@ Test Organization:
 - test_analysis_tools.py: Tests for protein sequence analysis tools
 - test_prompt_loader.py: Tests for prompt loading and parsing
 - test_agents.py: Tests for individual agent modules
+- test_supervisor_helpers.py: Tests for supervisor helper functions (loop detection, tool builder success detection, etc.)
 - test_graph.py: Tests for graph workflow and routing
 - test_integration.py: Integration tests for complete workflows
 - conftest.py: Shared fixtures and pytest configuration

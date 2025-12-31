@@ -9,7 +9,8 @@ from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode
 
 from bioagents.agents.analysis_agent import create_analysis_agent
-from bioagents.agents.coder_agent import create_coder_agent, create_coder_node
+
+# from bioagents.agents.coder_agent import create_coder_agent, create_coder_node  # Temporarily disabled
 from bioagents.agents.critic_agent import create_critic_agent
 from bioagents.agents.protein_design_agent import create_protein_design_agent
 from bioagents.agents.report_agent import create_report_agent
@@ -32,7 +33,12 @@ from bioagents.tools.structural_tools import (
     fetch_alphafold_structure,
     fetch_pdb_structure,
 )
-from bioagents.tools.tool_builder_tools import get_tool_builder_tools
+from bioagents.tools.tool_builder_tools import (
+    execute_custom_tool,
+    get_tool_builder_tools,
+    list_custom_tools,
+    search_custom_tools,
+)
 from bioagents.tools.tool_universe import tool_universe_call_tool, tool_universe_find_tools
 
 
@@ -96,9 +102,7 @@ def should_continue_to_tools(state: AgentState) -> Literal["tools", "supervisor"
 
 def route_supervisor(
     state: AgentState,
-) -> Literal[
-    "research", "analysis", "coder", "report", "tool_builder", "protein_design", "critic", "end"
-]:
+) -> Literal["research", "analysis", "report", "tool_builder", "protein_design", "critic", "end"]:
     """
     Route based on supervisor's decision.
 
@@ -111,7 +115,6 @@ def route_supervisor(
     next_agent: Literal[
         "research",
         "analysis",
-        "coder",
         "report",
         "tool_builder",
         "protein_design",
@@ -144,6 +147,10 @@ def create_graph():
         fetch_alphafold_structure,
         fetch_pdb_structure,
         download_structure_file,
+        # Custom tool registry tools - allow research agent to use custom tools
+        search_custom_tools,
+        list_custom_tools,
+        execute_custom_tool,
     ]
     analysis_tools = [
         calculate_molecular_weight,
@@ -156,8 +163,8 @@ def create_graph():
     research_agent = create_research_agent(research_tools)
     analysis_agent = create_analysis_agent(analysis_tools)
     report_agent = create_report_agent()
-    coder_agent = create_coder_agent()
-    coder_node_func = create_coder_node(coder_agent)
+    # coder_agent = create_coder_agent()  # Temporarily disabled
+    # coder_node_func = create_coder_node(coder_agent)  # Temporarily disabled
     tool_builder_agent = create_tool_builder_agent()
     protein_design_agent = create_protein_design_agent()
     critic_agent = create_critic_agent()
@@ -165,7 +172,7 @@ def create_graph():
     members = [
         "research",
         "analysis",
-        "coder",
+        # "coder",  # Temporarily disabled
         "report",
         "tool_builder",
         "protein_design",
@@ -183,7 +190,7 @@ def create_graph():
     workflow.add_node("supervisor", supervisor_agent)
     workflow.add_node("research", partial(agent_node, agent=research_agent, name="Research"))
     workflow.add_node("analysis", partial(agent_node, agent=analysis_agent, name="Analysis"))
-    workflow.add_node("coder", partial(agent_node, agent=coder_node_func, name="Coder"))
+    # workflow.add_node("coder", partial(agent_node, agent=coder_node_func, name="Coder"))  # Temporarily disabled
     workflow.add_node("report", partial(agent_node, agent=report_agent, name="Report"))
     workflow.add_node(
         "tool_builder", partial(agent_node, agent=tool_builder_agent, name="ToolBuilder")
@@ -207,7 +214,7 @@ def create_graph():
         {
             "research": "research",
             "analysis": "analysis",
-            "coder": "coder",
+            # "coder": "coder",  # Temporarily disabled
             "report": "report",
             "tool_builder": "tool_builder",
             "protein_design": "protein_design",
@@ -256,7 +263,7 @@ def create_graph():
         },
     )
 
-    workflow.add_edge("coder", "supervisor")
+    # workflow.add_edge("coder", "supervisor")  # Temporarily disabled
 
     # Protein Design agent can use tools or go back to supervisor
     def should_continue_to_protein_design_tools(

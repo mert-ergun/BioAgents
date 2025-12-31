@@ -171,3 +171,125 @@ def create_retry_response(
 
     error_response = AIMessage(content=error_content)
     return {"messages": [error_response]}
+
+
+def generate_fallback_summary(messages: list) -> str:
+    """Generate a fallback summary from previous messages when LLM response is empty.
+
+    Args:
+        messages: List of conversation messages
+
+    Returns:
+        A summary string based on previous messages
+    """
+    import json
+
+    summary_parts = []
+    tool_results = []
+
+    for msg in reversed(messages[-15:]):
+        # Skip SystemMessage with execution markers
+        if isinstance(msg, SystemMessage):
+            msg_content = get_message_content(msg)
+            if (
+                "[EXECUTION_SUCCESS]" in msg_content
+                or "ToolBuilder successfully executed" in msg_content
+            ):
+                continue  # Skip execution success markers
+
+        msg_content = get_message_content(msg)
+        if msg_content and len(msg_content.strip()) > 20:
+            agent_name = getattr(msg, "name", "unknown")
+            # Skip system messages, supervisor messages, and execution markers
+            if agent_name not in ["Supervisor", "system"]:
+                # Check if this is a tool result (ToolMessage or contains tool result data)
+                if hasattr(msg, "__class__") and msg.__class__.__name__ == "ToolMessage":
+                    try:
+                        result = json.loads(msg_content)
+                        if isinstance(result, dict) and "result" in result:
+                            tool_results.append(result.get("result", {}))
+                    except (json.JSONDecodeError, AttributeError, TypeError):
+                        pass
+
+                # Filter out execution success markers from content
+                if "[EXECUTION_SUCCESS]" not in msg_content:
+                    # Extract meaningful content (skip very technical parts)
+                    clean_content = msg_content
+                    # Remove execution markers if present
+                    clean_content = clean_content.replace("[EXECUTION_SUCCESS]", "").strip()
+                    if clean_content and len(clean_content.strip()) > 20:
+                        summary_parts.append(clean_content[:500])  # Increased limit
+                        if len(summary_parts) >= 5:  # Get more context
+                            break
+
+    # Build fallback content
+    if tool_results:
+        # If we have tool results, try to extract meaningful data
+        fallback_content = "Based on the workflow execution, here is a summary of the findings:\n\n"
+        for result in tool_results[:3]:  # Limit to first 3 results
+            if isinstance(result, dict):
+                # Extract key information from tool results
+                if "results" in result:
+                    fallback_content += f"Analysis completed successfully. Found {len(result.get('results', []))} results.\n\n"
+                elif "status" in result and result.get("status") == "success":
+                    fallback_content += "Task completed successfully.\n\n"
+
+        if summary_parts:
+            fallback_content += "\n\n".join(summary_parts)
+    elif summary_parts:
+        fallback_content = (
+            "Based on the workflow execution, here is a summary of the findings:\n\n"
+            + "\n\n".join(summary_parts)
+        )
+    else:
+        fallback_content = (
+            "The workflow has completed. Please review the tool execution results "
+            "and previous agent responses for detailed findings."
+        )
+
+    # Remove any remaining execution markers
+    fallback_content = fallback_content.replace("[EXECUTION_SUCCESS]", "").strip()
+
+    return fallback_content
+
+
+def create_report_response(
+    agent_name: str,
+    messages_with_system: list,
+    llm,
+) -> dict:
+    """Handle report generation with fallback summary if LLM response is empty.
+
+    Args:
+        agent_name: Name of the agent for logging
+        messages_with_system: Messages including system prompt
+        llm: LLM instance (without tools)
+
+    Returns:
+        Dict with 'messages' key containing the response
+    """
+    response = llm.invoke(messages_with_system)
+
+    # Normalize response content
+    content = get_message_content(response)
+
+    if is_empty_response(response):
+        logger.warning(
+            f"{agent_name} received empty response. Generating fallback summary from previous messages."
+        )
+        # Generate a summary from previous messages as fallback
+        original_messages = messages_with_system[1:]  # Skip system message
+        fallback_content = generate_fallback_summary(original_messages)
+
+        # Create a new AIMessage with the fallback content
+        response = AIMessage(content=fallback_content, name="Report")
+    else:
+        # Ensure response has normalized content
+        if hasattr(response, "content") and not isinstance(response.content, str):
+            response.content = content
+
+    # Ensure response has name attribute
+    if not hasattr(response, "name") or not response.name:
+        response.name = "Report"
+
+    return {"messages": [response]}

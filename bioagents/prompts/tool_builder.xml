@@ -181,7 +181,20 @@
       3. Input validation
       4. Error handling with informative messages
       5. Logging for debugging
-      6. Dependencies list in the tool definition
+      6. Dependencies list in the tool definition (pip packages)
+      7. System dependencies list (external binaries/tools like samtools, blast, etc.)
+    </instruction>
+
+    <instruction priority="high">
+      When registering a tool with register_custom_tool, ALWAYS provide:
+      - dependencies_json: JSON array of pip packages (e.g., ["numpy", "pandas"])
+      - system_dependencies_json: JSON array of system binaries/tools (e.g., ["samtools", "blast"])
+
+      System dependencies are external command-line tools that must be installed separately
+      (via conda, apt-get, etc.). Examples: samtools, blast, bowtie2, bedtools, bcftools.
+
+      If the tool uses shutil.which() to check for a binary, that binary is a system dependency.
+      If the tool calls subprocess.run() with an external command, that command is a system dependency.
     </instruction>
 
     <instruction priority="high">

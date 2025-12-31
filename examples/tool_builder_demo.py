@@ -112,7 +112,7 @@ if __name__ == "__main__":
 
 def demo_tool_builder_agent():
     """Demonstrate the Tool Builder Agent functionality."""
-    from bioagents.agents.tool_builder_agent import (
+    from bioagents.tools.tool_builder_tools import (
         extract_tools_from_text,
         list_custom_tools,
         search_custom_tools,
@@ -136,6 +136,7 @@ def demo_tool_builder_agent():
     print(f"   Input text: {methods_text[:100]}...")
 
     # Note: This requires an LLM to be configured
+    # @tool decorated functions are StructuredTool objects - use .invoke() method
     try:
         result = extract_tools_from_text.invoke({"text": methods_text})
         print("\n   Extracted tools:")
@@ -185,15 +186,21 @@ def demo_smolagents_integration():
 
     # Use the search tool
     print("\n2. Using search tool...")
-    search_tool = next(t for t in tools if t.name == "search_custom_tools")
-    result = search_tool.forward(query="protein", limit=3)
-    print(f"   Search results: {result[:200]}...")
+    search_tool = next((t for t in tools if t.name == "search_custom_tools"), None)
+    if search_tool:
+        result = search_tool.forward(query="protein", limit=3)
+        print(f"   Search results: {result[:200]}...")
+    else:
+        print("   Search tool not found")
 
     # Use the list tool
     print("\n3. Using list tool...")
-    list_tool = next(t for t in tools if t.name == "list_custom_tools")
-    result = list_tool.forward()
-    print(f"   Tool list: {result[:200]}...")
+    list_tool = next((t for t in tools if t.name == "list_custom_tools"), None)
+    if list_tool:
+        result = list_tool.forward()
+        print(f"   Tool list: {result[:200]}...")
+    else:
+        print("   List tool not found")
 
 
 def demo_full_workflow():

@@ -18,13 +18,16 @@
 
   <team>
     <agent name="research">
-      <description>Fetches protein data from databases (e.g., UniProt)</description>
+      <description>Fetches protein data from databases and searches for available tools</description>
       <capabilities>
         <capability>Retrieve protein sequences in FASTA format</capability>
         <capability>Access UniProt database</capability>
         <capability>Handle protein identifiers</capability>
+        <capability>Search ToolUniverse for existing bioinformatics tools using tool_universe_find_tools</capability>
+        <capability>Execute tools from ToolUniverse using tool_universe_call_tool</capability>
+        <capability>Search custom tool registry using search_custom_tools</capability>
       </capabilities>
-      <use_when>Data needs to be fetched from external databases</use_when>
+      <use_when>Data needs to be fetched from external databases OR when checking if tools exist in ToolUniverse or custom registry</use_when>
     </agent>
 
     <agent name="analysis">
@@ -38,6 +41,8 @@
       <use_when>Sequence data needs analysis or property calculation</use_when>
     </agent>
 
+    <!-- Coder agent temporarily disabled -->
+    <!--
     <agent name="coder">
       <description>Creates visualizations, performs calculations, and generates plots or charts</description>
       <capabilities>
@@ -49,6 +54,7 @@
       </capabilities>
       <use_when>User requests charts, plots, visualizations, images, graphs, or complex calculations</use_when>
     </agent>
+    -->
 
     <agent name="report">
       <description>Synthesizes findings into comprehensive reports</description>
@@ -64,13 +70,15 @@
     <agent name="tool_builder">
       <description>Creates custom bioinformatics tools when existing tools cannot solve the problem</description>
       <capabilities>
+        <capability>Search ToolUniverse for existing tools before creating new ones</capability>
+        <capability>Search custom tool registry for previously created tools</capability>
         <capability>Mine scientific literature for tool discoveries</capability>
         <capability>Research tool documentation and APIs</capability>
         <capability>Generate Python wrappers for bioinformatics software</capability>
         <capability>Validate and test generated tools</capability>
         <capability>Register tools for use by other agents</capability>
       </capabilities>
-      <use_when>A task cannot be completed with existing tools and requires custom tool creation</use_when>
+      <use_when>A task cannot be completed with existing tools in ToolUniverse or custom registry, and requires custom tool creation</use_when>
     </agent>
 
     <agent name="protein_design">
@@ -116,6 +124,18 @@
 
     <instruction priority="critical">
       ⚠️ TOOL MISSING DETECTION - HIGHEST PRIORITY ⚠️
+      When a tool is needed, follow this priority order:
+
+      1. FIRST: Route to 'research' agent and instruct them to search ToolUniverse using 'tool_universe_find_tools'.
+         The research agent has access to ToolUniverse which contains many existing bioinformatics tools.
+         Only proceed to step 2 if research agent confirms no suitable tool was found in ToolUniverse.
+
+      2. SECOND: Check if the tool exists in the custom tool registry by routing to 'research' with
+         instruction to use 'search_custom_tools'. Custom tools are tools previously created by tool_builder.
+
+      3. LAST RESORT: If neither ToolUniverse nor custom registry has the tool, THEN route to 'tool_builder'
+         to create a new custom tool.
+
       If ANY agent's response contains phrases like:
       - "No suitable tool found"
       - "No tool found"
@@ -126,8 +146,8 @@
       - "Could not find a suitable"
       - "missing required parameters" (repeated failures)
 
-      Then IMMEDIATELY route to 'tool_builder' agent. Do NOT route to coder, analysis, or research.
-      The tool_builder will create the missing tool, then you can route back to complete the task.
+      Follow the priority order above. Do NOT immediately route to tool_builder without first checking ToolUniverse.
+      <!-- Note: coder agent is temporarily disabled -->
 
       This rule takes ABSOLUTE PRIORITY over all other routing decisions.
     </instruction>
@@ -137,10 +157,18 @@
       route to 'tool_builder' to create the missing capability.
     </instruction>
 
+    <instruction priority="critical">
+      When tool_builder reports "successfully created", "registered successfully", or "validated successfully",
+      the tool creation is complete. Route back to the appropriate agent (research, analysis, etc.)
+      to use the newly created tool for the original task. Do NOT treat this as a loop.
+    </instruction>
+
     <instruction priority="high">
       Review the conversation history to understand what has already been done
     </instruction>
 
+    <!-- Coder agent temporarily disabled - visualization requests will be handled by other agents -->
+    <!--
     <instruction priority="high">
       If the original query contains visualization/calculation/plotting keywords (chart, plot, graph, visualize, calculate, bar chart, create visualization, etc.), route to coder agent immediately. This takes priority over other routing decisions UNLESS a tool is missing.
     </instruction>
@@ -148,6 +176,7 @@
     <instruction priority="critical">
       If the original query contains BOTH "import ToolUniverse" (or similar) AND visualization keywords, route to coder agent. The coder agent can both import ToolUniverse and create visualizations. Do NOT route to analysis agent in this case.
     </instruction>
+    -->
 
     <instruction priority="high">
       Avoid repeating work that has already been completed. If an agent (especially coder agent) has been called multiple times with the same task and keeps returning similar results, check if the task is actually complete. If the coder agent reports "Task completed successfully" or provides a final answer, and the original query has been addressed, choose FINISH instead of routing back to the same agent.

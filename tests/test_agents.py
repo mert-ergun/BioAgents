@@ -226,8 +226,37 @@ class TestReportAgent:
 
         assert "messages" in result
         assert len(result["messages"]) == 1
-        assert result["messages"][0] == mock_response
+        # The response should have name="Report"
+        assert result["messages"][0].name == "Report"
         mock_llm.invoke.assert_called_once()
+
+    @patch("bioagents.agents.report_agent.get_llm")
+    def test_report_agent_empty_response_fallback(self, mock_get_llm):
+        """Test that report agent generates fallback when LLM returns empty response."""
+        mock_llm = Mock()
+        # Mock empty response
+        mock_response = AIMessage(content="", name="Report")
+        mock_llm.invoke = Mock(return_value=mock_response)
+        mock_get_llm.return_value = mock_llm
+
+        agent = create_report_agent()
+
+        state = {
+            "messages": [
+                HumanMessage(content="Create report"),
+                AIMessage(content="Some analysis results", name="Analysis"),
+            ]
+        }
+        result = agent(state)
+
+        assert "messages" in result
+        assert len(result["messages"]) == 1
+        # Should have generated fallback content
+        assert result["messages"][0].name == "Report"
+        # Content should not be empty (fallback should be generated)
+        content = result["messages"][0].content
+        assert isinstance(content, str)
+        assert len(content) > 0
 
     @patch("bioagents.agents.report_agent.get_llm")
     def test_report_agent_no_tools(self, mock_get_llm):

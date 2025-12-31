@@ -1,9 +1,14 @@
 """Report Agent for synthesizing and presenting findings."""
 
+import logging
+
 from langchain_core.messages import SystemMessage
 
+from bioagents.agents.helpers import create_report_response
 from bioagents.llms.llm_provider import get_llm
 from bioagents.prompts.prompt_loader import load_prompt
+
+logger = logging.getLogger(__name__)
 
 REPORT_AGENT_PROMPT = load_prompt("report")
 
@@ -28,11 +33,12 @@ def create_report_agent():
             A dict with the 'messages' key containing the agent's response
         """
         messages = state["messages"]
-
         messages_with_system = [SystemMessage(content=REPORT_AGENT_PROMPT), *messages]
 
-        response = llm.invoke(messages_with_system)
-
-        return {"messages": [response]}
+        return create_report_response(
+            agent_name="Report agent",
+            messages_with_system=messages_with_system,
+            llm=llm,
+        )
 
     return agent_node
