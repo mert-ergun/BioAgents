@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html class="dark" lang="en">
+<head>
+    <meta charset="utf-8"/>
+    <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+    <title>BioAgents — Multi-Agent Biology Research</title>
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+
+    <!-- Fonts -->
+    <link href="https://fonts.googleapis.com" rel="preconnect"/>
+    <link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Noto+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
+
+    <!-- Material Symbols -->
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&display=swap" rel="stylesheet"/>
+
+    <!-- NGL.js for 3D molecular visualization -->
+    <script src="https://unpkg.com/ngl@2.0.0-dev.37/dist/ngl.js"></script>
+
+    <!-- Marked.js for markdown rendering -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+
+    <!-- Tailwind Config -->
+    <script>
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#07b6d5",
+                        "background-light": "#f5f8f8",
+                        "background-dark": "#0f2023",
+                        "surface-dark": "#162a2d",
+                        "surface-darker": "#111f22",
+                        "surface-card": "#1a2628",
+                        "border-dark": "#27373a",
+                        "text-subtle": "#9bb6bb"
+                    },
+                    fontFamily: {
+                        "display": ["Space Grotesk", "sans-serif"],
+                        "body": ["Noto Sans", "sans-serif"],
+                        "mono": ["ui-monospace", "SFMono-Regular", "Menlo", "Monaco", "Consolas", "monospace"]
+                    },
+                    borderRadius: {"DEFAULT": "0.25rem", "lg": "0.5rem", "xl": "0.75rem", "2xl": "1rem", "full": "9999px"},
+                },
+            },
+        }
+    </script>
+
+    <style>
+        body { font-family: 'Space Grotesk', sans-serif; }
+
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: #111f22; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #27373a; border-radius: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #07b6d5; }
+
+        .grid-bg {
+            background-image: radial-gradient(#27373a 1px, transparent 1px);
+            background-size: 20px 20px;
+        }
+
+        /* Message content styling */
+        .message-content h1, .message-content h2, .message-content h3 {
+            font-weight: 600; margin-top: 1rem; margin-bottom: 0.5rem; color: white;
+        }
+        .message-content h1 { font-size: 1.25rem; }
+        .message-content h2 { font-size: 1.1rem; }
+        .message-content h3 { font-size: 1rem; }
+        .message-content p { margin-bottom: 0.5rem; }
+        .message-content ul, .message-content ol { margin-left: 1.5rem; margin-bottom: 0.5rem; list-style: disc; }
+        .message-content ol { list-style: decimal; }
+        .message-content li { margin-bottom: 0.25rem; }
+        .message-content code {
+            background: rgba(0,0,0,0.4);
+            padding: 0.125rem 0.5rem;
+            border-radius: 0.25rem;
+            font-family: ui-monospace, monospace;
+            font-size: 0.85em;
+            color: #f0abfc;
+        }
+        .message-content pre {
+            background: rgba(0,0,0,0.5);
+            padding: 1rem;
+            border-radius: 0.5rem;
+            overflow-x: auto;
+            margin: 0.75rem 0;
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+        .message-content pre code { background: transparent; padding: 0; color: #a5f3fc; }
+        .message-content strong { font-weight: 600; color: white; }
+        .message-content a { color: #07b6d5; text-decoration: underline; }
+        .message-content blockquote {
+            border-left: 3px solid #07b6d5;
+            padding-left: 1rem;
+            margin: 0.5rem 0;
+            color: #9bb6bb;
+            font-style: italic;
+        }
+        .message-content table { width: 100%; border-collapse: collapse; margin: 0.5rem 0; }
+        .message-content th, .message-content td {
+            border: 1px solid rgba(255,255,255,0.1);
+            padding: 0.5rem;
+            text-align: left;
+        }
+        .message-content th { background: rgba(0,0,0,0.3); }
+
+        /* Animations */
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .animate-fadeIn { animation: fadeIn 0.3s ease-out; }
+    </style>
+</head>
+
+<body class="bg-background-light dark:bg-background-dark text-slate-900 dark:text-slate-50 font-display overflow-hidden h-screen flex w-full">
+
+    <!-- Sidebar Navigation -->
+    <aside class="w-64 flex-shrink-0 flex flex-col border-r border-slate-200 dark:border-white/5 bg-background-light dark:bg-surface-darker h-full hidden lg:flex" id="sidebar">
+        <!-- Logo -->
+        <div class="h-16 flex items-center px-6 border-b border-slate-200 dark:border-white/5">
+            <div class="flex items-center gap-3 text-primary">
+                <span class="material-symbols-outlined text-3xl">biotech</span>
+                <div class="flex flex-col">
+                    <span class="text-lg font-bold tracking-tight text-white">BioAgents</span>
+                    <span class="text-[10px] text-text-subtle">Multi-Agent System v2.0</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Navigation -->
+        <div class="flex-1 overflow-y-auto py-4 px-3 custom-scrollbar flex flex-col gap-4">
+            <!-- New Research Button -->
+            <button id="newResearchBtn" class="flex items-center justify-center gap-3 w-full px-4 py-3 bg-primary text-background-dark rounded-lg hover:bg-primary/90 transition-all font-bold shadow-[0_0_15px_rgba(7,182,213,0.3)] hover:shadow-[0_0_25px_rgba(7,182,213,0.4)]">
+                <span class="material-symbols-outlined">add</span>
+                <span>New Research</span>
+            </button>
+
+            <!-- Workspace Links -->
+            <div class="space-y-1">
+                <p class="px-3 text-[10px] font-bold text-text-subtle uppercase tracking-wider mb-2">Workspace</p>
+                <a href="#" class="nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg bg-primary/20 border border-primary/20 text-primary transition-all">
+                    <span class="material-symbols-outlined text-[20px]">science</span>
+                    <span class="font-medium text-sm">Active Project</span>
+                </a>
+                <a href="#" class="nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-text-subtle hover:text-white hover:bg-white/5 transition-all">
+                    <span class="material-symbols-outlined text-[20px]">folder_open</span>
+                    <span class="font-medium text-sm">Project Index</span>
+                </a>
+                <a href="#" class="nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-text-subtle hover:text-white hover:bg-white/5 transition-all">
+                    <span class="material-symbols-outlined text-[20px]">history</span>
+                    <span class="font-medium text-sm">History</span>
+                </a>
+                <a href="#" class="nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-text-subtle hover:text-white hover:bg-white/5 transition-all">
+                    <span class="material-symbols-outlined text-[20px]">smart_toy</span>
+                    <span class="font-medium text-sm">Agent Library</span>
+                </a>
+            </div>
+
+            <!-- Recent Sessions -->
+            <div class="flex-1">
+                <p class="px-3 text-[10px] font-bold text-text-subtle uppercase tracking-wider mb-2">Recent Sessions</p>
+                <div class="space-y-0.5" id="recentSessions">
+                    <!-- Sessions will be rendered here by JS -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Settings Footer -->
+        <div class="p-4 border-t border-white/5">
+            <button class="settings-btn flex items-center gap-3 w-full px-3 py-2 text-text-subtle hover:text-white hover:bg-white/5 rounded-lg transition-all">
+                <span class="material-symbols-outlined text-[20px]">settings</span>
+                <span class="font-medium text-sm">Settings</span>
+            </button>
+            <div class="mt-4 flex items-center gap-3 px-3">
+                <div class="size-9 rounded-full bg-gradient-to-tr from-primary to-purple-500 flex items-center justify-center text-white font-bold text-sm">R</div>
+                <div class="flex flex-col">
+                    <span class="text-sm font-bold text-white leading-none">Researcher</span>
+                    <span class="text-[10px] text-text-subtle">Principal Investigator</span>
+                </div>
+            </div>
+        </div>
+    </aside>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 flex flex-col h-full min-w-0 bg-background-light dark:bg-background-dark overflow-hidden">
+        <!-- Header -->
+        <header class="h-14 border-b border-slate-200 dark:border-white/5 flex items-center justify-between px-4 md:px-6 bg-surface-dark/50 backdrop-blur-sm z-20 flex-shrink-0">
+            <div class="flex items-center gap-3">
+                <!-- Mobile menu button -->
+                <button class="lg:hidden text-text-subtle hover:text-white p-2 rounded-lg hover:bg-white/5 transition-all" id="mobileMenuBtn">
+                    <span class="material-symbols-outlined">menu</span>
+                </button>
+                <div class="flex flex-col">
+                    <h2 class="text-sm font-bold leading-tight tracking-tight text-white truncate max-w-[200px] md:max-w-none" id="projectTitle">BioAgents Research Session</h2>
+                    <div class="flex items-center gap-2">
+                        <span class="w-2 h-2 rounded-full bg-green-500 animate-pulse" id="statusDot"></span>
+                        <p class="text-[10px] text-slate-400" id="statusText">System Ready • Awaiting Input</p>
+                    </div>
+                </div>
+            </div>
+            <div class="flex items-center gap-2">
+                <button onclick="window.BioAgents?.runDemo()" class="demo-btn hidden md:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-primary/20 hover:bg-primary/30 border border-primary/30 text-xs font-medium text-primary transition-all hover:border-primary/50">
+                    <span class="material-symbols-outlined text-[16px]">play_arrow</span>
+                    <span>Run Demo</span>
+                </button>
+                <button class="export-btn hidden md:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-medium transition-all hover:border-primary/30">
+                    <span class="material-symbols-outlined text-[16px]">download</span>
+                    <span>Export Session</span>
+                </button>
+                <button class="notifications-btn p-2 text-text-subtle hover:text-white transition-all rounded-lg hover:bg-white/5 relative">
+                    <span class="material-symbols-outlined">notifications</span>
+                    <span class="notifications-badge absolute top-1 right-1 w-2 h-2 bg-primary rounded-full"></span>
+                </button>
+                <button class="help-btn p-2 text-text-subtle hover:text-white transition-all rounded-lg hover:bg-white/5">
+                    <span class="material-symbols-outlined">help</span>
+                </button>
+            </div>
+        </header>
+
+        <!-- Three Column Layout -->
+        <div class="flex-1 grid grid-cols-12 min-h-0 overflow-hidden">
+
+            <!-- Left Panel: Agent Workflow -->
+            <div class="hidden lg:flex col-span-3 border-r border-slate-200 dark:border-white/5 bg-surface-darker/50 flex-col min-h-0" id="agentPanel">
+                <div class="p-4 pb-2 border-b border-white/5 flex justify-between items-center flex-shrink-0">
+                    <h3 class="text-white text-xs font-bold tracking-wide uppercase">Active Agents</h3>
+                    <span class="material-symbols-outlined text-slate-500 text-[18px]">hub</span>
+                </div>
+                <div class="flex-1 overflow-y-auto p-3 flex flex-col gap-2 custom-scrollbar min-h-0" id="agentList">
+                    <!-- Agents will be rendered here by JS -->
+                </div>
+            </div>
+
+            <!-- Center Panel: Chat Interface -->
+            <div class="col-span-12 lg:col-span-6 flex flex-col bg-background-dark relative min-h-0">
+                <!-- Chat Header Gradient -->
+                <div class="absolute top-0 w-full z-10 bg-gradient-to-b from-background-dark via-background-dark/95 to-transparent px-4 md:px-6 py-3 pointer-events-none">
+                    <h3 class="text-white/70 text-xs font-medium tracking-wide uppercase">Conversation Stream</h3>
+                </div>
+
+                <!-- Messages Area -->
+                <div class="flex-1 overflow-y-auto p-4 md:p-6 pt-12 pb-4 flex flex-col gap-5 scroll-smooth custom-scrollbar min-h-0" id="chatMessages">
+                    <!-- Welcome State -->
+                    <div class="flex flex-col items-center justify-center flex-1 min-h-[300px] text-center px-4" id="welcomeState">
+                        <div class="mb-6 p-5 rounded-full bg-primary/5 border border-primary/20 shadow-[0_0_40px_rgba(7,182,213,0.15)]">
+                            <span class="material-symbols-outlined text-5xl text-primary">genetics</span>
+                        </div>
+                        <h1 class="text-2xl md:text-3xl font-bold text-white mb-3 tracking-tight leading-tight">What research problem<br/>are we solving today?</h1>
+                        <p class="text-text-subtle text-sm max-w-md font-light mb-6">Deploy multi-agent swarms for protein analysis, structure prediction, and literature review.</p>
+
+                        <!-- Capabilities -->
+                        <div class="flex flex-wrap justify-center gap-3 max-w-lg">
+                            <div class="flex items-center gap-2 px-3 py-2 rounded-lg bg-surface-card/50 border border-border-dark text-xs text-text-subtle">
+                                <span class="material-symbols-outlined text-primary text-sm">polymer</span>
+                                Protein Folding
+                            </div>
+                            <div class="flex items-center gap-2 px-3 py-2 rounded-lg bg-surface-card/50 border border-border-dark text-xs text-text-subtle">
+                                <span class="material-symbols-outlined text-emerald-400 text-sm">menu_book</span>
+                                Literature Search
+                            </div>
+                            <div class="flex items-center gap-2 px-3 py-2 rounded-lg bg-surface-card/50 border border-border-dark text-xs text-text-subtle">
+                                <span class="material-symbols-outlined text-amber-400 text-sm">code</span>
+                                Code Generation
+                            </div>
+                            <div class="flex items-center gap-2 px-3 py-2 rounded-lg bg-surface-card/50 border border-border-dark text-xs text-text-subtle">
+                                <span class="material-symbols-outlined text-pink-400 text-sm">analytics</span>
+                                Data Analysis
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Input Area -->
+                <div class="p-3 md:p-4 bg-background-dark border-t border-white/5 flex-shrink-0">
+                    <!-- Quick Chips -->
+                    <div class="flex flex-wrap justify-center gap-2 mb-3" id="quickChips">
+                        <button class="example-chip flex items-center gap-2 px-3 py-1.5 rounded-full bg-surface-card border border-border-dark hover:border-primary/50 text-xs text-text-subtle hover:text-white transition-all" data-query="Analyze the properties of human p53 protein (UniProt: P04637). Fetch the sequence, download the AlphaFold structure, and provide detailed biochemical analysis.">
+                            <span class="material-symbols-outlined text-sm text-primary">biotech</span>
+                            Analyze p53 Protein
+                        </button>
+                        <button class="example-chip flex items-center gap-2 px-3 py-1.5 rounded-full bg-surface-card border border-border-dark hover:border-primary/50 text-xs text-text-subtle hover:text-white transition-all" data-query="Fetch and display the 3D structure of human insulin (UniProt: P01308) from AlphaFold.">
+                            <span class="material-symbols-outlined text-sm text-purple-400">view_in_ar</span>
+                            View Insulin 3D
+                        </button>
+                        <button class="example-chip flex items-center gap-2 px-3 py-1.5 rounded-full bg-surface-card border border-border-dark hover:border-primary/50 text-xs text-text-subtle hover:text-white transition-all hidden md:flex" data-query="Search recent literature on CRISPR-Cas9 applications in cancer immunotherapy. Summarize key findings.">
+                            <span class="material-symbols-outlined text-sm text-green-400">menu_book</span>
+                            CRISPR Literature
+                        </button>
+                    </div>
+
+                    <!-- Input Box -->
+                    <div class="relative bg-surface-dark border border-white/10 rounded-xl shadow-lg focus-within:border-primary/50 focus-within:ring-1 focus-within:ring-primary/30 transition-all">
+                        <textarea id="queryInput" class="w-full bg-transparent border-none text-sm text-white placeholder-slate-500 p-4 pb-2 focus:ring-0 resize-none font-body" placeholder="Describe a protein, paste a FASTA sequence, or ask a research question..." rows="2"></textarea>
+                        <div class="flex justify-between items-center px-3 pb-3">
+                            <div class="flex gap-1">
+                                <button class="p-2 text-slate-500 hover:text-white rounded-lg hover:bg-white/5 transition-all" title="Attach File">
+                                    <span class="material-symbols-outlined text-[20px]">attach_file</span>
+                                </button>
+                                <button class="p-2 text-slate-500 hover:text-white rounded-lg hover:bg-white/5 transition-all" title="Voice Input">
+                                    <span class="material-symbols-outlined text-[20px]">mic</span>
+                                </button>
+                            </div>
+                            <button id="submitBtn" class="bg-primary hover:bg-primary/90 text-background-dark text-sm font-bold px-5 py-2.5 rounded-lg flex items-center gap-2 transition-all shadow-[0_0_15px_rgba(7,182,213,0.2)] hover:shadow-[0_0_25px_rgba(7,182,213,0.3)] disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none">
+                                <span>Run Agent</span>
+                                <span class="material-symbols-outlined text-[18px]">send</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Panel: Workspace -->
+            <div class="hidden lg:flex col-span-3 bg-surface-darker border-l border-slate-200 dark:border-white/5 flex-col min-h-0">
+                <!-- 3D Molecular Viewer -->
+                <div class="h-48 min-h-[12rem] max-h-[14rem] bg-black relative border-b border-white/10 group flex-shrink-0" id="viewerContainer">
+                    <!-- Overlay Header -->
+                    <div class="absolute top-0 left-0 w-full p-3 flex justify-between items-center z-10 bg-gradient-to-b from-black/80 to-transparent">
+                        <span class="text-[10px] font-mono text-white/70 bg-black/50 px-2 py-1 rounded">Molecular Viewer</span>
+                        <div class="flex gap-1">
+                            <button class="viewer-spin p-1.5 hover:bg-white/20 rounded text-white/70 hover:text-white transition-all" title="Toggle Spin">
+                                <span class="material-symbols-outlined text-[16px]">360</span>
+                            </button>
+                            <button class="viewer-reset p-1.5 hover:bg-white/20 rounded text-white/70 hover:text-white transition-all" title="Reset View">
+                                <span class="material-symbols-outlined text-[16px]">restart_alt</span>
+                            </button>
+                            <button class="viewer-fullscreen p-1.5 hover:bg-white/20 rounded text-white/70 hover:text-white transition-all" title="Fullscreen">
+                                <span class="material-symbols-outlined text-[16px]">fullscreen</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Viewer -->
+                    <div class="w-full h-full" id="structureViewer">
+                        <div class="w-full h-full flex items-center justify-center" id="viewerPlaceholder">
+                            <div class="text-center">
+                                <div class="relative w-20 h-20 mx-auto mb-4 opacity-30 group-hover:opacity-50 transition-opacity">
+                                    <div class="absolute inset-0 border-2 border-primary rounded-full animate-[spin_10s_linear_infinite]"></div>
+                                    <div class="absolute inset-3 border-2 border-purple-500 rounded-full animate-[spin_7s_linear_infinite_reverse]"></div>
+                                    <div class="absolute inset-6 border-2 border-white rounded-full animate-[spin_5s_linear_infinite]"></div>
+                                </div>
+                                <p class="text-text-subtle text-xs">No structure loaded</p>
+                                <p class="text-slate-600 text-[10px] mt-1">Drop a PDB file or run a query</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Zoom Controls -->
+                    <div class="absolute bottom-3 right-3 flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button class="viewer-zoom-in p-1.5 bg-surface-dark/80 border border-white/10 rounded-full text-white hover:bg-primary hover:border-primary transition-all">
+                            <span class="material-symbols-outlined text-[16px]">add</span>
+                        </button>
+                        <button class="viewer-zoom-out p-1.5 bg-surface-dark/80 border border-white/10 rounded-full text-white hover:bg-primary hover:border-primary transition-all">
+                            <span class="material-symbols-outlined text-[16px]">remove</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Artifacts & Logs Panel -->
+                <div class="flex-1 flex flex-col min-h-0 overflow-hidden">
+                    <!-- Tabs -->
+                    <div class="flex border-b border-white/5 flex-shrink-0">
+                        <button class="tab-btn flex-1 py-3 text-xs font-medium text-white border-b-2 border-primary bg-white/5 transition-all" data-tab="artifacts">
+                            <span class="flex items-center justify-center gap-1.5">
+                                <span class="material-symbols-outlined text-[16px]">folder</span>
+                                Artifacts
+                            </span>
+                        </button>
+                        <button class="tab-btn flex-1 py-3 text-xs font-medium text-slate-500 hover:text-slate-300 border-b-2 border-transparent transition-all" data-tab="logs">
+                            <span class="flex items-center justify-center gap-1.5">
+                                <span class="material-symbols-outlined text-[16px]">code</span>
+                                Reasoning
+                            </span>
+                        </button>
+                    </div>
+
+                    <!-- Tab Content: Artifacts -->
+                    <div class="flex-1 overflow-y-auto p-3 custom-scrollbar tab-content min-h-0" id="artifactsTab">
+                        <h4 class="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-3">Generated Files</h4>
+                        <div class="flex flex-col gap-2" id="artifactsList">
+                            <div class="text-center py-6 text-text-subtle text-xs">
+                                <span class="material-symbols-outlined text-2xl text-border-dark mb-2 block">folder_off</span>
+                                No artifacts generated yet
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Tab Content: Logs -->
+                    <div class="flex-1 overflow-y-auto p-3 custom-scrollbar tab-content hidden min-h-0" id="logsTab">
+                        <h4 class="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-3">Reasoning Trace</h4>
+                        <div class="bg-black/40 rounded-lg p-3 font-mono text-[10px] text-slate-400 border border-white/5 overflow-auto" id="auditLog">
+                            <pre class="whitespace-pre-wrap">// Reasoning trace will appear here when agents process your query...</pre>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Terminal Log (Bottom) -->
+        <div class="bg-[#0a0f10] border-t border-border-dark px-4 py-2 font-mono text-[10px] h-14 overflow-hidden flex-shrink-0 hidden lg:block" id="terminalLog">
+            <div class="flex items-center gap-2 mb-1.5 text-text-subtle border-b border-border-dark/50 pb-1">
+                <span class="material-symbols-outlined text-[14px]">terminal</span>
+                <span class="uppercase tracking-wider font-bold text-[9px]">System Log</span>
+                <div class="flex-1"></div>
+                <button class="terminal-clear text-slate-600 hover:text-white transition-all" title="Clear Log">
+                    <span class="material-symbols-outlined text-[12px]">delete</span>
+                </button>
+            </div>
+            <div class="space-y-0.5 text-green-500/80 overflow-y-auto max-h-8" id="terminalContent">
+                <!-- Terminal lines will be rendered here -->
+            </div>
+        </div>
+    </main>
+
+    <!-- Toast Container -->
+    <div class="fixed top-4 right-4 z-50 flex flex-col gap-2 max-w-sm" id="toastContainer"></div>
+
+    <!-- Mobile Sidebar Overlay -->
+    <div class="fixed inset-0 bg-black/50 z-40 hidden" id="sidebarOverlay"></div>
+
+    <!-- Scripts -->
+    <script src="static/js/app.js"></script>
+</body>
+</html>
