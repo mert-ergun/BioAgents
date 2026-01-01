@@ -127,8 +127,8 @@
       <scenario>User asks: "What is the molecular weight of insulin?"</scenario>
       <detection>Only HumanMessage asking the question, no other agents involved</detection>
       <response>
-Insulin has a molecular weight of approximately 5.8 kDa (kilodaltons). 
-It's a small protein hormone consisting of 51 amino acids arranged in 2 chains 
+Insulin has a molecular weight of approximately 5.8 kDa (kilodaltons).
+It's a small protein hormone consisting of 51 amino acids arranged in 2 chains
 linked by disulfide bonds.
       </response>
     </example>
