@@ -16,6 +16,7 @@ from bioagents.agents.ml_agent import create_ml_agent, create_ml_node
 from bioagents.agents.protein_design_agent import create_protein_design_agent
 from bioagents.agents.report_agent import create_report_agent
 from bioagents.agents.research_agent import create_research_agent
+from bioagents.agents.summary_agent import create_summary_agent
 from bioagents.agents.supervisor_agent import create_supervisor_agent
 from bioagents.agents.tool_builder_agent import create_tool_builder_agent
 from bioagents.tools.analysis_tools import (
@@ -108,7 +109,7 @@ def route_supervisor(
     "tool_builder",
     "protein_design",
     "critic",
-    "end",
+    "summary",
 ]:
     """
     Route based on supervisor's decision.
@@ -117,7 +118,7 @@ def route_supervisor(
         state: The current agent state
 
     Returns:
-        The next agent to route to, or 'end' if finished
+        The next agent to route to, or 'summary' if finished
     """
     next_agent: Literal[
         "research",
@@ -129,10 +130,9 @@ def route_supervisor(
         "tool_builder",
         "protein_design",
         "critic",
-        "end",
         "FINISH",
     ] = state.get("next", "FINISH")
-    return "end" if next_agent == "FINISH" else next_agent
+    return "summary" if next_agent == "FINISH" else next_agent
 
 
 def create_graph():
@@ -191,6 +191,7 @@ def create_graph():
         "critic",
     ]
     supervisor_agent = create_supervisor_agent(members)
+    summary_agent = create_summary_agent()
 
     research_tool_node = ToolNode(research_tools)
     analysis_tool_node = ToolNode(analysis_tools)
@@ -213,6 +214,7 @@ def create_graph():
         "protein_design", partial(agent_node, agent=protein_design_agent, name="ProteinDesign")
     )
     workflow.add_node("critic", partial(agent_node, agent=critic_agent, name="Critic"))
+    workflow.add_node("summary", partial(agent_node, agent=summary_agent, name="Summary"))
 
     workflow.add_node("research_tools", research_tool_node)
     workflow.add_node("analysis_tools", analysis_tool_node)
@@ -235,7 +237,7 @@ def create_graph():
             "tool_builder": "tool_builder",
             "protein_design": "protein_design",
             "critic": "critic",
-            "end": END,
+            "summary": "summary",
         },
     )
 
@@ -310,5 +312,6 @@ def create_graph():
     workflow.add_edge("critic", "supervisor")
 
     workflow.add_edge("report", "supervisor")
+    workflow.add_edge("summary", END)
 
     return workflow.compile()
