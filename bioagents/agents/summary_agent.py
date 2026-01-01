@@ -36,9 +36,7 @@ def analyze_execution_mode(messages: list) -> tuple[Literal["direct_answer", "fu
     # Count different message types
     human_messages = [m for m in messages if isinstance(m, HumanMessage)]
     ai_messages = [m for m in messages if isinstance(m, AIMessage)]
-    tool_messages = [m for m in messages if isinstance(m, ToolMessage)]
-    system_messages = [m for m in messages if isinstance(m, SystemMessage)]
-
+    
     # Count tool calls across all AI messages
     total_tool_calls = 0
     for msg in ai_messages:
