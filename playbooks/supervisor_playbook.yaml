@@ -1,0 +1,33 @@
+## ROUTING_STRATEGIES
+
+[rs-00001] helpful=23 harmful=0 :: Route questions requiring numerical derivation from raw input data (e.g., molecular weight from FASTA) to a dedicated computational processing pipeline, rather than a simple information retrieval or summarization path.
+## TOOL_PATTERNS
+
+[tp-00002] helpful=22 harmful=0 :: For precise numerical calculations, especially in scientific contexts, explicitly simulate or integrate with computational tools. Detail the steps a tool would take (e.g., 'Using a simulated bioinformatics tool, I will first parse the sequence...').
+## CODE_PATTERNS
+
+[cp-00003] helpful=20 harmful=0 :: **Algorithmic Pattern: Molecular Weight from FASTA Sequence**
+1.  **Parse:** Extract the pure amino acid sequence from the FASTA format.
+2.  **Count:** Tally the occurrences of each standard amino acid.
+3.  **Apply Weights:** Use standard average molecular weights for each amino acid residue (e.g., A=89.09, C=121.16, etc.).
+4.  **Sum:** Calculate total weight by summing (count * amino_acid_weight) for all amino acids.
+5.  **Adjust for Water:** Add 18.015 Da (H2O) to the sum to account for the N-terminal H and C-terminal OH, as residue weights represent amino acids *within* a peptide chain.
+[cp-00011] helpful=15 harmful=0 :: Alternative Water Adjustment for Molecular Weight: When calculating molecular weight by summing the full molecular weights of individual amino acids (i.e., not residue weights), subtract (N-1) * 18.015 Da (molecular weight of water) from the total sum, where N is the total number of amino acids in the sequence. This accounts for the water molecules removed during the formation of N-1 peptide bonds.
+## ERROR_PREVENTION
+
+[ep-00004] helpful=18 harmful=7 :: **Prevent Input Echoing:** If the task demands a derived output (e.g., a calculation, analysis, or transformation), never simply repeat the input prompt or raw data. Always demonstrate processing.
+[ep-00005] helpful=19 harmful=7 :: **Validate Output Type:** Before concluding, verify that the generated answer's format and type (e.g., a numerical value, a specific unit) align precisely with the question's requirements.
+## WORKFLOW_PATTERNS
+
+[wp-00006] helpful=22 harmful=0 :: **Computational Data Processing Workflow:**
+1.  **Identify & Parse:** Clearly identify and parse all relevant raw data.
+2.  **Deconstruct Task:** Break down the required calculation into discrete, verifiable steps.
+3.  **Execute Steps:** Perform each computational step sequentially, showing intermediate results where beneficial.
+4.  **Synthesize & Format:** Combine intermediate results into the final answer, ensuring correct units and format.
+## COMMON_MISTAKES
+
+[cm-00007] helpful=17 harmful=7 :: **Mistake: Input Echoing:** Repeating the input prompt or raw data verbatim instead of performing the requested derivation or calculation.
+[cm-00008] helpful=19 harmful=7 :: **Mistake: Computational Inertia:** Failing to initiate or complete necessary arithmetic or logical operations on provided data, assuming identification or summarization is sufficient.
+[cm-00009] helpful=18 harmful=7 :: **Mistake: Overlooking Implicit Computational Needs:** Not recognizing that questions like 'calculate X' or 'determine Y' inherently require explicit, multi-step computational processing beyond simple information retrieval.
+## OTHERS
+[misc-00010] helpful=5 harmful=0 :: **Principle: Transparency in Calculation:** For any non-trivial numerical calculation, explicitly state the constants used, show intermediate steps, and detail the arithmetic to enhance verifiability and correctness.
