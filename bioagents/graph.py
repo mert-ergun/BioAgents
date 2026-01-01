@@ -11,6 +11,8 @@ from langgraph.prebuilt import ToolNode
 from bioagents.agents.analysis_agent import create_analysis_agent
 from bioagents.agents.coder_agent import create_coder_agent, create_coder_node
 from bioagents.agents.critic_agent import create_critic_agent
+from bioagents.agents.dl_agent import create_dl_agent, create_dl_node
+from bioagents.agents.ml_agent import create_ml_agent, create_ml_node
 from bioagents.agents.protein_design_agent import create_protein_design_agent
 from bioagents.agents.report_agent import create_report_agent
 from bioagents.agents.research_agent import create_research_agent
@@ -98,7 +100,16 @@ def should_continue_to_tools(state: AgentState) -> Literal["tools", "supervisor"
 def route_supervisor(
     state: AgentState,
 ) -> Literal[
-    "research", "analysis", "coder", "report", "tool_builder", "protein_design", "critic", "summary"
+    "research",
+    "analysis",
+    "coder",
+    "ml",
+    "dl",
+    "report",
+    "tool_builder",
+    "protein_design",
+    "critic",
+    "summary",  
 ]:
     """
     Route based on supervisor's decision.
@@ -115,6 +126,8 @@ def route_supervisor(
         "research",
         "analysis",
         "coder",
+        "ml",
+        "dl",
         "report",
         "tool_builder",
         "protein_design",
@@ -160,6 +173,10 @@ def create_graph():
     report_agent = create_report_agent()
     coder_agent = create_coder_agent()
     coder_node_func = create_coder_node(coder_agent)
+    ml_agent = create_ml_agent()
+    ml_node_func = create_ml_node(ml_agent)
+    dl_agent = create_dl_agent()
+    dl_node_func = create_dl_node(dl_agent)
     tool_builder_agent = create_tool_builder_agent()
     protein_design_agent = create_protein_design_agent()
     critic_agent = create_critic_agent()
@@ -168,6 +185,8 @@ def create_graph():
         "research",
         "analysis",
         "coder",
+        "ml",
+        "dl",
         "report",
         "tool_builder",
         "protein_design",
@@ -187,6 +206,8 @@ def create_graph():
     workflow.add_node("research", partial(agent_node, agent=research_agent, name="Research"))
     workflow.add_node("analysis", partial(agent_node, agent=analysis_agent, name="Analysis"))
     workflow.add_node("coder", partial(agent_node, agent=coder_node_func, name="Coder"))
+    workflow.add_node("ml", partial(agent_node, agent=ml_node_func, name="ML"))
+    workflow.add_node("dl", partial(agent_node, agent=dl_node_func, name="DL"))
     workflow.add_node("report", partial(agent_node, agent=report_agent, name="Report"))
     workflow.add_node(
         "tool_builder", partial(agent_node, agent=tool_builder_agent, name="ToolBuilder")
@@ -212,6 +233,8 @@ def create_graph():
             "research": "research",
             "analysis": "analysis",
             "coder": "coder",
+            "ml": "ml",
+            "dl": "dl",
             "report": "report",
             "tool_builder": "tool_builder",
             "protein_design": "protein_design",
@@ -261,6 +284,8 @@ def create_graph():
     )
 
     workflow.add_edge("coder", "supervisor")
+    workflow.add_edge("ml", "supervisor")
+    workflow.add_edge("dl", "supervisor")
 
     # Protein Design agent can use tools or go back to supervisor
     def should_continue_to_protein_design_tools(

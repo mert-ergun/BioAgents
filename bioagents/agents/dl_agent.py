@@ -1,4 +1,4 @@
-"""Coder Agent for generating and executing code via Jupyter notebooks."""
+"""DL Agent for designing and executing deep learning systems."""
 
 import logging
 import re
@@ -6,14 +6,14 @@ from collections.abc import Callable
 from typing import Any
 
 from langchain_core.messages import AIMessage
-from smolagents import CodeAgent, Tool
+from smolagents import CodeAgent
 
 from bioagents.llms.adapters import LangChainModelAdapter
 from bioagents.llms.llm_provider import get_llm
 from bioagents.prompts.prompt_loader import load_prompt
 from bioagents.sandbox.coder_executor import create_executor
 from bioagents.sandbox.coder_helpers import (
-    DEFAULT_CODER_IMPORTS,
+    DEFAULT_DL_IMPORTS,
     build_task_with_output_dir,
     extract_available_data,
     extract_original_query,
@@ -23,19 +23,19 @@ from bioagents.tools.smol_tool_wrappers import ToolUniverseExecuteTool, ToolUniv
 
 logger = logging.getLogger("BioAgents")
 
-CODER_AGENT_PROMPT = load_prompt("coder")
+DL_AGENT_PROMPT = load_prompt("dl_agent")
 
 
-def create_coder_agent(
-    tools: list[Tool] | None = None,
+def create_dl_agent(
+    tools: list | None = None,
     additional_imports: list[str] | None = None,
     max_steps: int = 20,
 ) -> CodeAgent:
     """
-    Create the Coder Agent instance.
+    Create the DL Agent instance.
 
     Args:
-        tools: List of tools available to the agent (defaults to ToolUniverse tools)
+        tools: List of tools available to the agent
         additional_imports: Additional Python packages to allow in the sandbox
         max_steps: Maximum number of execution steps
 
@@ -46,14 +46,14 @@ def create_coder_agent(
         tools = [ToolUniverseSearchTool(), ToolUniverseExecuteTool()]
 
     if additional_imports is None:
-        additional_imports = DEFAULT_CODER_IMPORTS
+        additional_imports = DEFAULT_DL_IMPORTS
 
-    lc_model = get_llm(prompt_name="coder")
+    lc_model = get_llm(prompt_name="dl_agent")
     model = LangChainModelAdapter(lc_model)
-    executor = create_executor("coder", additional_imports)
+    executor = create_executor("dl", additional_imports)
 
     # Escape Jinja2 template syntax in instructions to avoid conflicts
-    escaped_instructions = CODER_AGENT_PROMPT.replace("{", "{{").replace("}", "}}")
+    escaped_instructions = DL_AGENT_PROMPT.replace("{", "{{").replace("}", "}}")
 
     from bioagents.sandbox.coder_helpers import PermissiveList
 
@@ -69,9 +69,9 @@ def create_coder_agent(
     return agent
 
 
-def create_coder_node(agent: CodeAgent) -> Callable:
+def create_dl_node(agent: CodeAgent) -> Callable:
     """
-    Create the Coder Agent node function.
+    Create the DL Agent node function.
 
     Args:
         agent: The CodeAgent instance to wrap
@@ -80,7 +80,7 @@ def create_coder_node(agent: CodeAgent) -> Callable:
         A function that can be used as a LangGraph node
     """
 
-    def coder_node(state: dict[str, Any]) -> dict[str, Any]:
+    def dl_node(state: dict[str, Any]) -> dict[str, Any]:
         messages = state["messages"]
 
         original_query = extract_original_query(messages)
@@ -88,14 +88,15 @@ def create_coder_node(agent: CodeAgent) -> Callable:
         output_dir = state.get("output_dir")
 
         task = build_task_with_output_dir(
-            original_query, available_data, output_dir, system_prompt=CODER_AGENT_PROMPT
+            original_query, available_data, output_dir, system_prompt=DL_AGENT_PROMPT
         )
 
         try:
-            logger.info("Starting coder agent execution")
+            logger.info("Starting DL agent execution")
             result = agent.run(task)
             content = format_coder_result(result)
 
+            # Extract execution logs for the frontend
             execution_steps: list[dict[str, Any]] = []
             for step in agent.memory.steps:
                 if hasattr(step, "task"):
@@ -105,6 +106,7 @@ def create_coder_node(agent: CodeAgent) -> Callable:
                     "step": len(execution_steps) + 1,
                 }
 
+                # Extract thought/reasoning
                 if hasattr(step, "thought") and step.thought:
                     step_data["thought"] = step.thought
                 elif hasattr(step, "model_output") and step.model_output:
@@ -140,8 +142,8 @@ def create_coder_node(agent: CodeAgent) -> Callable:
         except Exception as e:
             import traceback
 
-            error_msg = f"Error executing code: {e}\n\nTraceback:\n{traceback.format_exc()}"
-            logger.error(f"Coder agent error: {error_msg}")
+            error_msg = f"Error executing DL code: {e}\n\nTraceback:\n{traceback.format_exc()}"
+            logger.error(f"DL agent error: {error_msg}")
             return {"messages": [AIMessage(content=error_msg)], "next": "supervisor"}
 
-    return coder_node
+    return dl_node

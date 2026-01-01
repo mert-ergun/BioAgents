@@ -178,8 +178,12 @@ class TestCreateGraph:
     @patch("bioagents.graph.create_tool_builder_agent")
     @patch("bioagents.graph.create_protein_design_agent")
     @patch("bioagents.graph.create_coder_agent")
+    @patch("bioagents.graph.create_ml_agent")
+    @patch("bioagents.graph.create_dl_agent")
     def test_create_graph_basic(
         self,
+        mock_dl,
+        mock_ml,
         mock_coder,
         mock_protein,
         mock_builder,
@@ -199,6 +203,8 @@ class TestCreateGraph:
         mock_builder.return_value = Mock()
         mock_protein.return_value = Mock()
         mock_coder.return_value = Mock()
+        mock_ml.return_value = Mock()
+        mock_dl.return_value = Mock()
 
         graph = create_graph()
 
@@ -216,8 +222,12 @@ class TestCreateGraph:
     @patch("bioagents.graph.create_tool_builder_agent")
     @patch("bioagents.graph.create_protein_design_agent")
     @patch("bioagents.graph.create_coder_agent")
+    @patch("bioagents.graph.create_ml_agent")
+    @patch("bioagents.graph.create_dl_agent")
     def test_create_graph_agent_creation_with_tools(
         self,
+        mock_dl,
+        mock_ml,
         mock_coder,
         mock_protein,
         mock_builder,
@@ -236,6 +246,8 @@ class TestCreateGraph:
         mock_builder.return_value = Mock()
         mock_protein.return_value = Mock()
         mock_coder.return_value = Mock()
+        mock_ml.return_value = Mock()
+        mock_dl.return_value = Mock()
 
         create_graph()
 
@@ -270,8 +282,12 @@ class TestCreateGraph:
     @patch("bioagents.graph.create_tool_builder_agent")
     @patch("bioagents.graph.create_protein_design_agent")
     @patch("bioagents.graph.create_coder_agent")
+    @patch("bioagents.graph.create_ml_agent")
+    @patch("bioagents.graph.create_dl_agent")
     def test_create_graph_returns_compiled(
         self,
+        mock_dl,
+        mock_ml,
         mock_coder,
         mock_protein,
         mock_builder,
@@ -290,6 +306,8 @@ class TestCreateGraph:
         mock_builder.return_value = Mock()
         mock_protein.return_value = Mock()
         mock_coder.return_value = Mock()
+        mock_ml.return_value = Mock()
+        mock_dl.return_value = Mock()
 
         graph = create_graph()
 
@@ -309,8 +327,12 @@ class TestGraphWorkflow:
     @patch("bioagents.graph.create_tool_builder_agent")
     @patch("bioagents.graph.create_protein_design_agent")
     @patch("bioagents.graph.create_coder_agent")
+    @patch("bioagents.graph.create_ml_agent")
+    @patch("bioagents.graph.create_dl_agent")
     def test_graph_workflow_simple(
         self,
+        mock_dl,
+        mock_ml,
         mock_coder,
         mock_protein,
         mock_builder,
@@ -341,6 +363,8 @@ class TestGraphWorkflow:
         mock_builder.return_value = Mock()
         mock_protein.return_value = Mock()
         mock_coder.return_value = Mock()
+        mock_ml.return_value = Mock()
+        mock_dl.return_value = Mock()
 
         graph = create_graph()
 
@@ -355,8 +379,12 @@ class TestGraphWorkflow:
     @patch("bioagents.graph.create_tool_builder_agent")
     @patch("bioagents.graph.create_protein_design_agent")
     @patch("bioagents.graph.create_coder_agent")
+    @patch("bioagents.graph.create_ml_agent")
+    @patch("bioagents.graph.create_dl_agent")
     def test_graph_entry_point(
         self,
+        mock_dl,
+        mock_ml,
         mock_coder,
         mock_protein,
         mock_builder,
@@ -375,6 +403,8 @@ class TestGraphWorkflow:
         mock_builder.return_value = Mock()
         mock_protein.return_value = Mock()
         mock_coder.return_value = Mock()
+        mock_ml.return_value = Mock()
+        mock_dl.return_value = Mock()
 
         graph = create_graph()
 
@@ -426,10 +456,14 @@ class TestGraphStructure:
     @patch("bioagents.graph.create_tool_builder_agent")
     @patch("bioagents.graph.create_protein_design_agent")
     @patch("bioagents.graph.create_coder_agent")
+    @patch("bioagents.graph.create_ml_agent")
+    @patch("bioagents.graph.create_dl_agent")
     @patch("bioagents.graph.ToolNode")
     def test_tool_nodes_created(
         self,
         mock_tool_node,
+        mock_dl,
+        mock_ml,
         mock_coder,
         mock_protein,
         mock_builder,
@@ -448,6 +482,8 @@ class TestGraphStructure:
         mock_builder.return_value = Mock()
         mock_protein.return_value = Mock()
         mock_coder.return_value = Mock()
+        mock_ml.return_value = Mock()
+        mock_dl.return_value = Mock()
         mock_tool_node.return_value = Mock()
 
         create_graph()
@@ -463,8 +499,12 @@ class TestGraphStructure:
     @patch("bioagents.graph.create_tool_builder_agent")
     @patch("bioagents.graph.create_protein_design_agent")
     @patch("bioagents.graph.create_coder_agent")
+    @patch("bioagents.graph.create_ml_agent")
+    @patch("bioagents.graph.create_dl_agent")
     def test_partial_agent_node_wrapping(
         self,
+        mock_dl,
+        mock_ml,
         mock_coder,
         mock_protein,
         mock_builder,
@@ -483,6 +523,8 @@ class TestGraphStructure:
         mock_builder.return_value = Mock()
         mock_protein.return_value = Mock()
         mock_coder.return_value = Mock()
+        mock_ml.return_value = Mock()
+        mock_dl.return_value = Mock()
 
         # This should not raise any errors
         graph = create_graph()
