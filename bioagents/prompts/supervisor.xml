@@ -209,6 +209,17 @@
       - "Help with the analysis"
       - "Complete the task"
       - "Do what the user asked"
+
+    </instruction>
+
+    <instruction priority="critical">
+      When routing an agent to use an existing tool created by ToolBuilder:
+      - ALWAYS use the EXACT tool name from ToolBuilder's success message
+      - Do NOT invent, modify, or guess tool names
+      - If ToolBuilder says tool 'pathway_enrichment_analysis' exists, use exactly 'pathway_enrichment_analysis' (not 'perform_pathway_enrichment' or any variation)
+      - Verify tool name by checking recent ToolMessage responses from ToolBuilder that contain "tool_name"
+      - Look for JSON responses like {{"status": "success", "tool_name": "exact_name"}} to get the correct name
+      - When in doubt, instruct the agent to first use search_custom_tools to find the exact tool name
     </instruction>
   </instructions>
 

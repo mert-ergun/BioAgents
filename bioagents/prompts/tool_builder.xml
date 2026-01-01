@@ -156,7 +156,7 @@
           if result.returncode != 0:
               raise RuntimeError(f"Tool failed: {result.stderr}")
 
-          return {"status": "success", "output_file": output_file}
+          return {{"status": "success", "output_file": output_file}}
       ```
 
       For REST APIs:
@@ -165,7 +165,7 @@
 
       def api_tool(query: str, **kwargs) -> dict:
           url = "https://api.example.com/endpoint"
-          params = {"query": query, **kwargs}
+          params = {{"query": query, **kwargs}}
 
           response = requests.get(url, params=params)
           response.raise_for_status()
@@ -189,6 +189,18 @@
       1. Register it with register_custom_tool
       2. Validate it with validate_custom_tool
       3. Report the outcome to the user
+    </instruction>
+
+    <instruction priority="critical">
+      IMPORTANT: After successfully executing a tool ONCE using execute_custom_tool and receiving
+      a successful result, DO NOT execute it again unless:
+      - The user explicitly asks you to re-run it
+      - You need to test it with different parameters
+      - The execution failed and you're retrying
+
+      If you have already executed a tool successfully, inform the user that the task is complete
+      and do not repeatedly execute the same tool. This prevents unnecessary repeated executions
+      and improves workflow efficiency.
     </instruction>
 
     <instruction priority="medium">

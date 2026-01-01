@@ -111,7 +111,6 @@ def build_task_with_output_dir(
     original_query: str | None,
     available_data: list[str],
     output_dir: str | None,
-    system_prompt: str | None = None,
 ) -> str:
     """
     Build the task string for the coder agent with output directory instructions.
@@ -120,7 +119,6 @@ def build_task_with_output_dir(
         original_query: The original user query
         available_data: List of available data strings from previous messages
         output_dir: Output directory path for saving files
-        system_prompt: System prompt to include in task description (for visibility in logs)
 
     Returns:
         Formatted task string for the coder agent
@@ -133,10 +131,8 @@ def build_task_with_output_dir(
     if available_data:
         task_parts.append("\nAVAILABLE DATA/CONTEXT:\n" + "\n".join(available_data[-3:]))
 
-    # Add system prompt to task description so it's visible in "New run" output
-    # (smolagents only shows task in logs, not system prompt)
-    if system_prompt:
-        task_parts.append(f"\n\nSYSTEM PROMPT / INSTRUCTIONS:\n{system_prompt}")
+    # System prompt is already passed to CodeAgent via instructions parameter,
+    # so we don't need to include it in the task description to avoid cluttering logs
 
     task = "\n".join(task_parts) if task_parts else "Please complete the requested task."
 
