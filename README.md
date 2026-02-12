@@ -54,6 +54,8 @@ This repository contains the source code for our final year BBM479 project, `Bio
     # - LLM_PROVIDER (set to 'openai', 'ollama', or 'gemini')
     # - LANGCHAIN_TRACING_V2 (set to 'true' to enable LangSmith monitoring)
     # - LANGCHAIN_API_KEY (your LangSmith API key for monitoring)
+    # - ACE_ENABLED (set to 'true' to enable self-evolving capabilities)
+    # - ACE_CURATOR_FREQUENCY (how often to run curator, default: 5)
     ```
 
 5. **Configure Pre-Commits for Development (Optional)**

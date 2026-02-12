@@ -18,6 +18,9 @@ from bioagents.agents.report_agent import create_report_agent
 from bioagents.agents.research_agent import create_research_agent
 from bioagents.agents.supervisor_agent import create_supervisor_agent
 from bioagents.agents.tool_builder_agent import create_tool_builder_agent
+from bioagents.learning.ace_integration import (
+    track_agent_execution,
+)
 from bioagents.tools.analysis_tools import (
     analyze_amino_acid_composition,
     calculate_isoelectric_point,
@@ -57,7 +60,7 @@ class AgentState(dict):
 
 def agent_node(state, agent, name):
     """
-    Wrapper for agent nodes that adds agent identification.
+    Wrapper for agent nodes that adds agent identification and ACE tracking.
 
     Args:
         state: The current state
@@ -73,6 +76,9 @@ def agent_node(state, agent, name):
     if result.get("messages"):
         for msg in result["messages"]:
             msg.name = name
+
+    # ACE tracking (only if enabled - zero overhead if disabled)
+    track_agent_execution(state, result, name)
 
     return result
 
@@ -199,7 +205,8 @@ def create_graph():
 
     workflow = StateGraph(AgentState)
 
-    workflow.add_node("supervisor", supervisor_agent)
+    # Wrap supervisor with agent_node for consistent ACE tracking
+    workflow.add_node("supervisor", partial(agent_node, agent=supervisor_agent, name="Supervisor"))
     workflow.add_node("research", partial(agent_node, agent=research_agent, name="Research"))
     workflow.add_node("analysis", partial(agent_node, agent=analysis_agent, name="Analysis"))
     workflow.add_node("coder", partial(agent_node, agent=coder_node_func, name="Coder"))
