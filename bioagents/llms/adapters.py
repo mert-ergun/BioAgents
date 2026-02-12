@@ -39,6 +39,13 @@ class LangChainModelAdapter(Model):
                     text_content += part
             content = text_content
 
+        # WORKAROUND for smolagents bug #1896: Handle None/empty content caused by stop_sequences
+        # This prevents empty steps that cause parsing errors
+        if content is None or (isinstance(content, str) and not content.strip()):
+            # CRITICAL: Don't return None or empty string - these cause parse_code_blobs to fail
+            # Return a message that will trigger a proper error that CodeAgent can handle gracefully
+            content = "Error: Model returned empty content. This may be caused by stop_sequences cutting the response. Please retry with a different approach."
+
         return ChatMessage(role=MessageRole.ASSISTANT, content=content, raw=response)
 
     def _convert_messages(self, messages: list[ChatMessage]) -> list[BaseMessage]:

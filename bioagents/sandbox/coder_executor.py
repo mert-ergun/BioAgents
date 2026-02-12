@@ -2,6 +2,7 @@
 
 import contextlib
 import importlib.util
+import os
 import shutil
 import socket
 import subprocess  # nosec B404
@@ -49,6 +50,8 @@ def create_executor(
     """
     Create a Docker executor for code execution, falling back to LocalExecutor if Docker fails.
 
+    Can be forced to use LocalPythonExecutor by setting USE_LOCAL_EXECUTOR=true environment variable.
+
     Args:
         agent_type: Type of agent (e.g., 'coder', 'ml', 'dl')
         additional_imports: List of Python packages to install in the Docker image
@@ -56,6 +59,22 @@ def create_executor(
     Returns:
         DockerExecutor or LocalPythonExecutor instance
     """
+    # Check if local executor should be used (via environment variable)
+    use_local = os.getenv("USE_LOCAL_EXECUTOR", "false").lower() in ("true", "1", "yes")
+
+    if use_local:
+        print(f"Using LocalPythonExecutor for {agent_type} (USE_LOCAL_EXECUTOR=true)")
+        installed_imports = [imp for imp in additional_imports if is_module_installed(imp)]
+
+        if len(installed_imports) < len(additional_imports):
+            missing = set(additional_imports) - set(installed_imports)
+            print(
+                f"Warning: The following authorized modules are not installed locally: {', '.join(missing)}"
+            )
+            print("These will be omitted from the authorized list for the LocalExecutor.")
+
+        return LocalPythonExecutor(additional_authorized_imports=installed_imports)
+
     image_name = f"bioagents-{agent_type}"
     try:
         terminal_console = Console(

@@ -7,10 +7,15 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from pydantic import BaseModel, Field
 
+from bioagents.agents.helpers import get_message_content
 from bioagents.agents.supervisor_helpers import (
     check_for_empty_response_loop,
     check_for_missing_tool,
     check_for_repeated_routing,
+    check_tool_builder_execution_success,
+    check_tool_builder_success,
+    extract_original_query,
+    get_all_created_tools,
 )
 from bioagents.llms.llm_provider import get_llm
 from bioagents.prompts.prompt_loader import load_prompt
@@ -84,6 +89,34 @@ def create_supervisor_agent(members: list[str]):
         """
         messages = state["messages"]
 
+        # FIRST: Check for tool builder execution success (only if not already handled)
+        # Skip if SystemMessage already exists (already handled, let normal LLM routing decide next step)
+        execution_already_handled = any(
+            isinstance(msg, SystemMessage)
+            or (hasattr(msg, "__class__") and msg.__class__.__name__ == "SystemMessage")
+            for msg in messages[-10:]
+            if "[EXECUTION_SUCCESS]" in get_message_content(msg)
+        )
+
+        if not execution_already_handled:
+            # Only check for execution success if we haven't already handled it
+            execution_success, exec_tool_name = check_tool_builder_execution_success(messages)
+            if execution_success:
+                logger.info(
+                    f"ToolBuilder successfully executed tool '{exec_tool_name}' and returned results. "
+                    "Routing to report to summarize findings."
+                )
+                # Mark execution success to prevent re-detection
+                success_marker = SystemMessage(
+                    content=f"[EXECUTION_SUCCESS] ToolBuilder successfully executed tool '{exec_tool_name}' and task is complete."
+                )
+                return {
+                    "next": "report",
+                    "reasoning": f"ToolBuilder successfully executed tool '{exec_tool_name}' and completed the task. "
+                    "Routing to report to summarize the results.",
+                    "messages": [success_marker],
+                }
+
         is_empty_loop, empty_agent = check_for_empty_response_loop(messages)
         if is_empty_loop:
             logger.error(
@@ -108,6 +141,74 @@ def create_supervisor_agent(members: list[str]):
                 f"Supervisor: Detected repeated routing to agent '{looping_agent}'. "
                 "Attempting to break the loop."
             )
+
+            # Special case: ToolBuilder might need multiple calls to complete
+            if looping_agent == "ToolBuilder":
+                # First check if ToolBuilder successfully executed a tool (task complete)
+                execution_success, exec_tool_name = check_tool_builder_execution_success(messages)
+                if execution_success:
+                    logger.info(
+                        f"ToolBuilder successfully executed tool '{exec_tool_name}' and returned results. "
+                        "Routing to report to summarize findings."
+                    )
+                    # Mark execution success to prevent re-detection
+                    success_marker = SystemMessage(
+                        content=f"[EXECUTION_SUCCESS] ToolBuilder successfully executed tool '{exec_tool_name}' and task is complete."
+                    )
+                    return {
+                        "next": "report",
+                        "reasoning": f"ToolBuilder successfully executed tool '{exec_tool_name}' and completed the task. "
+                        "Routing to report to summarize the results.",
+                        "messages": [success_marker],
+                    }
+
+                # Then check if ToolBuilder successfully created a tool (needs to be used)
+                tool_success, tool_name = check_tool_builder_success(messages)
+                if tool_success:
+                    # Get all created tools (might be multiple)
+                    created_tools = get_all_created_tools(messages)
+                    # Get original query to provide context
+                    original_query = extract_original_query(messages)
+
+                    # Create a clear task instruction for research agent
+                    if created_tools:
+                        tools_list = ", ".join([f"`{t}`" for t in created_tools])
+                        if original_query:
+                            task_instruction = (
+                                f"Use the newly created tools {tools_list} to complete the original task: {original_query}. "
+                                f"First, search for these tools using search_custom_tools, then execute them with execute_custom_tool."
+                            )
+                        else:
+                            task_instruction = (
+                                f"Use the newly created tools {tools_list} to complete the task. "
+                                f"First, search for these tools using search_custom_tools, then execute them with execute_custom_tool."
+                            )
+                    else:
+                        # Fallback if we can't find all tools
+                        task_instruction = (
+                            f"Use the newly created tool `{tool_name}` to complete the original task. "
+                            f"Search for it using search_custom_tools, then execute it with execute_custom_tool."
+                        )
+                        if original_query:
+                            task_instruction = f"{task_instruction} Original task: {original_query}"
+
+                    # Route to research or analysis agent based on tool category
+                    # For now, default to research - can be enhanced based on tool category
+                    target_agent = "research" if "research" in members else "analysis"
+                    handoff_msg = HumanMessage(
+                        content=f"[SUPERVISOR TASK] {task_instruction}", name="Supervisor"
+                    )
+                    logger.info(
+                        f"ToolBuilder created tool(s): {created_tools or [tool_name]}. "
+                        f"Routing to {target_agent} to use the tool(s)."
+                    )
+                    return {
+                        "next": target_agent,
+                        "reasoning": f"ToolBuilder successfully created tool(s): {created_tools or [tool_name]}. "
+                        f"Routing to {target_agent} to execute the tool(s) and complete the task.",
+                        "messages": [handoff_msg],
+                    }
+
             if looping_agent != "report" and "report" in members:
                 return {
                     "next": "report",

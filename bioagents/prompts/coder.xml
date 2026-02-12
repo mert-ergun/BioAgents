@@ -386,5 +386,10 @@ import scanpy as sc
     <instruction priority="high">
       Use the exact data provided in the AVAILABLE DATA/CONTEXT section of the task. Do not ignore or skip available context data.
     </instruction>
+    <instruction priority="critical">
+      ⚠️ CRITICAL: If code execution fails, analyze the error and fix it in the NEXT step.
+      NEVER generate empty code blocks. After 2-3 failed attempts to fix an error, call
+      final_answer() with a clear error message rather than continuing with empty steps.
+    </instruction>
   </instructions>
 </prompt>

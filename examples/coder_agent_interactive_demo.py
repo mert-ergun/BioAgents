@@ -152,10 +152,17 @@ except Exception as e:
     sys.exit(1)
 
 
-def run_query(query_text: str):
-    """Helper function to run a query and print results nicely."""
+def run_query(query: str) -> None:
+    """Helper function to run a query and print results nicely.
+
+    Args:
+        query: The query text to execute through the workflow
+
+    Example:
+        >>> run_query("Find all genes related to BRCA")
+    """
     log_and_print(f"\n{'=' * 80}")
-    log_and_print(f"🚀 Running query: {query_text}")
+    log_and_print(f"🚀 Running query: {query}")
     log_and_print(f"{'=' * 80}")
 
     run_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -168,7 +175,7 @@ def run_query(query_text: str):
     )
 
     initial_state = {
-        "messages": [HumanMessage(content=query_text)],
+        "messages": [HumanMessage(content=query)],
         "output_dir": str(output_dir.absolute()),
         "run_start_time": run_start_time,
     }
@@ -415,6 +422,17 @@ try:
 
     builtins.graph = graph
     builtins.run_query = run_query
+
+    # Also set in IPython namespace if available
+    try:
+        from IPython import get_ipython
+
+        ipython = get_ipython()
+        if ipython is not None:
+            ipython.user_ns["graph"] = graph
+            ipython.user_ns["run_query"] = run_query
+    except Exception:  # nosec B110
+        pass
 except Exception:  # nosec B110
     pass
 
@@ -423,11 +441,24 @@ log_and_print("🎉 Interactive session ready!")
 log_and_print("=" * 80)
 log_and_print("\nAvailable objects:")
 log_and_print("  • graph: The compiled LangGraph workflow (ready to use)")
-log_and_print("  • run_query(text): Helper function to run a query and print output")
+log_and_print("  • run_query(query): Helper function to run a query and print output")
 log_and_print("\nExample commands:")
 log_and_print("  >>> run_query('Find a tool for protein folding using the coder')")
 log_and_print("  >>> run_query('Analyze human insulin P01308')")
 log_and_print("\n" + "=" * 80)
+
+# Verify function is correctly defined and log signature for debugging
+try:
+    import inspect
+
+    sig = inspect.signature(run_query)
+    logger.debug(f"run_query signature: {sig}")
+    # Verify it has the expected parameter
+    params = list(sig.parameters.keys())
+    if params != ["query"]:
+        logger.warning(f"Warning: run_query has unexpected parameters: {params}")
+except Exception as e:  # nosec B110
+    logger.warning(f"Could not inspect run_query signature: {e}")
 
 # If running as a script, drop into IPython or pdb
 if __name__ == "__main__":
