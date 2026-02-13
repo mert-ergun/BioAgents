@@ -11,6 +11,7 @@ from bioagents.graph import create_graph
 class TestBasicWorkflow:
     """Integration tests for basic workflow scenarios."""
 
+    @patch("bioagents.graph.create_summary_agent")
     @patch("bioagents.graph.create_supervisor_agent")
     @patch("bioagents.graph.create_research_agent")
     @patch("bioagents.graph.create_analysis_agent")
@@ -33,9 +34,11 @@ class TestBasicWorkflow:
         mock_analysis,
         mock_research,
         mock_supervisor,
+        mock_summary,
     ):
         """Test that graph can be created with all components."""
         # Setup all mocks
+        mock_summary.return_value = Mock()
         mock_supervisor.return_value = Mock()
         mock_research.return_value = Mock()
         mock_analysis.return_value = Mock()
@@ -150,6 +153,7 @@ class TestMultiAgentWorkflow:
 class TestEndToEndWorkflow:
     """End-to-end integration tests simulating real workflows."""
 
+    @patch("bioagents.graph.create_summary_agent")
     @patch("bioagents.graph.create_supervisor_agent")
     @patch("bioagents.graph.create_research_agent")
     @patch("bioagents.graph.create_analysis_agent")
@@ -172,6 +176,7 @@ class TestEndToEndWorkflow:
         mock_analysis,
         mock_research,
         mock_supervisor,
+        mock_summary,
     ):
         """Test a simple query workflow."""
         # Mock supervisor routing: research -> FINISH
@@ -189,6 +194,7 @@ class TestEndToEndWorkflow:
         mock_supervisor_agent = Mock(side_effect=supervisor_calls)
         mock_research_agent = Mock(return_value=research_response)
 
+        mock_summary.return_value = Mock()
         mock_supervisor.return_value = mock_supervisor_agent
         mock_research.return_value = mock_research_agent
         mock_analysis.return_value = Mock()
@@ -212,6 +218,7 @@ class TestEndToEndWorkflow:
             # Some exceptions are expected in mocked scenarios
             pass
 
+    @patch("bioagents.graph.create_summary_agent")
     @patch("bioagents.graph.create_supervisor_agent")
     @patch("bioagents.graph.create_research_agent")
     @patch("bioagents.graph.create_analysis_agent")
@@ -234,6 +241,7 @@ class TestEndToEndWorkflow:
         mock_analysis,
         mock_research,
         mock_supervisor,
+        mock_summary,
     ):
         """Test a multi-step workflow: research -> analysis -> report -> finish."""
         # Mock supervisor routing through all agents
@@ -261,6 +269,7 @@ class TestEndToEndWorkflow:
         mock_analysis_agent = Mock(return_value=analysis_response)
         mock_report_agent = Mock(return_value=report_response)
 
+        mock_summary.return_value = Mock()
         mock_supervisor.return_value = mock_supervisor_agent
         mock_research.return_value = mock_research_agent
         mock_analysis.return_value = mock_analysis_agent

@@ -54,7 +54,7 @@ def main():
 
     # Create the multi-agent graph
     print("\nInitializing BioAgents Multi-Agent Workflow...")
-    print("   - Agents: Supervisor, Research, Analysis, Report")
+    print("   - Agents: Supervisor, Research, Analysis, Report, Summary")
     graph = create_graph()
 
     # Get LangSmith config for tracing
