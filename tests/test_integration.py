@@ -18,10 +18,14 @@ class TestBasicWorkflow:
     @patch("bioagents.graph.create_critic_agent")
     @patch("bioagents.graph.create_tool_builder_agent")
     @patch("bioagents.graph.create_protein_design_agent")
+    @patch("bioagents.graph.create_dl_agent")
+    @patch("bioagents.graph.create_ml_agent")
     @patch("bioagents.graph.create_coder_agent")
     def test_graph_creation_integration(
         self,
         mock_coder,
+        mock_ml,
+        mock_dl,
         mock_protein,
         mock_builder,
         mock_critic,
@@ -39,6 +43,8 @@ class TestBasicWorkflow:
         mock_critic.return_value = Mock()
         mock_builder.return_value = Mock()
         mock_protein.return_value = Mock()
+        mock_ml.return_value = Mock()
+        mock_dl.return_value = Mock()
         mock_coder.return_value = Mock()
 
         # Create graph - should not raise any errors
@@ -151,10 +157,14 @@ class TestEndToEndWorkflow:
     @patch("bioagents.graph.create_critic_agent")
     @patch("bioagents.graph.create_tool_builder_agent")
     @patch("bioagents.graph.create_protein_design_agent")
+    @patch("bioagents.graph.create_dl_agent")
+    @patch("bioagents.graph.create_ml_agent")
     @patch("bioagents.graph.create_coder_agent")
     def test_simple_query_workflow(
         self,
         mock_coder,
+        mock_ml,
+        mock_dl,
         mock_protein,
         mock_builder,
         mock_critic,
@@ -186,6 +196,8 @@ class TestEndToEndWorkflow:
         mock_critic.return_value = Mock()
         mock_builder.return_value = Mock()
         mock_protein.return_value = Mock()
+        mock_ml.return_value = Mock()
+        mock_dl.return_value = Mock()
         mock_coder.return_value = Mock()
 
         graph = create_graph()
@@ -207,10 +219,14 @@ class TestEndToEndWorkflow:
     @patch("bioagents.graph.create_critic_agent")
     @patch("bioagents.graph.create_tool_builder_agent")
     @patch("bioagents.graph.create_protein_design_agent")
+    @patch("bioagents.graph.create_dl_agent")
+    @patch("bioagents.graph.create_ml_agent")
     @patch("bioagents.graph.create_coder_agent")
     def test_multi_step_workflow(
         self,
         mock_coder,
+        mock_ml,
+        mock_dl,
         mock_protein,
         mock_builder,
         mock_critic,
@@ -252,6 +268,8 @@ class TestEndToEndWorkflow:
         mock_critic.return_value = Mock()
         mock_builder.return_value = Mock()
         mock_protein.return_value = Mock()
+        mock_ml.return_value = Mock()
+        mock_dl.return_value = Mock()
         mock_coder.return_value = Mock()
 
         graph = create_graph()

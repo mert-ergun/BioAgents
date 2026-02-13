@@ -380,10 +380,14 @@ class TestGraphIntegration:
     @patch("bioagents.graph.create_critic_agent")
     @patch("bioagents.graph.create_tool_builder_agent")
     @patch("bioagents.graph.create_protein_design_agent")
+    @patch("bioagents.graph.create_dl_agent")
+    @patch("bioagents.graph.create_ml_agent")
     @patch("bioagents.graph.create_coder_agent")
     def test_graph_includes_tool_builder(
         self,
         mock_coder,
+        mock_ml,
+        mock_dl,
         mock_protein,
         mock_builder,
         mock_critic,
@@ -403,6 +407,8 @@ class TestGraphIntegration:
         mock_critic.return_value = MagicMock()
         mock_builder.return_value = MagicMock()
         mock_protein.return_value = MagicMock()
+        mock_ml.return_value = MagicMock()
+        mock_dl.return_value = MagicMock()
         mock_coder.return_value = MagicMock()
 
         # This should not raise an exception
