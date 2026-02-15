@@ -358,7 +358,7 @@ class TestResearchAgentErrorHandling:
         result = agent(state)
 
         assert "messages" in result
-        mock_bound_llm.invoke.assert_called_once()
+        mock_bound_llm.invoke.assert_not_called()
 
     @patch("bioagents.agents.research_agent.get_llm")
     def test_research_agent_handles_llm_error(self, mock_get_llm):

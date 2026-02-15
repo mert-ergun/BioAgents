@@ -178,6 +178,8 @@ class TestCreateGraph:
     @patch("bioagents.graph.create_critic_agent")
     @patch("bioagents.graph.create_tool_builder_agent")
     @patch("bioagents.graph.create_protein_design_agent")
+    @patch("bioagents.graph.create_dl_agent")
+    @patch("bioagents.graph.create_ml_agent")
     @patch("bioagents.graph.create_coder_agent")
     @patch("bioagents.graph.create_ml_agent")
     @patch("bioagents.graph.create_dl_agent")
@@ -186,6 +188,8 @@ class TestCreateGraph:
         mock_dl,
         mock_ml,
         mock_coder,
+        mock_ml,
+        mock_dl,
         mock_protein,
         mock_builder,
         mock_critic,
@@ -205,6 +209,8 @@ class TestCreateGraph:
         mock_critic.return_value = Mock()
         mock_builder.return_value = Mock()
         mock_protein.return_value = Mock()
+        mock_ml.return_value = Mock()
+        mock_dl.return_value = Mock()
         mock_coder.return_value = Mock()
         mock_ml.return_value = Mock()
         mock_dl.return_value = Mock()
@@ -225,6 +231,8 @@ class TestCreateGraph:
     @patch("bioagents.graph.create_critic_agent")
     @patch("bioagents.graph.create_tool_builder_agent")
     @patch("bioagents.graph.create_protein_design_agent")
+    @patch("bioagents.graph.create_dl_agent")
+    @patch("bioagents.graph.create_ml_agent")
     @patch("bioagents.graph.create_coder_agent")
     @patch("bioagents.graph.create_ml_agent")
     @patch("bioagents.graph.create_dl_agent")
@@ -233,6 +241,8 @@ class TestCreateGraph:
         mock_dl,
         mock_ml,
         mock_coder,
+        mock_ml,
+        mock_dl,
         mock_protein,
         mock_builder,
         mock_critic,
@@ -251,6 +261,8 @@ class TestCreateGraph:
         mock_critic.return_value = Mock()
         mock_builder.return_value = Mock()
         mock_protein.return_value = Mock()
+        mock_ml.return_value = Mock()
+        mock_dl.return_value = Mock()
         mock_coder.return_value = Mock()
         mock_ml.return_value = Mock()
         mock_dl.return_value = Mock()
@@ -279,6 +291,8 @@ class TestCreateGraph:
         assert "tool_builder" in supervisor_call_args
         assert "protein_design" in supervisor_call_args
         assert "coder" in supervisor_call_args
+        assert "ml" in supervisor_call_args
+        assert "dl" in supervisor_call_args
 
     @patch("bioagents.graph.create_summary_agent")
     @patch("bioagents.graph.create_supervisor_agent")
@@ -288,6 +302,8 @@ class TestCreateGraph:
     @patch("bioagents.graph.create_critic_agent")
     @patch("bioagents.graph.create_tool_builder_agent")
     @patch("bioagents.graph.create_protein_design_agent")
+    @patch("bioagents.graph.create_dl_agent")
+    @patch("bioagents.graph.create_ml_agent")
     @patch("bioagents.graph.create_coder_agent")
     @patch("bioagents.graph.create_ml_agent")
     @patch("bioagents.graph.create_dl_agent")
@@ -296,6 +312,8 @@ class TestCreateGraph:
         mock_dl,
         mock_ml,
         mock_coder,
+        mock_ml,
+        mock_dl,
         mock_protein,
         mock_builder,
         mock_critic,
@@ -314,6 +332,8 @@ class TestCreateGraph:
         mock_critic.return_value = Mock()
         mock_builder.return_value = Mock()
         mock_protein.return_value = Mock()
+        mock_ml.return_value = Mock()
+        mock_dl.return_value = Mock()
         mock_coder.return_value = Mock()
         mock_ml.return_value = Mock()
         mock_dl.return_value = Mock()
@@ -336,6 +356,8 @@ class TestGraphWorkflow:
     @patch("bioagents.graph.create_critic_agent")
     @patch("bioagents.graph.create_tool_builder_agent")
     @patch("bioagents.graph.create_protein_design_agent")
+    @patch("bioagents.graph.create_dl_agent")
+    @patch("bioagents.graph.create_ml_agent")
     @patch("bioagents.graph.create_coder_agent")
     @patch("bioagents.graph.create_ml_agent")
     @patch("bioagents.graph.create_dl_agent")
@@ -344,6 +366,8 @@ class TestGraphWorkflow:
         mock_dl,
         mock_ml,
         mock_coder,
+        mock_ml,
+        mock_dl,
         mock_protein,
         mock_builder,
         mock_critic,
@@ -374,6 +398,8 @@ class TestGraphWorkflow:
         mock_critic.return_value = Mock()
         mock_builder.return_value = Mock()
         mock_protein.return_value = Mock()
+        mock_ml.return_value = Mock()
+        mock_dl.return_value = Mock()
         mock_coder.return_value = Mock()
         mock_ml.return_value = Mock()
         mock_dl.return_value = Mock()
@@ -391,6 +417,8 @@ class TestGraphWorkflow:
     @patch("bioagents.graph.create_critic_agent")
     @patch("bioagents.graph.create_tool_builder_agent")
     @patch("bioagents.graph.create_protein_design_agent")
+    @patch("bioagents.graph.create_dl_agent")
+    @patch("bioagents.graph.create_ml_agent")
     @patch("bioagents.graph.create_coder_agent")
     @patch("bioagents.graph.create_ml_agent")
     @patch("bioagents.graph.create_dl_agent")
@@ -399,6 +427,8 @@ class TestGraphWorkflow:
         mock_dl,
         mock_ml,
         mock_coder,
+        mock_ml,
+        mock_dl,
         mock_protein,
         mock_builder,
         mock_critic,
@@ -417,6 +447,8 @@ class TestGraphWorkflow:
         mock_critic.return_value = Mock()
         mock_builder.return_value = Mock()
         mock_protein.return_value = Mock()
+        mock_ml.return_value = Mock()
+        mock_dl.return_value = Mock()
         mock_coder.return_value = Mock()
         mock_ml.return_value = Mock()
         mock_dl.return_value = Mock()
@@ -471,6 +503,8 @@ class TestGraphStructure:
     @patch("bioagents.graph.create_critic_agent")
     @patch("bioagents.graph.create_tool_builder_agent")
     @patch("bioagents.graph.create_protein_design_agent")
+    @patch("bioagents.graph.create_dl_agent")
+    @patch("bioagents.graph.create_ml_agent")
     @patch("bioagents.graph.create_coder_agent")
     @patch("bioagents.graph.create_ml_agent")
     @patch("bioagents.graph.create_dl_agent")
@@ -481,6 +515,8 @@ class TestGraphStructure:
         mock_dl,
         mock_ml,
         mock_coder,
+        mock_ml,
+        mock_dl,
         mock_protein,
         mock_builder,
         mock_critic,
@@ -499,6 +535,8 @@ class TestGraphStructure:
         mock_critic.return_value = Mock()
         mock_builder.return_value = Mock()
         mock_protein.return_value = Mock()
+        mock_ml.return_value = Mock()
+        mock_dl.return_value = Mock()
         mock_coder.return_value = Mock()
         mock_ml.return_value = Mock()
         mock_dl.return_value = Mock()
@@ -517,6 +555,8 @@ class TestGraphStructure:
     @patch("bioagents.graph.create_critic_agent")
     @patch("bioagents.graph.create_tool_builder_agent")
     @patch("bioagents.graph.create_protein_design_agent")
+    @patch("bioagents.graph.create_dl_agent")
+    @patch("bioagents.graph.create_ml_agent")
     @patch("bioagents.graph.create_coder_agent")
     @patch("bioagents.graph.create_ml_agent")
     @patch("bioagents.graph.create_dl_agent")
@@ -525,6 +565,8 @@ class TestGraphStructure:
         mock_dl,
         mock_ml,
         mock_coder,
+        mock_ml,
+        mock_dl,
         mock_protein,
         mock_builder,
         mock_critic,
@@ -543,6 +585,8 @@ class TestGraphStructure:
         mock_critic.return_value = Mock()
         mock_builder.return_value = Mock()
         mock_protein.return_value = Mock()
+        mock_ml.return_value = Mock()
+        mock_dl.return_value = Mock()
         mock_coder.return_value = Mock()
         mock_ml.return_value = Mock()
         mock_dl.return_value = Mock()

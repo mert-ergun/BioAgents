@@ -19,6 +19,8 @@ class TestBasicWorkflow:
     @patch("bioagents.graph.create_critic_agent")
     @patch("bioagents.graph.create_tool_builder_agent")
     @patch("bioagents.graph.create_protein_design_agent")
+    @patch("bioagents.graph.create_dl_agent")
+    @patch("bioagents.graph.create_ml_agent")
     @patch("bioagents.graph.create_coder_agent")
     @patch("bioagents.graph.create_ml_agent")
     @patch("bioagents.graph.create_dl_agent")
@@ -27,6 +29,8 @@ class TestBasicWorkflow:
         mock_dl,
         mock_ml,
         mock_coder,
+        mock_ml,
+        mock_dl,
         mock_protein,
         mock_builder,
         mock_critic,
@@ -46,6 +50,8 @@ class TestBasicWorkflow:
         mock_critic.return_value = Mock()
         mock_builder.return_value = Mock()
         mock_protein.return_value = Mock()
+        mock_ml.return_value = Mock()
+        mock_dl.return_value = Mock()
         mock_coder.return_value = Mock()
         mock_ml.return_value = Mock()
         mock_dl.return_value = Mock()
@@ -161,6 +167,8 @@ class TestEndToEndWorkflow:
     @patch("bioagents.graph.create_critic_agent")
     @patch("bioagents.graph.create_tool_builder_agent")
     @patch("bioagents.graph.create_protein_design_agent")
+    @patch("bioagents.graph.create_dl_agent")
+    @patch("bioagents.graph.create_ml_agent")
     @patch("bioagents.graph.create_coder_agent")
     @patch("bioagents.graph.create_ml_agent")
     @patch("bioagents.graph.create_dl_agent")
@@ -169,6 +177,8 @@ class TestEndToEndWorkflow:
         mock_dl,
         mock_ml,
         mock_coder,
+        mock_ml,
+        mock_dl,
         mock_protein,
         mock_builder,
         mock_critic,
@@ -202,6 +212,8 @@ class TestEndToEndWorkflow:
         mock_critic.return_value = Mock()
         mock_builder.return_value = Mock()
         mock_protein.return_value = Mock()
+        mock_ml.return_value = Mock()
+        mock_dl.return_value = Mock()
         mock_coder.return_value = Mock()
         mock_ml.return_value = Mock()
         mock_dl.return_value = Mock()
@@ -226,6 +238,8 @@ class TestEndToEndWorkflow:
     @patch("bioagents.graph.create_critic_agent")
     @patch("bioagents.graph.create_tool_builder_agent")
     @patch("bioagents.graph.create_protein_design_agent")
+    @patch("bioagents.graph.create_dl_agent")
+    @patch("bioagents.graph.create_ml_agent")
     @patch("bioagents.graph.create_coder_agent")
     @patch("bioagents.graph.create_ml_agent")
     @patch("bioagents.graph.create_dl_agent")
@@ -234,6 +248,8 @@ class TestEndToEndWorkflow:
         mock_dl,
         mock_ml,
         mock_coder,
+        mock_ml,
+        mock_dl,
         mock_protein,
         mock_builder,
         mock_critic,
@@ -277,6 +293,8 @@ class TestEndToEndWorkflow:
         mock_critic.return_value = Mock()
         mock_builder.return_value = Mock()
         mock_protein.return_value = Mock()
+        mock_ml.return_value = Mock()
+        mock_dl.return_value = Mock()
         mock_coder.return_value = Mock()
         mock_ml.return_value = Mock()
         mock_dl.return_value = Mock()
