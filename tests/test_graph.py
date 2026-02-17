@@ -181,8 +181,6 @@ class TestCreateGraph:
     @patch("bioagents.graph.create_dl_agent")
     @patch("bioagents.graph.create_ml_agent")
     @patch("bioagents.graph.create_coder_agent")
-    @patch("bioagents.graph.create_ml_agent")
-    @patch("bioagents.graph.create_dl_agent")
     def test_create_graph_basic(
         self,
         mock_dl,
@@ -232,8 +230,6 @@ class TestCreateGraph:
     @patch("bioagents.graph.create_dl_agent")
     @patch("bioagents.graph.create_ml_agent")
     @patch("bioagents.graph.create_coder_agent")
-    @patch("bioagents.graph.create_ml_agent")
-    @patch("bioagents.graph.create_dl_agent")
     def test_create_graph_agent_creation_with_tools(
         self,
         mock_dl,
@@ -301,8 +297,6 @@ class TestCreateGraph:
     @patch("bioagents.graph.create_dl_agent")
     @patch("bioagents.graph.create_ml_agent")
     @patch("bioagents.graph.create_coder_agent")
-    @patch("bioagents.graph.create_ml_agent")
-    @patch("bioagents.graph.create_dl_agent")
     def test_create_graph_returns_compiled(
         self,
         mock_dl,
@@ -353,8 +347,6 @@ class TestGraphWorkflow:
     @patch("bioagents.graph.create_dl_agent")
     @patch("bioagents.graph.create_ml_agent")
     @patch("bioagents.graph.create_coder_agent")
-    @patch("bioagents.graph.create_ml_agent")
-    @patch("bioagents.graph.create_dl_agent")
     def test_graph_workflow_simple(
         self,
         mock_dl,
@@ -412,8 +404,6 @@ class TestGraphWorkflow:
     @patch("bioagents.graph.create_dl_agent")
     @patch("bioagents.graph.create_ml_agent")
     @patch("bioagents.graph.create_coder_agent")
-    @patch("bioagents.graph.create_ml_agent")
-    @patch("bioagents.graph.create_dl_agent")
     def test_graph_entry_point(
         self,
         mock_dl,
@@ -496,8 +486,6 @@ class TestGraphStructure:
     @patch("bioagents.graph.create_dl_agent")
     @patch("bioagents.graph.create_ml_agent")
     @patch("bioagents.graph.create_coder_agent")
-    @patch("bioagents.graph.create_ml_agent")
-    @patch("bioagents.graph.create_dl_agent")
     @patch("bioagents.graph.ToolNode")
     def test_tool_nodes_created(
         self,
@@ -546,8 +534,6 @@ class TestGraphStructure:
     @patch("bioagents.graph.create_dl_agent")
     @patch("bioagents.graph.create_ml_agent")
     @patch("bioagents.graph.create_coder_agent")
-    @patch("bioagents.graph.create_ml_agent")
-    @patch("bioagents.graph.create_dl_agent")
     def test_partial_agent_node_wrapping(
         self,
         mock_dl,

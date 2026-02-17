@@ -384,8 +384,6 @@ class TestGraphIntegration:
     @patch("bioagents.graph.create_dl_agent")
     @patch("bioagents.graph.create_ml_agent")
     @patch("bioagents.graph.create_coder_agent")
-    @patch("bioagents.graph.create_ml_agent")
-    @patch("bioagents.graph.create_dl_agent")
     def test_graph_includes_tool_builder(
         self,
         mock_dl,

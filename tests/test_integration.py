@@ -22,8 +22,6 @@ class TestBasicWorkflow:
     @patch("bioagents.graph.create_dl_agent")
     @patch("bioagents.graph.create_ml_agent")
     @patch("bioagents.graph.create_coder_agent")
-    @patch("bioagents.graph.create_ml_agent")
-    @patch("bioagents.graph.create_dl_agent")
     def test_graph_creation_integration(
         self,
         mock_dl,
@@ -168,8 +166,6 @@ class TestEndToEndWorkflow:
     @patch("bioagents.graph.create_dl_agent")
     @patch("bioagents.graph.create_ml_agent")
     @patch("bioagents.graph.create_coder_agent")
-    @patch("bioagents.graph.create_ml_agent")
-    @patch("bioagents.graph.create_dl_agent")
     def test_simple_query_workflow(
         self,
         mock_dl,
@@ -237,8 +233,6 @@ class TestEndToEndWorkflow:
     @patch("bioagents.graph.create_dl_agent")
     @patch("bioagents.graph.create_ml_agent")
     @patch("bioagents.graph.create_coder_agent")
-    @patch("bioagents.graph.create_ml_agent")
-    @patch("bioagents.graph.create_dl_agent")
     def test_multi_step_workflow(
         self,
         mock_dl,
