@@ -107,6 +107,59 @@
         }
         .message-content th { background: rgba(0,0,0,0.3); }
 
+        /* Citation styling */
+        .citation {
+            cursor: pointer;
+            color: #07b6d5;
+            font-size: 0.75em;
+            vertical-align: super;
+            padding: 0 2px;
+            font-weight: 600;
+            transition: all 0.2s;
+            text-decoration: none;
+        }
+
+        .citation:hover {
+            color: #0dcaf0;
+            text-decoration: underline;
+        }
+
+        /* Hover card */
+        .reference-hover-card {
+            position: fixed;
+            z-index: 1000;
+            max-width: 400px;
+            background: #1a2628;
+            border: 1px solid rgba(7, 182, 213, 0.3);
+            border-radius: 0.5rem;
+            padding: 1rem;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            animation: fadeIn 0.2s;
+        }
+
+        .reference-hover-card a {
+            display: inline-block;
+            margin-top: 0.5rem;
+        }
+
+        /* Reference panel items */
+        .reference-item {
+            transition: all 0.2s;
+            cursor: pointer;
+        }
+
+        .reference-item:hover {
+            transform: translateX(4px);
+            border-color: rgba(7, 182, 213, 0.3) !important;
+        }
+
+        .citation-number {
+            color: #07b6d5;
+            font-weight: 700;
+            font-family: ui-monospace, monospace;
+            flex-shrink: 0;
+        }
+
         /* Animations */
         @keyframes fadeIn {
             from { opacity: 0; transform: translateY(10px); }
@@ -393,6 +446,12 @@
                                 Reasoning
                             </span>
                         </button>
+                        <button class="tab-btn flex-1 py-3 text-xs font-medium text-slate-500 hover:text-slate-300 border-b-2 border-transparent transition-all" data-tab="references">
+                            <span class="flex items-center justify-center gap-1.5">
+                                <span class="material-symbols-outlined text-[16px]">article</span>
+                                References
+                            </span>
+                        </button>
                     </div>
 
                     <!-- Tab Content: Artifacts -->
@@ -422,6 +481,20 @@
                         <h4 class="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-3">Reasoning Trace</h4>
                         <div class="bg-black/40 rounded-lg p-3 font-mono text-[10px] text-slate-400 border border-white/5 overflow-auto" id="auditLog">
                             <pre class="whitespace-pre-wrap">// Reasoning trace will appear here when agents process your query...</pre>
+                        </div>
+                    </div>
+
+                    <!-- Tab Content: References -->
+                    <div class="flex-1 overflow-y-auto p-3 custom-scrollbar tab-content hidden min-h-0" id="referencesTab">
+                        <div class="flex items-center justify-between mb-3">
+                            <h4 class="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Citations</h4>
+                            <span class="text-[10px] text-slate-600" id="referenceCount">0 refs</span>
+                        </div>
+                        <div class="flex flex-col gap-2" id="referenceList">
+                            <div class="text-center py-6 text-text-subtle text-xs">
+                                <span class="material-symbols-outlined text-2xl text-border-dark mb-2 block">article</span>
+                                No references yet
+                            </div>
                         </div>
                     </div>
                 </div>

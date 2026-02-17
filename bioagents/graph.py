@@ -1,5 +1,6 @@
 """LangGraph multi-agent workflow definition."""
 
+import logging
 from functools import partial
 from typing import Annotated, Literal
 
@@ -22,6 +23,8 @@ from bioagents.agents.tool_builder_agent import create_tool_builder_agent
 from bioagents.learning.ace_integration import (
     track_agent_execution,
 )
+from bioagents.references.reference_extractor import extract_references_from_messages
+from bioagents.references.reference_manager import ReferenceManager
 from bioagents.tools.analysis_tools import (
     analyze_amino_acid_composition,
     calculate_isoelectric_point,
@@ -41,6 +44,8 @@ from bioagents.tools.structural_tools import (
 from bioagents.tools.tool_builder_tools import get_tool_builder_tools
 from bioagents.tools.tool_universe import tool_universe_call_tool, tool_universe_find_tools
 
+logger = logging.getLogger(__name__)
+
 
 class AgentState(dict):
     """
@@ -51,12 +56,14 @@ class AgentState(dict):
         next: The next agent to route to (set by supervisor)
         reasoning: The reasoning behind supervisor's decision
         output_dir: Directory path for saving output files (optional)
+        references: Reference manager for tracking citations (optional)
     """
 
     messages: Annotated[list[BaseMessage], add_messages]
     next: str
     reasoning: str
     output_dir: str | None = None
+    references: ReferenceManager | None = None
 
 
 def agent_node(state, agent, name):
@@ -77,6 +84,13 @@ def agent_node(state, agent, name):
     if result.get("messages"):
         for msg in result["messages"]:
             msg.name = name
+
+    # Extract references from messages if reference manager exists
+    if state.get("references") is not None and result.get("messages"):
+        refs = extract_references_from_messages(result["messages"])
+        if refs:
+            state["references"].add_references(refs)
+            logger.info(f"Extracted {len(refs)} references from {name} agent")
 
     # ACE tracking (only if enabled - zero overhead if disabled)
     track_agent_execution(state, result, name)
@@ -141,7 +155,7 @@ def route_supervisor(
     return "summary" if next_agent == "FINISH" else next_agent
 
 
-def create_graph():
+def create_graph(_initialize_references: bool = True):
     """
     Create and compile the multi-agent LangGraph workflow.
 
@@ -150,6 +164,9 @@ def create_graph():
     2. Each agent can use tools and return to supervisor
     3. Workflow continues until supervisor says FINISH
     4. Tool Builder can create new tools when existing ones are insufficient
+
+    Args:
+        _initialize_references: Whether to initialize the reference manager (reserved for future use)
 
     Returns:
         A compiled StateGraph ready for execution

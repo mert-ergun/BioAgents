@@ -38,6 +38,10 @@
       Synthesize findings rather than just repeating them
     </instruction>
 
+    <instruction priority="high">
+      Use numbered citations [1], [2], [3] when referencing sources from the research agent
+    </instruction>
+
     <instruction priority="medium">
       Highlight the most important or interesting results
     </instruction>
