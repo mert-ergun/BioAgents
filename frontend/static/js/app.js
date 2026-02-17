@@ -52,6 +52,10 @@ const state = {
         autoScroll: true,
         notifications: true,
         theme: 'dark',
+        apiKeys: {
+            openai: '',
+            gemini: '',
+        },
     },
     notifications: [],
     sidebarOpen: true,
@@ -277,6 +281,9 @@ function loadFromStorage() {
             state.sessions = parsed.sessions || [];
             state.currentSessionId = parsed.currentSessionId;
             state.settings = { ...state.settings, ...parsed.settings };
+            if (!state.settings.apiKeys) {
+                state.settings.apiKeys = { openai: '', gemini: '' };
+            }
 
             // Load current session data (but NOT artifacts - they should be regenerated)
             const session = state.sessions.find(s => s.id === state.currentSessionId);
@@ -539,10 +546,11 @@ async function handleSubmit() {
     logTerminal(`Query: "${query.substring(0, 50)}${query.length > 50 ? '...' : ''}"`);
 
     try {
+        const apiKeys = getApiKeysPayload();
         if (state.isConnected && state.ws?.readyState === WebSocket.OPEN) {
-            state.ws.send(JSON.stringify({ type: 'query', content: query }));
+            state.ws.send(JSON.stringify({ type: 'query', content: query, api_keys: apiKeys }));
         } else {
-            await sendQueryViaRest(query);
+            await sendQueryViaRest(query, apiKeys);
         }
     } catch (error) {
         console.error('Query error:', error);
@@ -550,13 +558,24 @@ async function handleSubmit() {
     }
 }
 
-async function sendQueryViaRest(query) {
+function getApiKeysPayload() {
+    const keys = state.settings?.apiKeys || {};
+    const payload = {};
+    if (keys.openai?.trim()) payload.openai = keys.openai.trim();
+    if (keys.gemini?.trim()) payload.gemini = keys.gemini.trim();
+    return Object.keys(payload).length ? payload : undefined;
+}
+
+async function sendQueryViaRest(query, apiKeys) {
     logTerminal('Using REST API fallback');
+
+    const body = { query };
+    if (apiKeys && Object.keys(apiKeys).length) body.api_keys = apiKeys;
 
     const response = await fetch(`${CONFIG.apiBaseUrl}/api/query`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query }),
+        body: JSON.stringify(body),
     });
 
     if (!response.ok) {
@@ -1940,6 +1959,24 @@ function showSettingsPanel() {
                         <span class="absolute top-1 ${state.settings.notifications ? 'right-1' : 'left-1'} w-4 h-4 bg-white rounded-full transition-all"></span>
                     </button>
                 </div>
+                <div class="pt-4 border-t border-white/5 space-y-3">
+                    <p class="text-sm font-medium text-white flex items-center gap-2">
+                        <span class="material-symbols-outlined text-primary text-[18px]">key</span>
+                        API Keys (optional)
+                    </p>
+                    <p class="text-xs text-slate-400">Use your own API keys. Leave blank to use server-configured keys.</p>
+                    <div>
+                        <label class="block text-xs text-slate-500 mb-1">OpenAI API Key</label>
+                        <input type="password" id="apiKeyOpenAI" class="api-key-input w-full px-3 py-2 rounded-lg bg-black/30 border border-white/10 text-sm text-white placeholder-slate-500 focus:border-primary/50 focus:ring-1 focus:ring-primary/30 outline-none" placeholder="sk-..." value="${state.settings.apiKeys?.openai || ''}" autocomplete="off"/>
+                    </div>
+                    <div>
+                        <label class="block text-xs text-slate-500 mb-1">Google Gemini API Key</label>
+                        <input type="password" id="apiKeyGemini" class="api-key-input w-full px-3 py-2 rounded-lg bg-black/30 border border-white/10 text-sm text-white placeholder-slate-500 focus:border-primary/50 focus:ring-1 focus:ring-primary/30 outline-none" placeholder="AIza..." value="${state.settings.apiKeys?.gemini || ''}" autocomplete="off"/>
+                    </div>
+                    <button class="api-keys-save w-full py-2 px-4 text-sm font-medium bg-primary/20 hover:bg-primary/30 border border-primary/30 text-primary rounded-lg transition-all">
+                        Save API Keys
+                    </button>
+                </div>
                 <div class="pt-4 border-t border-white/5">
                     <button class="clear-all-data w-full py-2.5 px-4 text-sm font-medium text-red-400 hover:text-red-300 hover:bg-red-500/10 border border-red-500/30 rounded-lg transition-all">
                         Clear All Data
@@ -1974,6 +2011,17 @@ function showSettingsPanel() {
 
             showToast(`${setting} ${state.settings[setting] ? 'enabled' : 'disabled'}`, 'success');
         });
+    });
+
+    // Save API keys
+    modal.querySelector('.api-keys-save')?.addEventListener('click', () => {
+        const openaiInput = modal.querySelector('#apiKeyOpenAI');
+        const geminiInput = modal.querySelector('#apiKeyGemini');
+        if (!state.settings.apiKeys) state.settings.apiKeys = { openai: '', gemini: '' };
+        state.settings.apiKeys.openai = openaiInput?.value?.trim() || '';
+        state.settings.apiKeys.gemini = geminiInput?.value?.trim() || '';
+        saveToStorage();
+        showToast('API keys saved', 'success');
     });
 
     // Clear all data

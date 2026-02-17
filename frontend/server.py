@@ -22,6 +22,7 @@ from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from pydantic import BaseModel
 
 from bioagents.graph import create_graph
+from bioagents.llms.llm_provider import set_api_keys_override
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -57,6 +58,7 @@ app.mount("/static", StaticFiles(directory=FRONTEND_DIR / "static"), name="stati
 
 class QueryRequest(BaseModel):
     query: str
+    api_keys: dict[str, str] | None = None
 
 
 class QueryResponse(BaseModel):
@@ -494,6 +496,7 @@ async def query_bioagents(request: QueryRequest):
     """
 
     async def generate():
+        set_api_keys_override(request.api_keys)
         graph = create_graph()
         initial_state = {"messages": [HumanMessage(content=request.query)]}
 
@@ -693,9 +696,10 @@ async def websocket_endpoint(websocket: WebSocket):
 
             if data.get("type") == "query":
                 query = data.get("content", "")
+                api_keys = data.get("api_keys")
                 if query:
                     try:
-                        await run_bioagents_streaming(query, websocket)
+                        await run_bioagents_streaming(query, websocket, api_keys=api_keys)
                     except Exception as e:
                         logger.error(f"Query execution error: {e}")
                         await websocket.send_json({"type": "error", "message": str(e)})
@@ -710,8 +714,11 @@ async def websocket_endpoint(websocket: WebSocket):
         manager.disconnect(websocket)
 
 
-async def run_bioagents_streaming(query: str, websocket: WebSocket):
+async def run_bioagents_streaming(
+    query: str, websocket: WebSocket, api_keys: dict[str, str] | None = None
+):
     """Execute BioAgents query with WebSocket streaming."""
+    set_api_keys_override(api_keys)
     graph = create_graph()
     initial_state = {"messages": [HumanMessage(content=query)]}
 

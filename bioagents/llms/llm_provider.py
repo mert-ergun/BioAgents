@@ -1,6 +1,7 @@
 """LLM provider configuration supporting OpenAI, Ollama, and Google Gemini."""
 
 import os
+from contextvars import ContextVar
 from typing import Literal
 
 from langchain_google_genai import ChatGoogleGenerativeAI
@@ -8,6 +9,25 @@ from langchain_openai import ChatOpenAI
 
 from bioagents.llms.rate_limiter import RateLimitedLLM, RateLimiter
 from bioagents.prompts.prompt_loader import get_prompt_llm_model
+
+# Context var for per-request API key overrides (set by server when user provides keys)
+_api_keys_override: ContextVar[dict[str, str] | None] = ContextVar(
+    "api_keys_override", default=None
+)
+
+
+def set_api_keys_override(api_keys: dict[str, str] | None) -> None:
+    """Set API key overrides for the current context (e.g., per-request from frontend)."""
+    _api_keys_override.set(api_keys)
+
+
+def _get_api_key(provider: str) -> str | None:
+    """Get API key for provider, checking override first, then os.environ."""
+    override = _api_keys_override.get()
+    if override and provider in override and override[provider]:
+        return override[provider]
+    return None
+
 
 # Global rate limiters - shared across all LLM instances
 _rate_limiters: dict[str, RateLimiter] = {}
@@ -92,9 +112,11 @@ def get_llm(
 
     if provider == "openai":
         model = model or "gpt-5.1"
-        api_key = os.getenv("OPENAI_API_KEY")
+        api_key = _get_api_key("openai") or os.getenv("OPENAI_API_KEY")
         if not api_key:
-            raise ValueError("OPENAI_API_KEY environment variable not set")
+            raise ValueError(
+                "OPENAI_API_KEY not set. Add it in Settings or set the OPENAI_API_KEY environment variable."
+            )
 
         llm = ChatOpenAI(
             model=model,
@@ -133,9 +155,11 @@ def get_llm(
 
     elif provider == "gemini":
         model = model or "gemini-2.5-flash"
-        api_key = os.getenv("GEMINI_API_KEY")
+        api_key = _get_api_key("gemini") or os.getenv("GEMINI_API_KEY")
         if not api_key:
-            raise ValueError("GEMINI_API_KEY environment variable not set")
+            raise ValueError(
+                "GEMINI_API_KEY not set. Add it in Settings or set the GEMINI_API_KEY environment variable."
+            )
 
         llm = ChatGoogleGenerativeAI(
             model=model,

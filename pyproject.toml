@@ -35,7 +35,7 @@ bioagents-web = "frontend.server:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["bioagents*"]
+include = ["bioagents*", "frontend*"]
 exclude = ["tests*", "docs*", "data*", "config*", "notebooks*"]
 
 [dependency-groups]
