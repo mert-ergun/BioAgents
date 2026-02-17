@@ -190,6 +190,7 @@
       - Number of results found
       - Key papers/data with titles, authors, and dates
       - Brief summary of relevant findings
+      - Use numbered citations [1], [2], [3] when referencing sources in your response
       - DOI or identifiers when available
     </instruction>
 
