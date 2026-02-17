@@ -391,8 +391,6 @@ class TestGraphIntegration:
         mock_dl,
         mock_ml,
         mock_coder,
-        mock_ml,
-        mock_dl,
         mock_protein,
         mock_builder,
         mock_critic,
