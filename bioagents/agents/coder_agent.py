@@ -80,68 +80,50 @@ def create_coder_node(agent: CodeAgent) -> Callable:
         A function that can be used as a LangGraph node
     """
 
-    def coder_node(state: dict[str, Any]) -> dict[str, Any]:
-        messages = state["messages"]
+    def create_coder_agent():
+        """Create Coder Agent with memory-based output."""
+        llm = get_llm(prompt_name="coder")
 
-        original_query = extract_original_query(messages)
-        available_data = extract_available_data(messages)
-        output_dir = state.get("output_dir")
+        CODER_AGENT_MEMORY_PROMPT = """
+    You are the Coder Agent. Write code solutions for biological problems.
 
-        task = build_task_with_output_dir(
-            original_query, available_data, output_dir, system_prompt=CODER_AGENT_PROMPT
-        )
+    OUTPUT FORMAT (JSON):
+    {
+        "code": "...full working code...",
+        "language": "python" | "r" | "javascript",
+        "description": "...what this code does...",
+        "dependencies": [...list of packages needed...],
+        "execution_ready": boolean
+    }
 
-        try:
-            logger.info("Starting coder agent execution")
-            result = agent.run(task)
-            content = format_coder_result(result)
+    Return ONLY valid JSON.
+    """
 
-            execution_steps: list[dict[str, Any]] = []
-            for step in agent.memory.steps:
-                if hasattr(step, "task"):
-                    continue
+        def coder_node(state):
+            try:
+                messages = state["messages"]
+                messages_with_system = [
+                    SystemMessage(content=CODER_AGENT_MEMORY_PROMPT),
+                    *messages
+                ]
+                
+                response = llm.invoke(messages_with_system)
+                raw_text = response.content if hasattr(response, "content") else str(response)
+                structured_data = parse_json_response(raw_text)
 
-                step_data: dict[str, Any] = {
-                    "step": len(execution_steps) + 1,
+                return {
+                    "data": structured_data,
+                    "raw_output": raw_text,
+                    "tool_calls": [],
+                    "error": None,
+                }
+            except Exception as e:
+                logger.error(f"Coder agent error: {e}")
+                return {
+                    "data": {},
+                    "raw_output": "",
+                    "tool_calls": [],
+                    "error": str(e),
                 }
 
-                if hasattr(step, "thought") and step.thought:
-                    step_data["thought"] = step.thought
-                elif hasattr(step, "model_output") and step.model_output:
-                    thought = step.model_output
-
-                    thought = re.sub(r"```python\n[\s\S]*?```", "", thought).strip()
-                    if thought:
-                        step_data["thought"] = thought
-
-                if hasattr(step, "code") and step.code:
-                    step_data["code"] = step.code
-                elif hasattr(step, "model_output") and step.model_output:
-                    code_match = re.search(r"```python\n([\s\S]*?)```", step.model_output)
-                    if code_match:
-                        step_data["code"] = code_match.group(1)
-
-                if hasattr(step, "observations") and step.observations:
-                    step_data["output"] = str(step.observations)
-
-                if hasattr(step, "logs") and step.logs:
-                    step_data["logs"] = step.logs
-
-                if any(k in step_data for k in ["thought", "code", "output", "logs"]):
-                    execution_steps.append(step_data)
-
-            logger.info(f"Extracted {len(execution_steps)} execution steps")
-
-            return {
-                "messages": [AIMessage(content=content)],
-                "next": "supervisor",
-                "code_steps": execution_steps,
-            }
-        except Exception as e:
-            import traceback
-
-            error_msg = f"Error executing code: {e}\n\nTraceback:\n{traceback.format_exc()}"
-            logger.error(f"Coder agent error: {error_msg}")
-            return {"messages": [AIMessage(content=error_msg)], "next": "supervisor"}
-
-    return coder_node
+        return coder_node

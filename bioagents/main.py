@@ -1,6 +1,7 @@
 """Main entry point for the BioAgents multi-agent system."""
 
 import sys
+import json
 
 from dotenv import load_dotenv
 from langchain_core.messages import HumanMessage
@@ -78,7 +79,86 @@ def main():
     print(query.strip())
     print_separator("-")
 
-    initial_state = {"messages": [HumanMessage(content=query)]}
+    initial_state = {
+        "messages": [HumanMessage(content=query)],
+        "next": None,
+        "reasoning": "",
+        "memory": {
+            # Pre-initialize memory structure for all possible agents
+            "research": {
+                "status": "pending",
+                "timestamp": None,
+                "data": {},
+                "raw_output": "",
+                "errors": [],
+                "tool_calls": [],
+            },
+            "analysis": {
+                "status": "pending",
+                "timestamp": None,
+                "data": {},
+                "raw_output": "",
+                "errors": [],
+                "tool_calls": [],
+            },
+            "coder": {
+                "status": "pending",
+                "timestamp": None,
+                "data": {},
+                "raw_output": "",
+                "errors": [],
+                "tool_calls": [],
+            },
+            "ml": {
+                "status": "pending",
+                "timestamp": None,
+                "data": {},
+                "raw_output": "",
+                "errors": [],
+                "tool_calls": [],
+            },
+            "dl": {
+                "status": "pending",
+                "timestamp": None,
+                "data": {},
+                "raw_output": "",
+                "errors": [],
+                "tool_calls": [],
+            },
+            "protein_design": {
+                "status": "pending",
+                "timestamp": None,
+                "data": {},
+                "raw_output": "",
+                "errors": [],
+                "tool_calls": [],
+            },
+            "tool_builder": {
+                "status": "pending",
+                "timestamp": None,
+                "data": {},
+                "raw_output": "",
+                "errors": [],
+                "tool_calls": [],
+            },
+            "report": {
+                "status": "pending",
+                "timestamp": None,
+                "data": {},
+                "raw_output": "",
+                "errors": [],
+                "tool_calls": [],
+            },
+            "critic": {
+                "status": "pending",
+                "timestamp": None,
+                "data": {},
+                "raw_output": "",
+                "errors": [],
+                "tool_calls": [],
+            },
+        },
+    }
 
     print("\nMulti-Agent Workflow Starting...\n")
 
@@ -103,15 +183,47 @@ def main():
                     print(f"Agent '{node_name}' working...")
 
         print(f"\n{'=' * 80}")
-        print("FINAL RESULTS")
+        print("FINAL RESULTS (FROM SHARED MEMORY)")
         print_separator()
 
         # Invoke with LangSmith config for final execution trace
         final_result = graph.invoke(initial_state, config=langsmith_config)
 
-        # Print all messages with better formatting
-        for i, message in enumerate(final_result["messages"], 1):
-            print_message_details(message, i)
+        # Print memory contents instead of messages
+        memory = final_result.get("memory", {})
+
+        for agent_name in [
+            "research", "analysis", "coder", "ml", "dl",
+            "protein_design", "report", "critic", "summary"
+        ]:
+            agent_mem = memory.get(agent_name, {})
+            if agent_mem.get("status") == "success":
+                print(f"\n[{agent_name.upper()}]")
+                print(f"Status: {agent_mem['status']}")
+                if agent_mem.get("data"):
+                    print("Data:")
+                    print(json.dumps(agent_mem["data"], indent=2))
+                if agent_mem.get("raw_output"):
+                    print("Output:")
+                    print(agent_mem["raw_output"][:500])  # First 500 chars
+
+        # ── FIX: summary agent now always runs after report; check both ──
+        # The final user-facing output lives in summary memory when available,
+        # otherwise fall back to report memory.
+        summary_mem = memory.get("summary", {})
+        report_mem = memory.get("report", {})
+
+        final_output = (
+            summary_mem.get("raw_output")
+            or report_mem.get("raw_output")
+            or ""
+        )
+
+        if final_output:
+            print(f"\n{'=' * 80}")
+            print("USER-FACING SUMMARY")
+            print("=" * 80)
+            print(final_output)
 
         print(f"\n{('=' * 80)}")
         print("Multi-Agent Workflow Completed Successfully!")

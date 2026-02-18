@@ -1,10 +1,9 @@
-"""Summary Agent for user-facing workflow output."""
+"""Summary Agent - Final user-facing output layer."""
 
+import json
 import logging
-from typing import Literal
 
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
-from pydantic import BaseModel
+from langchain_core.messages import SystemMessage, HumanMessage
 
 from bioagents.llms.llm_provider import get_llm
 from bioagents.prompts.prompt_loader import load_prompt
@@ -13,108 +12,109 @@ logger = logging.getLogger(__name__)
 
 SUMMARY_AGENT_PROMPT = load_prompt("summary")
 
+SUMMARY_AGENT_SYSTEM_PROMPT = """
+You are the Summary Agent. Generate the final user-facing output.
 
-class ExecutionMode(BaseModel):
-    """Model for detecting execution mode."""
+If memory contains results from multiple agents, synthesize them into a comprehensive summary.
+If memory is empty, answer the user's question directly and concisely.
 
-    mode: Literal["direct_answer", "full_summary"]
-    reasoning: str
+Do NOT mention technical details like agent names or tool calls.
+Focus on the scientific/biological findings and results.
 
-
-def analyze_execution_mode(messages: list) -> tuple[Literal["direct_answer", "full_summary"], str]:
-    """
-    Analyze the message history to determine if this was a simple single-turn query
-    or a complex multi-agent execution.
-
-    Args:
-        messages: The list of messages from the state
-
-    Returns:
-        Tuple of (mode, reasoning)
-    """
-    # Count different message types
-    human_messages = [m for m in messages if isinstance(m, HumanMessage)]
-    ai_messages = [m for m in messages if isinstance(m, AIMessage)]
-
-    # Count tool calls across all AI messages
-    total_tool_calls = 0
-    for msg in ai_messages:
-        if hasattr(msg, "tool_calls") and msg.tool_calls:
-            total_tool_calls += len(msg.tool_calls)
-
-    # Logic for determining mode
-    is_simple_query = (
-        len(human_messages) == 1  # Only the original user query
-        and total_tool_calls == 0  # No tools were called
-        and len(ai_messages) <= 1  # At most one AI response (direct answer)
-    )
-
-    if is_simple_query:
-        return (
-            "direct_answer",
-            "Single user query with no tool calls or agent routing detected.",
-        )
-    else:
-        return (
-            "full_summary",
-            f"Complex execution: {len(human_messages)} user messages, "
-            f"{total_tool_calls} tool calls, {len(ai_messages)} agent messages.",
-        )
+Output a well-formatted, human-readable summary.
+"""
 
 
 def create_summary_agent():
     """
-    Create the Summary Agent node function.
-
-    The summary agent is the final user-facing output layer.
-    It intelligently detects whether to provide a direct answer
-    or summarize a complex multi-agent execution.
+    Create the Summary Agent.
 
     Returns:
-        A function that can be used as a LangGraph node
+        Agent node function
     """
     llm = get_llm(prompt_name="summary")
 
     def summary_node(state):
-        """
-        The summary agent node function.
+        """Summary agent - generates final user output."""
+        try:
+            memory = state.get("memory", {}) or {}
+            messages = state.get("messages", []) or []
+            
+            # Find user message
+            user_message = None
+            for m in messages:
+                if isinstance(m, HumanMessage):
+                    user_message = m
+                    break
+            
+            if user_message is None:
+                user_message = HumanMessage(content="")
 
-        Args:
-            state: The current AgentState
+            # Check if memory has results
+            has_results = any(
+                agent_data.get("status") == "success" and agent_data.get("data")
+                for agent_data in memory.values()
+            )
 
-        Returns:
-            A dict with the 'messages' key containing the agent's response
-        """
-        messages = state["messages"]
+            if not has_results:
+                # Empty memory: answer directly
+                prompt = """
+You are a helpful assistant. Answer the user's question directly and clearly.
+Do not mention agents, tools, or technical systems.
+"""
+                full_prompt = prompt
+            else:
+                # Has memory: synthesize findings
+                memory_context = format_memory_for_summary(memory)
+                full_prompt = f"""{SUMMARY_AGENT_SYSTEM_PROMPT}
 
-        # Analyze the execution to determine output mode
-        mode, reasoning = analyze_execution_mode(messages)
+SHARED MEMORY STATE:
+{memory_context}
+"""
 
-        logger.info(f"Summary Agent: Mode='{mode}'. Reasoning: {reasoning}")
+            # Invoke LLM
+            response = llm.invoke([
+                SystemMessage(content=full_prompt),
+                user_message,
+            ])
 
-        # Create a mode-aware system prompt
-        mode_instruction = (
-            "EXECUTION MODE: DIRECT ANSWER\n"
-            "The user asked a simple question with no agent involvement.\n"
-            "Provide a direct, concise answer without mentioning agents or tools.\n"
-            "Keep the response focused and natural."
-            if mode == "direct_answer"
-            else "EXECUTION MODE: FULL SUMMARY\n"
-            "Multiple agents and tools were involved in this execution.\n"
-            "Summarize the workflow, agents used, tools called, and key results.\n"
-            "Use clear section headers and maintain a user-friendly tone."
-        )
+            raw_output = response.content if hasattr(response, "content") else str(response)
 
-        # Build messages with system prompt
-        messages_with_system = [
-            SystemMessage(content=SUMMARY_AGENT_PROMPT),
-            SystemMessage(content=mode_instruction),
-            *messages,
-        ]
+            return {
+                "data": {"summary": raw_output},
+                "raw_output": raw_output,
+                "tool_calls": [],
+                "error": None,
+            }
 
-        # Invoke the LLM with the message history
-        response = llm.invoke(messages_with_system)
-
-        return {"messages": [response]}
+        except Exception as e:
+            logger.error(f"Summary agent error: {e}", exc_info=True)
+            return {
+                "data": {"summary": f"Error: {str(e)}"},
+                "raw_output": str(e),
+                "tool_calls": [],
+                "error": str(e),
+            }
 
     return summary_node
+
+
+def format_memory_for_summary(memory: dict) -> str:
+    """Format memory for summary generation."""
+    lines = []
+    
+    for agent_name in sorted(memory.keys()):
+        agent_data = memory[agent_name]
+        
+        if agent_data.get("status") != "success":
+            continue
+        
+        lines.append(f"\n{agent_name.upper()}:")
+        
+        if agent_data.get("data"):
+            try:
+                lines.append(json.dumps(agent_data["data"], indent=2))
+            except (TypeError, ValueError):
+                lines.append(str(agent_data["data"]))
+    
+    return "\n".join(lines) if lines else "No data available."

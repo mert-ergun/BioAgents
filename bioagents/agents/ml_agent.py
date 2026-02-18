@@ -81,7 +81,12 @@ def create_ml_node(agent: CodeAgent) -> Callable:
     """
 
     def ml_node(state: dict[str, Any]) -> dict[str, Any]:
-        messages = state["messages"]
+        """Memory-based ML node.
+
+        Writes structured results into shared memory via the agent wrapper.
+        Returns a dict: {data, raw_output, tool_calls, error}
+        """
+        messages = state.get("messages", [])
 
         original_query = extract_original_query(messages)
         available_data = extract_available_data(messages)
@@ -97,19 +102,16 @@ def create_ml_node(agent: CodeAgent) -> Callable:
             content = format_coder_result(result)
 
             execution_steps: list[dict[str, Any]] = []
-            for step in agent.memory.steps:
+            for step in getattr(agent, "memory", []).steps if hasattr(agent, "memory") else []:
                 if hasattr(step, "task"):
                     continue
 
-                step_data: dict[str, Any] = {
-                    "step": len(execution_steps) + 1,
-                }
+                step_data: dict[str, Any] = {"step": len(execution_steps) + 1}
 
                 if hasattr(step, "thought") and step.thought:
                     step_data["thought"] = step.thought
                 elif hasattr(step, "model_output") and step.model_output:
                     thought = step.model_output
-
                     thought = re.sub(r"```python\n[\s\S]*?```", "", thought).strip()
                     if thought:
                         step_data["thought"] = thought
@@ -130,18 +132,27 @@ def create_ml_node(agent: CodeAgent) -> Callable:
                 if any(k in step_data for k in ["thought", "code", "output", "logs"]):
                     execution_steps.append(step_data)
 
-            logger.info(f"Extracted {len(execution_steps)} execution steps")
+            logger.info("Extracted %d execution steps", len(execution_steps))
+
+            structured = {
+                "model_result": {
+                    "summary": content,
+                    "code_steps": execution_steps,
+                }
+            }
 
             return {
-                "messages": [AIMessage(content=content)],
-                "next": "supervisor",
-                "code_steps": execution_steps,
+                "data": structured,
+                "raw_output": content,
+                "tool_calls": [],
+                "error": None,
             }
+
         except Exception as e:
             import traceback
 
             error_msg = f"Error executing ML code: {e}\n\nTraceback:\n{traceback.format_exc()}"
-            logger.error(f"ML agent error: {error_msg}")
-            return {"messages": [AIMessage(content=error_msg)], "next": "supervisor"}
+            logger.error("ML agent error: %s", error_msg)
+            return {"data": {}, "raw_output": "", "tool_calls": [], "error": error_msg}
 
     return ml_node

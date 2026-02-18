@@ -81,7 +81,7 @@ def create_dl_node(agent: CodeAgent) -> Callable:
     """
 
     def dl_node(state: dict[str, Any]) -> dict[str, Any]:
-        messages = state["messages"]
+        messages = state.get("messages", [])
 
         original_query = extract_original_query(messages)
         available_data = extract_available_data(messages)
@@ -96,22 +96,17 @@ def create_dl_node(agent: CodeAgent) -> Callable:
             result = agent.run(task)
             content = format_coder_result(result)
 
-            # Extract execution logs for the frontend
             execution_steps: list[dict[str, Any]] = []
-            for step in agent.memory.steps:
+            for step in getattr(agent, "memory", []).steps if hasattr(agent, "memory") else []:
                 if hasattr(step, "task"):
                     continue
 
-                step_data: dict[str, Any] = {
-                    "step": len(execution_steps) + 1,
-                }
+                step_data: dict[str, Any] = {"step": len(execution_steps) + 1}
 
-                # Extract thought/reasoning
                 if hasattr(step, "thought") and step.thought:
                     step_data["thought"] = step.thought
                 elif hasattr(step, "model_output") and step.model_output:
                     thought = step.model_output
-
                     thought = re.sub(r"```python\n[\s\S]*?```", "", thought).strip()
                     if thought:
                         step_data["thought"] = thought
@@ -132,18 +127,18 @@ def create_dl_node(agent: CodeAgent) -> Callable:
                 if any(k in step_data for k in ["thought", "code", "output", "logs"]):
                     execution_steps.append(step_data)
 
-            logger.info(f"Extracted {len(execution_steps)} execution steps")
+            logger.info("Extracted %d execution steps", len(execution_steps))
 
-            return {
-                "messages": [AIMessage(content=content)],
-                "next": "supervisor",
-                "code_steps": execution_steps,
+            structured = {
+                "model_result": {"summary": content, "code_steps": execution_steps}
             }
+
+            return {"data": structured, "raw_output": content, "tool_calls": [], "error": None}
         except Exception as e:
             import traceback
 
             error_msg = f"Error executing DL code: {e}\n\nTraceback:\n{traceback.format_exc()}"
-            logger.error(f"DL agent error: {error_msg}")
-            return {"messages": [AIMessage(content=error_msg)], "next": "supervisor"}
+            logger.error("DL agent error: %s", error_msg)
+            return {"data": {}, "raw_output": "", "tool_calls": [], "error": error_msg}
 
     return dl_node
