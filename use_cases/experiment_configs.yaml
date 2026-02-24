@@ -1,0 +1,22 @@
+experiment_configs:
+
+  - id: cfg_baseline
+    name: "Baseline"
+    description: "Default configuration with no prompt overrides."
+    max_steps: 50
+    timeout: 180
+    temperature: 0.0
+
+  - id: cfg_fast
+    name: "Fast (reduced steps)"
+    description: "Reduced max_steps for quick smoke tests."
+    max_steps: 20
+    timeout: 90
+    temperature: 0.0
+
+  - id: cfg_creative
+    name: "Creative (higher temperature)"
+    description: "Higher temperature for more creative responses."
+    max_steps: 50
+    timeout: 180
+    temperature: 0.7

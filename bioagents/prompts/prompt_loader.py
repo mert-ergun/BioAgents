@@ -1,9 +1,40 @@
 """Utility for loading and parsing XML-formatted system prompts."""
 
 import xml.etree.ElementTree as ET  # nosec B405  # Internal trusted XML files only
+from contextvars import ContextVar
 from pathlib import Path
 
 ModelMap = dict[str, str]
+
+# ---------------------------------------------------------------------------
+# Experiment prompt-override context variable
+# ---------------------------------------------------------------------------
+# The experiment runner sets this context variable before executing each run.
+# It maps prompt_name -> override text (plain string, replaces XML-parsed output).
+# The global load_prompt() function checks this first; if an override exists
+# for the requested prompt, it returns that text without loading the XML file.
+# This enables per-run system prompt tweaks without modifying any agent code.
+# ---------------------------------------------------------------------------
+_experiment_prompt_overrides: ContextVar[dict[str, str] | None] = ContextVar(
+    "experiment_prompt_overrides", default=None
+)
+
+
+def set_experiment_prompt_overrides(overrides: dict[str, str] | None) -> None:
+    """
+    Set per-run prompt overrides for the current async/thread context.
+
+    Call this before running the graph in an experiment. Pass ``None`` to clear.
+
+    Args:
+        overrides: Mapping of prompt_name -> replacement text, or None.
+    """
+    _experiment_prompt_overrides.set(overrides)
+
+
+def get_experiment_prompt_overrides() -> dict[str, str] | None:
+    """Return the currently active prompt overrides for this context."""
+    return _experiment_prompt_overrides.get()
 
 
 class PromptLoader:
@@ -450,7 +481,12 @@ def load_prompt(prompt_name: str) -> str:
     """
     Convenience function to load a prompt using the global loader.
 
-    If ACE is enabled, appends playbook learnings directly to the prompt
+    Checks the experiment prompt-override context first. If an override exists
+    for *prompt_name*, that text is returned immediately without parsing the XML
+    file (ACE playbook is also skipped for overridden prompts to keep overrides
+    predictable).
+
+    If ACE is enabled, appends playbook learnings directly to the XML-loaded prompt
     (following ACE's original approach where playbook is added to the prompt).
 
     Args:
@@ -459,6 +495,11 @@ def load_prompt(prompt_name: str) -> str:
     Returns:
         The formatted prompt text (with playbook appended if ACE enabled)
     """
+    # Check for experiment-level per-run prompt override
+    overrides = _experiment_prompt_overrides.get()
+    if overrides and prompt_name in overrides:
+        return overrides[prompt_name]
+
     # Load base prompt from XML
     base_prompt = _loader.load_prompt(prompt_name)
 

@@ -1,0 +1,33 @@
+use_cases:
+
+  - id: uc_crispr_lit
+    name: "CRISPR Literature Review"
+    category: literature
+    tags: [literature, crispr, research]
+    description: Search and summarize recent literature on CRISPR-Cas9 in cancer immunotherapy.
+    prompt: >
+      Search recent literature on CRISPR-Cas9 applications in cancer immunotherapy.
+      Summarize the top 3 key findings and highlight any clinical trial results
+      or breakthrough discoveries.
+    expected_agents: [research, report]
+    evaluation_criteria: |
+      - Must reference at least 2 specific studies, papers, or clinical trials.
+      - Should mention CRISPR-Cas9 mechanism or specific gene targets.
+      - Key findings should be presented in a structured format (e.g., numbered list).
+      - Should discuss implications for cancer treatment.
+
+  - id: uc_alphafold_review
+    name: "AlphaFold Impact Review"
+    category: literature
+    tags: [literature, alphafold, protein_folding]
+    description: Literature review on AlphaFold's impact on structural biology.
+    prompt: >
+      Provide a brief literature review on how AlphaFold has impacted the field
+      of structural biology. What are the major breakthroughs enabled by AlphaFold,
+      and what limitations remain?
+    expected_agents: [research, report]
+    evaluation_criteria: |
+      - Must describe AlphaFold's predictive capability.
+      - Should mention specific proteins or protein families where AlphaFold made an impact.
+      - Must discuss at least one known limitation of AlphaFold.
+      - Should be well-structured with distinct sections for breakthroughs and limitations.

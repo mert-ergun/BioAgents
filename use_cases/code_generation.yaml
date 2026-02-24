@@ -1,0 +1,52 @@
+use_cases:
+
+  - id: uc_fasta_parser
+    name: "FASTA File Parser"
+    category: code_generation
+    tags: [code, python, bioinformatics]
+    description: Generate a Python script to parse FASTA files and compute basic statistics.
+    prompt: >
+      Write a Python function that parses a FASTA file, computes the length of each
+      sequence, calculates the GC content, and returns a summary dictionary.
+      Include type hints and a brief docstring.
+    expected_agents: [coder]
+    evaluation_criteria: |
+      - Must produce runnable Python code.
+      - The function should accept a file path or file-like object.
+      - Must compute sequence length and GC content.
+      - Should include type hints on the function signature.
+      - Should include a docstring.
+
+  - id: uc_ml_solubility
+    name: "ML Protein Solubility Predictor"
+    category: ml
+    tags: [ml, protein, solubility, xgboost]
+    description: Build and evaluate an ML model to predict protein solubility.
+    prompt: >
+      Build a machine learning model to predict protein solubility using
+      sequence-derived features. Use XGBoost, generate synthetic training data
+      (300 samples, features: length, aromaticity, instability_index, hydrophobicity),
+      and report training accuracy, test accuracy, and feature importances.
+    expected_agents: [ml]
+    evaluation_criteria: |
+      - Must produce training and test accuracy values.
+      - Must report feature importances for all 4 features.
+      - Should use XGBoost or a clearly stated ML algorithm.
+      - Code must be complete and executable without modification.
+
+  - id: uc_dl_classifier
+    name: "DL Protein Sequence Classifier"
+    category: ml
+    tags: [deep_learning, protein, pytorch]
+    description: Design a PyTorch neural network to classify protein sequences into families.
+    prompt: >
+      Design a PyTorch neural network to classify protein sequences into 3 families.
+      Use an embedding layer (vocab size=21 for amino acids) followed by an LSTM
+      (hidden=64) and a linear output layer. Show the model architecture and a
+      training loop with synthetic data (sequence length=50, batch size=16).
+    expected_agents: [dl]
+    evaluation_criteria: |
+      - Must include a PyTorch model class definition with __init__ and forward methods.
+      - Should include an Embedding layer and an LSTM layer.
+      - Must show a training loop with loss computation.
+      - Model output should have 3 classes.

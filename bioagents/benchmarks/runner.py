@@ -8,6 +8,14 @@ from typing import Any
 from langchain_core.messages import HumanMessage, ToolMessage
 
 from bioagents.benchmarks.models import BenchmarkResult, STELLATask
+from bioagents.benchmarks.use_case_models import (
+    ExperimentConfig,
+    FailureMode,
+    RunResult,
+    TokenUsage,
+    ToolCallRecord,
+    UseCase,
+)
 from bioagents.graph import create_graph
 
 logger = logging.getLogger(__name__)
@@ -344,4 +352,253 @@ def run_benchmark_task(
         final_messages=final_messages,
         workflow_path=workflow_path,
         raw_output=raw_output,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Modular use-case runner
+# ---------------------------------------------------------------------------
+
+
+def _extract_tool_calls_from_messages(messages: list) -> list[ToolCallRecord]:
+    """
+    Walk a list of LangChain messages and extract tool calls with results.
+
+    For every AIMessage that contains tool_calls, we find the corresponding
+    ToolMessage (matched by tool_call_id) and build a ToolCallRecord.
+    """
+    records: list[ToolCallRecord] = []
+
+    # Build a lookup of tool_call_id -> ToolMessage content
+    tool_results: dict[str, str] = {}
+    for msg in messages:
+        if isinstance(msg, ToolMessage):
+            tool_call_id = getattr(msg, "tool_call_id", None)
+            if tool_call_id:
+                content = getattr(msg, "content", "")
+                if not isinstance(content, str):
+                    content = str(content)
+                tool_results[tool_call_id] = content[:500]  # preview only
+
+    # Walk AIMessages for tool_calls
+    for msg in messages:
+        tool_calls_attr = getattr(msg, "tool_calls", None)
+        if not tool_calls_attr:
+            continue
+        for call in tool_calls_attr:
+            name = call.get("name", "unknown")
+            args = call.get("args", {})
+            call_id = call.get("id", "")
+            result_preview = tool_results.get(call_id, "")
+            records.append(
+                ToolCallRecord(
+                    tool_name=name,
+                    args=args,
+                    result_preview=result_preview,
+                    tool_call_id=call_id,
+                )
+            )
+
+    return records
+
+
+def _extract_token_usage_from_messages(messages: list) -> TokenUsage | None:
+    """
+    Aggregate token usage from response_metadata across all AIMessages.
+
+    LangChain stores token counts differently per provider:
+    - OpenAI: response_metadata["token_usage"] -> {"prompt_tokens", "completion_tokens", "total_tokens"}
+    - Gemini: response_metadata["usage_metadata"] -> {"prompt_token_count", "candidates_token_count"}
+    """
+    total_input = 0
+    total_output = 0
+    found_any = False
+
+    for msg in messages:
+        metadata = getattr(msg, "response_metadata", None)
+        if not metadata:
+            continue
+
+        # OpenAI format
+        token_usage = metadata.get("token_usage", {})
+        if token_usage:
+            total_input += token_usage.get("prompt_tokens", 0)
+            total_output += token_usage.get("completion_tokens", 0)
+            found_any = True
+            continue
+
+        # Gemini format
+        usage_meta = metadata.get("usage_metadata", {})
+        if usage_meta:
+            total_input += usage_meta.get("prompt_token_count", 0)
+            total_output += usage_meta.get("candidates_token_count", 0)
+            found_any = True
+
+    if not found_any:
+        return None
+
+    return TokenUsage(
+        input_tokens=total_input,
+        output_tokens=total_output,
+        total_tokens=total_input + total_output,
+    )
+
+
+def _derive_failure_mode(
+    workflow_completed: bool,
+    error_message: str | None,
+    total_steps: int,
+    max_steps: int,
+    timed_out: bool,
+) -> FailureMode:
+    if workflow_completed:
+        return FailureMode.COMPLETED
+    if timed_out:
+        return FailureMode.TIMEOUT
+    if total_steps >= max_steps:
+        return FailureMode.MAX_STEPS
+    if error_message:
+        return FailureMode.EXCEPTION
+    return FailureMode.INCOMPLETE
+
+
+def run_use_case(
+    use_case: UseCase,
+    config: ExperimentConfig | None = None,
+    graph: Any = None,
+    show_trace: bool = False,
+) -> RunResult:
+    """
+    Run a single UseCase through BioAgents and return a RunResult.
+
+    This is the primary entry point for the experiment system. Compared to
+    ``run_benchmark_task``, it additionally captures:
+    - Structured tool call records (name, args, result preview)
+    - Token usage (if available in LLM response metadata)
+    - A structured FailureMode
+
+    Args:
+        use_case: The use case to execute.
+        config: Experiment configuration (uses defaults if None).
+        graph: Pre-compiled LangGraph (creates a new one if None).
+        show_trace: Print colored execution trace to stdout.
+
+    Returns:
+        RunResult with all captured metrics.
+    """
+    if config is None:
+        config = ExperimentConfig(name="default")
+
+    if graph is None:
+        graph = create_graph()
+
+    initial_state = {"messages": [HumanMessage(content=use_case.prompt)]}
+
+    max_steps = config.max_steps
+    timeout = config.timeout
+
+    start_time = time.time()
+    total_steps = 0
+    workflow_completed = False
+    timed_out = False
+    error_message: str | None = None
+    agent_flow: list[str] = []
+    all_messages: list = []
+    final_messages: list[str] = []
+    raw_output: str | None = None
+
+    try:
+        last_node_time = start_time
+
+        if show_trace:
+            print(f"\n{'─' * 80}")
+            print(f"USE CASE: {use_case.name}")
+            print(f"{'─' * 80}\n")
+
+        for step_output in graph.stream(initial_state, {"recursion_limit": max_steps}):
+            elapsed = time.time() - start_time
+            if elapsed > timeout:
+                timed_out = True
+                error_message = f"Timeout after {timeout}s (elapsed: {elapsed:.1f}s)"
+                break
+
+            total_steps += 1
+            node_name = next(iter(step_output))
+            last_node_time = time.time()  # noqa: F841
+            node_state = step_output[node_name]
+            agent_flow.append(node_name)
+
+            # Accumulate all messages for token-usage and tool-call extraction
+            for msg in node_state.get("messages", []):
+                all_messages.append(msg)
+
+            if show_trace:
+                color = _get_agent_color(node_name)
+                print(
+                    f"  {Colors.BOLD}Step {total_steps}:{Colors.RESET} "
+                    f"{color}{Colors.BOLD}{node_name.upper()}{Colors.RESET}"
+                )
+
+            if total_steps >= max_steps:
+                error_message = f"Stopped after {max_steps} steps"
+                break
+
+        execution_time = time.time() - start_time
+
+        # Determine completion
+        if (agent_flow and agent_flow[-1] == "__end__") or (
+            not timed_out and total_steps < max_steps and not error_message
+        ):
+            workflow_completed = True
+
+        # Extract final text messages
+        for msg in all_messages[-15:]:
+            content = getattr(msg, "content", "")
+            if content and not isinstance(msg, (HumanMessage, ToolMessage)):
+                if isinstance(content, str):
+                    final_messages.append(content)
+                elif isinstance(content, list):
+                    for item in content:
+                        if isinstance(item, dict) and "text" in item:
+                            final_messages.append(item["text"])
+                        elif isinstance(item, str):
+                            final_messages.append(item)
+
+        if all_messages:
+            last_msg = all_messages[-1]
+            content = getattr(last_msg, "content", "")
+            if isinstance(content, str):
+                raw_output = content
+            elif isinstance(content, list):
+                parts = [
+                    item["text"] if isinstance(item, dict) and "text" in item else str(item)
+                    for item in content
+                ]
+                raw_output = "\n".join(parts)
+
+    except Exception as exc:
+        execution_time = time.time() - start_time
+        error_message = str(exc)
+        logger.error("Error running use case '%s': %s", use_case.name, exc, exc_info=True)
+
+    tool_calls = _extract_tool_calls_from_messages(all_messages)
+    token_usage = _extract_token_usage_from_messages(all_messages)
+    failure_mode = _derive_failure_mode(
+        workflow_completed, error_message, total_steps, max_steps, timed_out
+    )
+
+    return RunResult(
+        use_case_id=use_case.id,
+        use_case_name=use_case.name,
+        prompt=use_case.prompt,
+        execution_time=execution_time,
+        total_steps=total_steps,
+        workflow_completed=workflow_completed,
+        agent_flow=agent_flow,
+        tool_calls=tool_calls,
+        final_messages=final_messages,
+        raw_output=raw_output,
+        error_message=error_message,
+        failure_mode=failure_mode,
+        token_usage=token_usage,
     )

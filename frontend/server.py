@@ -1094,6 +1094,153 @@ async def run_bioagents_streaming(
 
 
 # =====================================================
+# EXPERIMENT ENDPOINTS
+# =====================================================
+
+from bioagents.benchmarks.experiment_runner import (  # noqa: E402
+    DEFAULT_RUNS_DIR,
+    list_runs,
+    load_run,
+    run_experiment,
+)
+from bioagents.benchmarks.use_case_loader import (  # noqa: E402
+    filter_use_cases,
+    load_experiment_configs_from_file,
+    load_use_cases_from_dir,
+)
+from bioagents.benchmarks.use_case_models import ExperimentConfig  # noqa: E402
+
+
+class ExperimentRunRequest(BaseModel):
+    use_case_ids: list[str] | None = None  # None = run all loaded use cases
+    config: dict | None = None  # Serialised ExperimentConfig dict; None = defaults
+    skip_judge: bool = False
+    use_llm_judge: bool = False  # Use LLM judge vs heuristic
+
+
+_USE_CASES_CACHE: list | None = None
+_CONFIGS_CACHE: list | None = None
+
+
+def _get_use_cases():
+    global _USE_CASES_CACHE
+    if _USE_CASES_CACHE is None:
+        _USE_CASES_CACHE = load_use_cases_from_dir()
+    return _USE_CASES_CACHE
+
+
+def _get_experiment_configs():
+    global _CONFIGS_CACHE
+    if _CONFIGS_CACHE is None:
+        configs_path = DEFAULT_RUNS_DIR.parent / "use_cases" / "experiment_configs.yaml"
+        if configs_path.exists():
+            _CONFIGS_CACHE = load_experiment_configs_from_file(configs_path)
+        else:
+            _CONFIGS_CACHE = [ExperimentConfig(name="default")]
+    return _CONFIGS_CACHE
+
+
+@app.get("/api/experiments/use-cases")
+async def get_use_cases(category: str | None = None, tags: str | None = None):
+    """List all available use cases, optionally filtered."""
+    use_cases = _get_use_cases()
+    tag_list = [t.strip() for t in tags.split(",")] if tags else None
+    filtered = filter_use_cases(use_cases, tags=tag_list, category=category)
+    return {"use_cases": [uc.to_dict() for uc in filtered], "total": len(filtered)}
+
+
+@app.get("/api/experiments/configs")
+async def get_experiment_configs():
+    """List available experiment configurations."""
+    configs = _get_experiment_configs()
+    return {"configs": [c.to_dict() for c in configs]}
+
+
+@app.post("/api/experiments/run")
+async def start_experiment_run(request: ExperimentRunRequest):
+    """
+    Run an experiment asynchronously in a background thread.
+
+    Returns immediately with a run_id; poll /api/experiments/runs/{run_id}
+    for results (they are persisted to disk when finished).
+    """
+    import asyncio
+
+    use_cases = _get_use_cases()
+    if request.use_case_ids is not None:
+        from bioagents.benchmarks.use_case_loader import filter_use_cases as _filter
+
+        use_cases = _filter(use_cases, ids=request.use_case_ids)
+
+    if not use_cases:
+        raise HTTPException(status_code=400, detail="No use cases found for the given ids.")
+
+    config = (
+        ExperimentConfig.from_dict(request.config)
+        if request.config
+        else ExperimentConfig(name="default")
+    )
+
+    judge_llm = None
+    if not request.skip_judge and request.use_llm_judge:
+        try:
+            from bioagents.llms.llm_provider import get_llm
+
+            judge_llm = get_llm()
+        except Exception as exc:
+            logger.warning("Could not instantiate judge LLM: %s. Using heuristic scoring.", exc)
+
+    import uuid as _uuid
+
+    pending_run_id = _uuid.uuid4().hex
+
+    async def _run_in_background():
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(
+            None,
+            lambda: run_experiment(
+                use_cases=use_cases,
+                config=config,
+                skip_judge=request.skip_judge,
+                judge_llm=judge_llm,
+                show_trace=False,
+                save_results=True,
+            ),
+        )
+
+    background_task = asyncio.create_task(_run_in_background())
+    background_task.add_done_callback(
+        lambda t: t.exception() if not t.cancelled() else None
+    )  # consume result so exceptions don't go unobserved
+    return {"status": "started", "run_id": pending_run_id, "use_case_count": len(use_cases)}
+
+
+@app.get("/api/experiments/runs")
+async def get_experiment_runs(limit: int = 20):
+    """List recent experiment runs (summary only)."""
+    runs = list_runs(limit=limit)
+    return {"runs": runs, "total": len(runs)}
+
+
+@app.get("/api/experiments/runs/{run_id}")
+async def get_experiment_run(run_id: str):
+    """Return full details for a specific experiment run."""
+    data = load_run(run_id)
+    if data is None:
+        raise HTTPException(status_code=404, detail=f"Run '{run_id}' not found.")
+    return data
+
+
+@app.delete("/api/experiments/use-cases/cache")
+async def invalidate_use_cases_cache():
+    """Force reload of use case definitions from disk."""
+    global _USE_CASES_CACHE, _CONFIGS_CACHE
+    _USE_CASES_CACHE = None
+    _CONFIGS_CACHE = None
+    return {"status": "cache cleared"}
+
+
+# =====================================================
 # DEMO ENDPOINTS
 # =====================================================
 
