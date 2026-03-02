@@ -93,6 +93,26 @@ function scoreColor(score) {
     return 'text-red-400';
 }
 
+const AGENT_COLORS = {
+    supervisor:      { bg: 'bg-purple-500/20',  text: 'text-purple-400',  border: 'border-purple-500/30' },
+    analysis:        { bg: 'bg-cyan-500/20',     text: 'text-cyan-400',    border: 'border-cyan-500/30' },
+    analysis_tools:  { bg: 'bg-slate-500/20',    text: 'text-slate-300',   border: 'border-slate-500/30' },
+    research:        { bg: 'bg-blue-500/20',      text: 'text-blue-400',    border: 'border-blue-500/30' },
+    report:          { bg: 'bg-yellow-500/20',    text: 'text-yellow-400',  border: 'border-yellow-500/30' },
+    summary:         { bg: 'bg-yellow-500/20',    text: 'text-yellow-400',  border: 'border-yellow-500/30' },
+    protein_design:  { bg: 'bg-teal-500/20',      text: 'text-teal-400',    border: 'border-teal-500/30' },
+    critic:          { bg: 'bg-red-500/20',        text: 'text-red-400',     border: 'border-red-500/30' },
+    coder:           { bg: 'bg-orange-500/20',    text: 'text-orange-400',  border: 'border-orange-500/30' },
+    tool_builder:    { bg: 'bg-green-500/20',     text: 'text-green-400',   border: 'border-green-500/30' },
+    ml:              { bg: 'bg-indigo-500/20',    text: 'text-indigo-400',  border: 'border-indigo-500/30' },
+    dl:              { bg: 'bg-violet-500/20',    text: 'text-violet-400',  border: 'border-violet-500/30' },
+    __end__:         { bg: 'bg-green-500/20',     text: 'text-green-400',   border: 'border-green-500/30' },
+};
+
+function agentColor(agent) {
+    return AGENT_COLORS[agent] || { bg: 'bg-white/10', text: 'text-slate-300', border: 'border-white/10' };
+}
+
 function scoreBar(score, max = 5) {
     const pct = score != null ? Math.round((score / max) * 100) : 0;
     const color = score >= 4 ? 'bg-green-500' : score >= 3 ? 'bg-yellow-500' : score >= 2 ? 'bg-orange-500' : 'bg-red-500';
@@ -364,13 +384,12 @@ function renderResultCard(result) {
     const uniqueTools = [...new Set(tools)];
     const agents = [...new Set(result.agent_flow || [])].filter(a => !a.startsWith('__'));
     const scoreStr = result.judge_score != null ? result.judge_score.toFixed(2) : '—';
+    const tu = result.token_usage;
 
     return `
     <div class="border border-white/5 rounded-xl overflow-hidden bg-surface-card/30">
         <div class="flex items-center gap-3 px-4 py-3 cursor-pointer result-card-toggle" data-target="${cardId}">
-            <!-- Status dot -->
             <div class="w-2 h-2 rounded-full flex-shrink-0 ${result.workflow_completed ? 'bg-green-500' : 'bg-red-500'}"></div>
-            <!-- Name -->
             <div class="flex-1 min-w-0">
                 <div class="flex items-center gap-2 flex-wrap">
                     <span class="text-sm font-semibold text-white truncate">${result.use_case_name}</span>
@@ -379,20 +398,17 @@ function renderResultCard(result) {
                 <div class="flex items-center gap-3 mt-0.5 text-[11px] text-text-subtle flex-wrap">
                     <span>${result.total_steps} steps</span>
                     <span>${result.execution_time != null ? result.execution_time.toFixed(1)+'s' : '—'}</span>
-                    ${result.token_usage ? `<span>${result.token_usage.total_tokens?.toLocaleString() ?? '—'} tokens</span>` : ''}
+                    ${tu ? `<span>${tu.total_tokens != null ? tu.total_tokens.toLocaleString() : '—'} tokens</span>` : '<span class="text-text-subtle/50">no token data</span>'}
                 </div>
             </div>
-            <!-- Score -->
             <div class="text-right flex-shrink-0">
                 <div class="text-lg font-bold font-mono ${scoreColor(result.judge_score)}">${scoreStr}</div>
                 <div class="text-[10px] text-text-subtle">/ 5.0</div>
                 ${result.judge_score != null ? scoreBar(result.judge_score) : ''}
             </div>
-            <!-- Toggle -->
             <span class="material-symbols-outlined text-slate-500 text-[20px] flex-shrink-0 expand-icon">expand_more</span>
         </div>
 
-        <!-- Expanded detail -->
         <div id="${cardId}" class="hidden border-t border-white/5 px-4 pb-4 pt-3 space-y-4">
             <!-- Prompt -->
             <div>
@@ -405,7 +421,10 @@ function renderResultCard(result) {
                 <div>
                     <p class="text-[10px] text-text-subtle uppercase tracking-wider mb-1">Agents Used</p>
                     <div class="flex flex-wrap gap-1">
-                        ${agents.length ? agents.map(a => `<span class="text-[10px] px-2 py-0.5 rounded-full bg-primary/10 border border-primary/20 text-primary">${a}</span>`).join('') : '<span class="text-xs text-text-subtle">—</span>'}
+                        ${agents.length ? agents.map(a => {
+                            const c = agentColor(a);
+                            return `<span class="text-[10px] px-2 py-0.5 rounded-full ${c.bg} border ${c.border} ${c.text}">${a}</span>`;
+                        }).join('') : '<span class="text-xs text-text-subtle">—</span>'}
                     </div>
                 </div>
                 <div>
@@ -416,21 +435,30 @@ function renderResultCard(result) {
                 </div>
             </div>
 
+            <!-- Agent Call Flow -->
+            ${renderAgentCallFlow(result.agent_steps)}
+
+            <!-- Tool Call Details -->
+            ${renderToolCallDetails(result.tool_calls)}
+
+            <!-- Token Usage -->
+            ${renderTokenUsage(result.token_usage)}
+
             <!-- Judge reasoning -->
             ${result.judge_reasoning ? `
             <div>
                 <p class="text-[10px] text-text-subtle uppercase tracking-wider mb-1">Judge Reasoning</p>
-                <p class="text-xs text-white/80 bg-black/20 rounded p-2 italic">${escHtml(result.judge_reasoning)}</p>
+                <p class="text-xs text-white/80 bg-black/20 rounded p-2 italic leading-relaxed">${escHtml(result.judge_reasoning)}</p>
             </div>` : ''}
 
-            <!-- Judge breakdown dimensions -->
+            <!-- Judge breakdown -->
             ${renderJudgeBreakdown(result.judge_breakdown)}
 
-            <!-- Output preview -->
+            <!-- Full Output -->
             ${result.raw_output ? `
             <div>
-                <p class="text-[10px] text-text-subtle uppercase tracking-wider mb-1">Output Preview</p>
-                <pre class="text-[11px] text-white/70 bg-black/30 rounded p-2 overflow-auto max-h-40 whitespace-pre-wrap font-mono">${escHtml(result.raw_output.substring(0, 800))}${result.raw_output.length > 800 ? '\n…[truncated]' : ''}</pre>
+                <p class="text-[10px] text-text-subtle uppercase tracking-wider mb-1">Full Output</p>
+                <pre class="text-[11px] text-white/70 bg-black/30 rounded p-2 overflow-auto max-h-64 whitespace-pre-wrap font-mono">${escHtml(result.raw_output)}</pre>
             </div>` : ''}
 
             <!-- Error -->
@@ -443,23 +471,138 @@ function renderResultCard(result) {
     </div>`;
 }
 
+function renderAgentCallFlow(steps) {
+    if (!steps || steps.length === 0) return '';
+
+    const rows = steps.map((step, idx) => {
+        const c = agentColor(step.agent);
+        const isLast = idx === steps.length - 1;
+        const msgs = (step.messages || []).filter(m => m.content && m.content.trim());
+
+        const msgHtml = msgs.map(m => {
+            const isToolMsg = m.type === 'ToolMessage';
+            const isTool = !!(m.tool_calls && m.tool_calls.length);
+            let typeLabel = m.type || 'Message';
+            if (isTool) typeLabel = 'Tool Request';
+            if (isToolMsg) typeLabel = 'Tool Result';
+            const contentCls = isToolMsg
+                ? 'text-amber-300/80 font-mono'
+                : isTool
+                ? 'text-primary/80'
+                : 'text-white/75';
+            const preview = m.content.length > 400 ? m.content.substring(0, 400) + '…' : m.content;
+            return `<div class="bg-black/20 rounded p-2 mt-1.5 text-[11px]">
+                <span class="text-[9px] uppercase tracking-wider text-text-subtle mr-1.5">${typeLabel}</span>
+                <span class="${contentCls} whitespace-pre-wrap">${escHtml(preview)}</span>
+            </div>`;
+        }).join('');
+
+        const routeHtml = step.routing_decision
+            ? `<span class="ml-2 text-[10px] text-text-subtle">→ <span class="text-white/60">${escHtml(step.routing_decision)}</span></span>`
+            : '';
+
+        return `<div class="flex gap-3">
+            <div class="flex flex-col items-center flex-shrink-0">
+                <div class="w-6 h-6 rounded-full ${c.bg} border ${c.border} flex items-center justify-center text-[9px] font-bold ${c.text}">${step.step}</div>
+                ${!isLast ? `<div class="w-px flex-1 bg-white/8 mt-1"></div>` : ''}
+            </div>
+            <div class="flex-1 pb-3 min-w-0">
+                <div class="flex items-center gap-1.5 flex-wrap">
+                    <span class="text-xs font-semibold ${c.text}">${step.agent}</span>
+                    <span class="text-[10px] text-text-subtle/60">${step.elapsed_ms != null ? step.elapsed_ms.toFixed(0)+'ms' : ''}</span>
+                    ${routeHtml}
+                </div>
+                ${msgHtml}
+            </div>
+        </div>`;
+    }).join('');
+
+    return `<div>
+        <p class="text-[10px] text-text-subtle uppercase tracking-wider mb-2">Agent Call Flow</p>
+        <div class="bg-black/10 rounded-lg p-3 space-y-0">${rows}</div>
+    </div>`;
+}
+
+function renderToolCallDetails(toolCalls) {
+    if (!toolCalls || toolCalls.length === 0) return '';
+    return `<div>
+        <p class="text-[10px] text-text-subtle uppercase tracking-wider mb-2">Tool Call Details</p>
+        <div class="space-y-2">
+            ${toolCalls.map((tc, i) => {
+                const argsStr = JSON.stringify(tc.args || {}, null, 2);
+                const result = tc.result_preview || '';
+                return `<div class="bg-black/20 rounded-lg p-3 space-y-2">
+                    <div class="flex items-center gap-2">
+                        <span class="material-symbols-outlined text-[14px] text-amber-400">build</span>
+                        <span class="text-xs font-semibold text-amber-400 font-mono">${escHtml(tc.tool_name)}</span>
+                        ${tc.tool_call_id ? `<span class="text-[9px] text-text-subtle font-mono ml-auto">${escHtml(tc.tool_call_id.substring(0,12))}…</span>` : ''}
+                    </div>
+                    ${argsStr && argsStr !== '{}' ? `
+                    <div>
+                        <p class="text-[9px] text-text-subtle uppercase mb-0.5">Arguments</p>
+                        <pre class="text-[10px] text-white/60 bg-black/30 rounded p-1.5 overflow-auto max-h-24 font-mono">${escHtml(argsStr)}</pre>
+                    </div>` : ''}
+                    ${result ? `
+                    <div>
+                        <p class="text-[9px] text-text-subtle uppercase mb-0.5">Result</p>
+                        <pre class="text-[10px] text-amber-200/70 bg-black/30 rounded p-1.5 overflow-auto max-h-48 whitespace-pre-wrap font-mono">${escHtml(result)}</pre>
+                    </div>` : ''}
+                </div>`;
+            }).join('')}
+        </div>
+    </div>`;
+}
+
+function renderTokenUsage(tokenUsage) {
+    if (!tokenUsage) {
+        return `<div class="flex items-center gap-2 px-3 py-2 bg-black/10 border border-white/5 rounded-lg">
+            <span class="material-symbols-outlined text-[14px] text-slate-500">token</span>
+            <span class="text-[10px] text-text-subtle uppercase tracking-wider">Token Usage</span>
+            <span class="text-[11px] text-text-subtle ml-auto">Not available — LLM did not return usage metadata</span>
+        </div>`;
+    }
+    const { input_tokens, output_tokens, total_tokens } = tokenUsage;
+    const fmt = n => (n != null ? n.toLocaleString() : '—');
+    return `<div>
+        <p class="text-[10px] text-text-subtle uppercase tracking-wider mb-2">Token Usage</p>
+        <div class="grid grid-cols-3 gap-2">
+            <div class="bg-black/20 rounded p-2 text-center">
+                <div class="text-[10px] text-text-subtle mb-0.5">Input</div>
+                <div class="text-sm font-bold font-mono text-blue-400">${fmt(input_tokens)}</div>
+            </div>
+            <div class="bg-black/20 rounded p-2 text-center">
+                <div class="text-[10px] text-text-subtle mb-0.5">Output</div>
+                <div class="text-sm font-bold font-mono text-green-400">${fmt(output_tokens)}</div>
+            </div>
+            <div class="bg-black/20 rounded p-2 text-center">
+                <div class="text-[10px] text-text-subtle mb-0.5">Total</div>
+                <div class="text-sm font-bold font-mono text-purple-400">${fmt(total_tokens)}</div>
+            </div>
+        </div>
+    </div>`;
+}
+
 function renderJudgeBreakdown(breakdown) {
     if (!breakdown) return '';
     const dims = ['correctness', 'tool_use', 'clarity', 'completeness'];
     const hasScores = dims.some(d => breakdown[d] != null);
     if (!hasScores) return '';
+    const dimReasons = breakdown.dimensions || {};
     return `<div>
         <p class="text-[10px] text-text-subtle uppercase tracking-wider mb-2">Score Breakdown</p>
         <div class="grid grid-cols-2 gap-2">
             ${dims.map(d => {
                 const score = breakdown[d];
                 if (score == null) return '';
+                const reasonKey = `${d}_reasoning`;
+                const reason = dimReasons[reasonKey];
                 return `<div class="bg-black/20 rounded p-2">
                     <div class="flex justify-between items-center">
                         <span class="text-[10px] text-text-subtle capitalize">${d.replace('_',' ')}</span>
                         <span class="text-xs font-bold font-mono ${scoreColor(score)}">${score.toFixed(1)}</span>
                     </div>
                     ${scoreBar(score)}
+                    ${reason ? `<p class="text-[10px] text-white/50 mt-1.5 leading-relaxed">${escHtml(reason)}</p>` : ''}
                 </div>`;
             }).join('')}
         </div>

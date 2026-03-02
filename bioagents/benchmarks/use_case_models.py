@@ -127,6 +127,26 @@ class ExperimentConfig:
 
 
 @dataclass
+class AgentStep:
+    """Per-step record of a single agent activation during a run."""
+
+    step: int
+    agent: str
+    elapsed_ms: float
+    messages: list[dict[str, Any]] = field(default_factory=list)
+    routing_decision: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "step": self.step,
+            "agent": self.agent,
+            "elapsed_ms": self.elapsed_ms,
+            "messages": self.messages,
+            "routing_decision": self.routing_decision,
+        }
+
+
+@dataclass
 class ToolCallRecord:
     """Record of a single tool call made during a run."""
 
@@ -206,6 +226,7 @@ class RunResult:
     judge_score: float | None = None
     judge_reasoning: str | None = None
     judge_breakdown: JudgeBreakdown | None = None
+    agent_steps: list[AgentStep] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -216,6 +237,7 @@ class RunResult:
             "total_steps": self.total_steps,
             "workflow_completed": self.workflow_completed,
             "agent_flow": self.agent_flow,
+            "agent_steps": [s.to_dict() for s in self.agent_steps],
             "tool_calls": [tc.to_dict() for tc in self.tool_calls],
             "final_messages": self.final_messages,
             "raw_output": self.raw_output,

@@ -9,6 +9,7 @@ from langchain_core.messages import HumanMessage, ToolMessage
 
 from bioagents.benchmarks.models import BenchmarkResult, STELLATask
 from bioagents.benchmarks.use_case_models import (
+    AgentStep,
     ExperimentConfig,
     FailureMode,
     RunResult,
@@ -503,6 +504,7 @@ def run_use_case(
     timed_out = False
     error_message: str | None = None
     agent_flow: list[str] = []
+    agent_steps: list[AgentStep] = []
     all_messages: list = []
     final_messages: list[str] = []
     raw_output: str | None = None
@@ -528,9 +530,42 @@ def run_use_case(
             node_state = step_output[node_name]
             agent_flow.append(node_name)
 
-            # Accumulate all messages for token-usage and tool-call extraction
+            # Capture per-step messages for agent_steps
+            step_messages: list[dict] = []
             for msg in node_state.get("messages", []):
                 all_messages.append(msg)
+                msg_content = getattr(msg, "content", "")
+                if not isinstance(msg_content, str):
+                    msg_content = str(msg_content)
+                msg_dict: dict = {
+                    "type": type(msg).__name__,
+                    "content": msg_content[:2000],
+                }
+                tool_calls_attr = getattr(msg, "tool_calls", None)
+                if tool_calls_attr:
+                    msg_dict["tool_calls"] = [
+                        {
+                            "name": tc.get("name", ""),
+                            "args": tc.get("args", {}),
+                            "id": tc.get("id", ""),
+                        }
+                        for tc in tool_calls_attr
+                    ]
+                tool_call_id = getattr(msg, "tool_call_id", None)
+                if tool_call_id:
+                    msg_dict["tool_call_id"] = tool_call_id
+                step_messages.append(msg_dict)
+
+            routing_decision = node_state.get("next") if node_name == "supervisor" else None
+            agent_steps.append(
+                AgentStep(
+                    step=total_steps,
+                    agent=node_name,
+                    elapsed_ms=(time.time() - start_time) * 1000,
+                    messages=step_messages,
+                    routing_decision=str(routing_decision) if routing_decision else None,
+                )
+            )
 
             if show_trace:
                 color = _get_agent_color(node_name)
@@ -595,6 +630,7 @@ def run_use_case(
         total_steps=total_steps,
         workflow_completed=workflow_completed,
         agent_flow=agent_flow,
+        agent_steps=agent_steps,
         tool_calls=tool_calls,
         final_messages=final_messages,
         raw_output=raw_output,
