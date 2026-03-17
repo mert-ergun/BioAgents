@@ -40,6 +40,8 @@ from bioagents.tools.structural_tools import (
 from bioagents.tools.tool_builder_tools import get_tool_builder_tools
 from bioagents.tools.tool_universe import tool_universe_call_tool, tool_universe_find_tools
 
+from bioagents.tools.paperqa_wrapper import search_local_papers_with_paperqa
+
 
 class AgentState(dict):
     """
@@ -242,6 +244,7 @@ def create_graph():
         fetch_alphafold_structure,
         fetch_pdb_structure,
         download_structure_file,
+        search_local_papers_with_paperqa,
     ]
     analysis_tools = [
         calculate_molecular_weight,

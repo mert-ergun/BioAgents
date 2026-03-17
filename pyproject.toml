@@ -28,6 +28,7 @@ dependencies = [
     "fastapi>=0.115.0",
     "uvicorn[standard]>=0.32.0",
     "websockets>=14.0",
+    "paper-qa>=2026.2.16",
 ]
 
 [project.scripts]
