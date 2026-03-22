@@ -4,13 +4,13 @@ import json
 from typing import Any, Optional
 
 
-def write_to_memory(
+def write_agent_memory(
     state: dict,
-    agent_name: str,
+    name: str,
     data: dict[str, Any],
     raw_output: str = "",
-    tool_calls: list[str] = None,
-    error: Optional[str] = None,
+    tool_calls: list[str] | None = None,
+    error: str | None = None,
 ) -> None:
     """
     Write agent results to shared memory.
