@@ -1,7 +1,8 @@
 """Main entry point for the BioAgents multi-agent system."""
 
-import sys
 import json
+import sys
+from typing import Any
 
 from dotenv import load_dotenv
 from langchain_core.messages import HumanMessage
@@ -79,7 +80,7 @@ def main():
     print(query.strip())
     print_separator("-")
 
-    initial_state = {
+    initial_state: dict[str, Any] = {
         "messages": [HumanMessage(content=query)],
         "next": None,
         "reasoning": "",
@@ -163,8 +164,6 @@ def main():
     print("\nMulti-Agent Workflow Starting...\n")
 
     try:
-        # Stream the execution to see each step
-        # LangSmith will automatically trace if environment variables are set
         stream_config = langsmith_config
         for step_num, step_output in enumerate(
             graph.stream(initial_state, config=stream_config), 1
@@ -186,15 +185,21 @@ def main():
         print("FINAL RESULTS (FROM SHARED MEMORY)")
         print_separator()
 
-        # Invoke with LangSmith config for final execution trace
         final_result = graph.invoke(initial_state, config=langsmith_config)
 
         # Print memory contents instead of messages
         memory = final_result.get("memory", {})
 
         for agent_name in [
-            "research", "analysis", "coder", "ml", "dl",
-            "protein_design", "report", "critic", "summary"
+            "research",
+            "analysis",
+            "coder",
+            "ml",
+            "dl",
+            "protein_design",
+            "report",
+            "critic",
+            "summary",
         ]:
             agent_mem = memory.get(agent_name, {})
             if agent_mem.get("status") == "success":
@@ -205,19 +210,14 @@ def main():
                     print(json.dumps(agent_mem["data"], indent=2))
                 if agent_mem.get("raw_output"):
                     print("Output:")
-                    print(agent_mem["raw_output"][:500])  # First 500 chars
+                    print(agent_mem["raw_output"][:500])
 
-        # ── FIX: summary agent now always runs after report; check both ──
         # The final user-facing output lives in summary memory when available,
         # otherwise fall back to report memory.
         summary_mem = memory.get("summary", {})
         report_mem = memory.get("report", {})
 
-        final_output = (
-            summary_mem.get("raw_output")
-            or report_mem.get("raw_output")
-            or ""
-        )
+        final_output = summary_mem.get("raw_output") or report_mem.get("raw_output") or ""
 
         if final_output:
             print(f"\n{'=' * 80}")
@@ -225,7 +225,7 @@ def main():
             print("=" * 80)
             print(final_output)
 
-        print(f"\n{('=' * 80)}")
+        print(f"\n{'=' * 80}")
         print("Multi-Agent Workflow Completed Successfully!")
         print(f"{'=' * 80}\n")
 
