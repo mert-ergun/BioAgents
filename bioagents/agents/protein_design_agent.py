@@ -77,13 +77,12 @@ def create_protein_design_agent(tools):
     tools_dict = {}
     for tool in tools:
         if isinstance(tool, BaseTool):
-            tools_dict[tool.name] = tool.func if hasattr(tool, 'func') else tool
-        elif hasattr(tool, '__call__'):
-            tool_name = getattr(tool, 'name', None) or getattr(tool, '__name__', 'unknown')
+            tools_dict[tool.name] = tool.func if hasattr(tool, "func") else tool
+        elif callable(tool):
+            tool_name = getattr(tool, "name", None) or getattr(tool, "__name__", "unknown")
             tools_dict[tool_name] = tool
         else:
-            tool_name = str(tool)
-            tools_dict[tool_name] = tool
+            tools_dict[str(tool)] = tool
 
     logger.info(f"Protein design agent tools: {list(tools_dict.keys())}")
 
@@ -113,8 +112,8 @@ def create_protein_design_agent(tools):
 
             logger.info(f"Protein design raw_output: {raw_output}")
 
-            # Default JSON structure — now includes lookup_result
-            default_json = {
+            # Default JSON structure — includes lookup_result
+            default_json: dict = {
                 "lookup_result": None,
                 "design_candidates": [],
                 "predicted_structures": [],
@@ -124,9 +123,8 @@ def create_protein_design_agent(tools):
 
             structured_data = safe_json_output(raw_output, default_json)
 
-            # ── FIX 1: If JSON parsing failed (all defaults) but raw_output is a
-            #    short plain-text answer (e.g. "1TUP"), treat it as a lookup result.
-            #    This rescues cases where the LLM returned a bare string instead of JSON.
+            # FIX 1: If JSON parsing failed (all defaults) but raw_output is a
+            # short plain-text answer (e.g. "1TUP"), treat it as a lookup result.
             is_all_defaults = (
                 not structured_data.get("lookup_result")
                 and not structured_data.get("design_candidates")
@@ -135,27 +133,29 @@ def create_protein_design_agent(tools):
             )
             raw_stripped = raw_output.strip() if isinstance(raw_output, str) else ""
 
-            if is_all_defaults and raw_stripped:
-                # Check if raw output looks like a short factual answer (≤ 200 chars,
-                # no JSON braces) — capture it as lookup_result so summary can use it.
-                if len(raw_stripped) <= 200 and "{" not in raw_stripped:
-                    logger.info(
-                        f"Protein design: raw output looks like a plain-text answer "
-                        f"('{raw_stripped}'). Saving as lookup_result."
-                    )
-                    structured_data["lookup_result"] = raw_stripped
-                    structured_data["completeness"] = "full"
+            # SIM102: merged nested ifs into single condition
+            if (
+                is_all_defaults
+                and raw_stripped
+                and len(raw_stripped) <= 200
+                and "{" not in raw_stripped
+            ):
+                logger.info(
+                    f"Protein design: raw output looks like a plain-text answer "
+                    f"('{raw_stripped}'). Saving as lookup_result."
+                )
+                structured_data["lookup_result"] = raw_stripped
+                structured_data["completeness"] = "full"
 
-            # ── FIX 2: If tools were executed and completeness is still partial,
-            #    assume the agent completed its work.
+            # FIX 2: If tools were executed and completeness is still partial,
+            # assume the agent completed its work.
             if tool_calls_used and structured_data.get("completeness") == "partial":
                 structured_data["completeness"] = "full"
                 logger.info(
                     "Protein design: Setting completeness to 'full' since tools were executed."
                 )
 
-            # ── FIX 3: Always preserve the raw_output alongside structured data
-            #    so downstream agents (summary) can fall back to it if needed.
+            # FIX 3: Always preserve the raw_output alongside structured data
             structured_data["_raw_output"] = raw_stripped
 
             return {
