@@ -92,8 +92,8 @@ def create_research_agent(tools: list):
     llm = get_llm(prompt_name="research")
     llm_with_tools = llm.bind_tools(tools)
 
-    tool_names = [
-        getattr(t, "name", None) or getattr(t, "__name__", str(t)) for t in tools
+    tool_names: list[str] = [
+        getattr(t, "name", None) or getattr(t, "__name__", None) or str(t) for t in tools
     ]
 
     # Build tools_dict for execute_agent_with_tools (shared memory path)
@@ -101,7 +101,7 @@ def create_research_agent(tools: list):
     for tool in tools:
         if isinstance(tool, BaseTool):
             tools_dict[tool.name] = tool.func if hasattr(tool, "func") else tool
-        elif hasattr(tool, "__call__"):
+        elif callable(tool):
             tool_name = getattr(tool, "name", None) or getattr(tool, "__name__", "unknown")
             tools_dict[tool_name] = tool
         else:
@@ -130,7 +130,7 @@ def create_research_agent(tools: list):
 
             if isinstance(last_message, ToolMessage):
                 result = _handle_tool_message(
-                    messages, last_message, llm_with_tools, tool_names, llm
+                    messages, llm_with_tools, tool_names, llm
                 )
                 # Wrap parallel-path AIMessage result into shared-memory format
                 return _wrap_parallel_result(result)
@@ -173,7 +173,7 @@ def create_research_agent(tools: list):
                 )
                 return _direct_tool_loop(
                     messages, tools_dict, llm_with_tools,
-                    RESEARCH_AGENT_SYSTEM_PROMPT, original_request
+                    RESEARCH_AGENT_SYSTEM_PROMPT
                 )
 
             logger.info(f"Research Agent: Running {len(sub_tasks)} sub-tasks in parallel")
@@ -201,7 +201,7 @@ def create_research_agent(tools: list):
                 results = list(executor.map(run_sub_agent_initial, sub_tasks))
 
             parallel_result = _aggregate_and_return(
-                results, messages, original_request, llm_with_tools, tool_names, llm
+                results, messages, original_request, llm
             )
             return _wrap_parallel_result(parallel_result)
 
@@ -232,7 +232,7 @@ def create_research_agent(tools: list):
         return "the requested research topic"
 
     def _direct_tool_loop(
-        messages, tools_dict, llm_with_tools, system_prompt, original_request
+        messages, tools_dict, llm_with_tools, system_prompt
     ) -> dict:
         """
         Fallback: run a single-agent tool-execution loop and return
@@ -307,7 +307,7 @@ def create_research_agent(tools: list):
             "messages": msgs,
         }
 
-    def _handle_tool_message(messages, last_message, llm_with_tools, tool_names, llm):
+    def _handle_tool_message(messages, llm_with_tools, tool_names, llm):
         """Handle mid-execution ToolMessage — continue parallel sub-agents."""
         initiator = None
         initiator_idx = -1
@@ -330,7 +330,7 @@ def create_research_agent(tools: list):
                 logger.warning(
                     "Research Agent: Could not parse sub-tasks. Falling back to merger."
                 )
-                return _handle_merge(messages, initiator.content, _extract_original_request(messages), llm)
+                return _handle_merge(messages, initiator.content, _extract_original_request(messages))
 
             tool_results_per_sub_agent: dict[int, list[ToolMessage]] = {
                 i: [] for i in range(len(sub_tasks_raw))
@@ -393,7 +393,7 @@ def create_research_agent(tools: list):
                 )
 
             return _aggregate_and_return(
-                results, messages, original_request, llm_with_tools, tool_names, llm
+                results, messages, original_request, llm
             )
         else:
             logger.info(
@@ -411,7 +411,7 @@ def create_research_agent(tools: list):
                 task_extractor=extract_task_from_messages,
             )
 
-    def _aggregate_and_return(results, messages, original_request, llm_with_tools, tool_names, llm):
+    def _aggregate_and_return(results, messages, original_request, llm):
         all_tool_calls = []
         combined_content = "Research Phase - Sub-agent findings:\n"
         needs_more_tools = False
@@ -441,7 +441,7 @@ def create_research_agent(tools: list):
 
         if not needs_more_tools:
             logger.info("Research Agent: All sub-agents finished. Proceeding to merge.")
-            return _handle_merge(messages, combined_content, original_request, llm)
+            return _handle_merge(messages, combined_content, original_request)
 
         return {
             "messages": [
@@ -453,7 +453,7 @@ def create_research_agent(tools: list):
             ]
         }
 
-    def _handle_merge(messages, findings_summary, original_request, llm):
+    def _handle_merge(messages, findings_summary, original_request):
         logger.info("Research Agent: Entering Merge Phase")
         merger_llm = get_llm(prompt_name="research_merger")
         merger_prompt = load_prompt("research_merger")
