@@ -4,7 +4,7 @@ import json
 from typing import Any, Optional
 
 
-def write_agent_memory(
+def write_to_memory(
     state: dict,
     name: str,
     data: dict[str, Any],
