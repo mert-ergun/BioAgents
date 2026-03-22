@@ -3,7 +3,7 @@
 import logging
 from datetime import datetime
 from functools import partial
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any, ClassVar, Literal
 
 from langchain_core.messages import AIMessage, BaseMessage, SystemMessage
 from langgraph.graph import END, StateGraph
@@ -77,7 +77,7 @@ class AgentState(dict):
     next: str
     reasoning: str
     output_dir: str | None = None
-    memory: dict[str, dict[str, Any]] = {}
+    memory: ClassVar[dict[str, dict[str, Any]]] = {}
     references: ReferenceManager | None = None
 
 
