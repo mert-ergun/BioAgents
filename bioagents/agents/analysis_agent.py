@@ -61,28 +61,27 @@ def create_analysis_agent(tools: list):
     tools_dict = {}
     for tool in tools:
         if isinstance(tool, BaseTool):
-            tools_dict[tool.name] = tool.func if hasattr(tool, 'func') else tool
-        elif hasattr(tool, '__call__'):
-            tool_name = getattr(tool, 'name', None) or getattr(tool, '__name__', 'unknown')
+            tools_dict[tool.name] = tool.func if hasattr(tool, "func") else tool
+        elif callable(tool):
+            tool_name = getattr(tool, "name", None) or getattr(tool, "__name__", "unknown")
             tools_dict[tool_name] = tool
         else:
-            tool_name = str(tool)
-            tools_dict[tool_name] = tool
-    
+            tools_dict[str(tool)] = tool
+
     logger.info(f"Analysis agent tools: {list(tools_dict.keys())}")
 
     def analysis_node(state):
         """Analysis agent with tool execution loop."""
         try:
             messages = state.get("messages", [])
-            
+
             # Find user message
             user_message = None
             for m in messages:
                 if isinstance(m, HumanMessage):
                     user_message = m
                     break
-            
+
             if user_message is None:
                 user_message = HumanMessage(content="Analyze the biological data.")
 
@@ -110,7 +109,7 @@ def create_analysis_agent(tools: list):
                 "status": "success" if raw_output else "error",
                 "error": None,
             }
-            
+
             structured_data = safe_json_output(raw_output, default_json)
 
             return {
