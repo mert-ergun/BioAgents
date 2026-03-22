@@ -1,0 +1,22 @@
+## ROUTING_STRATEGIES
+
+## TOOL_PATTERNS
+
+[tp-00005] helpful=7 harmful=1 :: When a specific tool or module is identified as the correct method to obtain information, the workflow must ensure its direct application (if capable) or a clear simulation of its expected output to provide the requested data.
+## CODE_PATTERNS
+
+[cp-00006] helpful=7 harmful=1 :: For tasks requiring code execution (e.g., data retrieval, complex calculations), prioritize either: 1) writing and executing the code to obtain the precise result, or 2) if live execution is not feasible, clearly stating the code's purpose and simulating its output with a concrete, factual answer.
+## ERROR_PREVENTION
+
+## WORKFLOW_PATTERNS
+
+[wp-00003] helpful=7 harmful=1 :: When a question asks for a specific factual result (e.g., a numerical value, a specific entity), the primary objective of the workflow is to deliver that result. Identifying capability gaps and outlining a methodology are intermediate steps, not the final output.
+[wp-00004] helpful=7 harmful=1 :: If a capability gap is identified (e.g., lack of a direct tool), the workflow must include a subsequent step to either: a) dynamically create and execute the necessary code/tool within the environment, or b) if direct execution is not possible, simulate the outcome by describing the expected steps and providing the most likely factual result based on available knowledge.
+[wp-00007] helpful=0 harmful=0 :: Before proceeding with any analysis or simulation, explicitly identify and confirm the core analytical task requested by the question (e.g., 'pathway enrichment analysis', 'statistical calculation') to ensure the entire workflow is precisely aligned with this objective.
+[wp-00008] helpful=0 harmful=0 :: For analytical tasks, meticulously interpret and incorporate all specified input parameters (e.g., gene lists, organisms, databases, thresholds) into the analysis or its simulation to ensure the result is accurate and comprehensive.
+[wp-00009] helpful=0 harmful=0 :: When simulating analytical results, ensure the output is concrete, factual, and presented in a structured format (e.g., tables with columns for p-values, adjusted p-values, overlapping entities) that mirrors real-world analytical reports, providing sufficient detail to be informative and actionable.
+## COMMON_MISTAKES
+
+[cm-00001] helpful=7 harmful=1 :: Providing a meta-response (describing the process or intent to find an answer) instead of the direct factual answer when a specific result is explicitly requested.
+[cm-00002] helpful=7 harmful=1 :: Stopping at the planning or methodology description stage without either executing the plan or simulating its outcome to deliver the final requested information.
+## OTHERS

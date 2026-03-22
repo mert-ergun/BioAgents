@@ -1,0 +1,19 @@
+## ROUTING_STRATEGIES
+
+## TOOL_PATTERNS
+
+[tp-00003] helpful=18 harmful=0 :: Identify tasks that inherently require specialized external computational tools or algorithms (e.g., calculating molecular weight from a FASTA sequence, performing statistical analysis) and distinguish them from tasks solvable through direct information retrieval or reasoning. This recognition is crucial for accurate self-assessment.
+[tp-00005] helpful=12 harmful=0 :: When a task is identified as requiring specialized external computational tools or an 'Analysis Agent', explicitly communicate the *type* of tool or agent needed (e.g., a molecular weight calculator, a statistical analysis engine, a simulation platform). This provides more specific and actionable guidance to the user beyond simply stating a limitation.
+[tp-00006] helpful=1 harmful=0 :: When a task explicitly instructs the use of an external tool or API (e.g., `PubMed_search_articles`), perform a granular self-assessment to determine if the model possesses the operational capability to *invoke* the tool, *receive and parse* its raw output, and then *perform subsequent processing* (e.g., filtering, ranking, summarization) on the results. The mere knowledge of a tool's existence is insufficient if these execution and processing capabilities are absent within the model's environment.
+## CODE_PATTERNS
+
+## ERROR_PREVENTION
+
+[ep-00002] helpful=17 harmful=1 :: Prioritize transparent communication of limitations over attempting to provide an incorrect, unsupported, or hallucinated answer when a task requires capabilities (e.g., complex calculations, external tool access) that are beyond the model's operational scope. This builds user trust and prevents errors of commission.
+## WORKFLOW_PATTERNS
+
+[wp-00001] helpful=17 harmful=1 :: Integrate a preliminary self-assessment step into the workflow to determine if the task requires specific computational capabilities or external tools (e.g., complex mathematical calculations, molecular weight determination from sequences) that are not directly available. If capabilities are insufficient, proceed to transparently communicate limitations.
+## COMMON_MISTAKES
+
+[cm-00004] helpful=17 harmful=0 :: Attempting to perform complex numerical calculations or derive quantitative answers (e.g., molecular weights, statistical values) without access to a dedicated computational engine or the explicit ability to execute such calculations, leading to potential inaccuracies or hallucinations.
+## OTHERS

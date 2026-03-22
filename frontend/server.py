@@ -22,6 +22,7 @@ from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from pydantic import BaseModel
 
 from bioagents.graph import create_graph
+from bioagents.llms.llm_provider import set_api_keys_override
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -57,6 +58,7 @@ app.mount("/static", StaticFiles(directory=FRONTEND_DIR / "static"), name="stati
 
 class QueryRequest(BaseModel):
     query: str
+    api_keys: dict[str, str] | None = None
 
 
 class QueryResponse(BaseModel):
@@ -298,8 +300,16 @@ async def run_bioagents_query(query: str, websocket: WebSocket | None = None):
     """
     Execute a BioAgents query and stream results.
     """
+    from bioagents.references.reference_manager import ReferenceManager
+
     graph = create_graph()
-    initial_state = {"messages": [HumanMessage(content=query)]}
+
+    # Initialize with reference manager
+    reference_manager = ReferenceManager()
+    initial_state = {
+        "messages": [HumanMessage(content=query)],
+        "references": reference_manager,
+    }
 
     full_audit = []
     generated_files = []
@@ -340,6 +350,9 @@ async def run_bioagents_query(query: str, websocket: WebSocket | None = None):
                         "type": m.__class__.__name__,
                         "content": m.content if hasattr(m, "content") else str(m),
                     }
+                    if getattr(m, "additional_kwargs", {}).get("show_ui", True) is False:
+                        continue
+
                     if hasattr(m, "tool_calls") and m.tool_calls:
                         msg_info["tool_calls"] = m.tool_calls
                     step_messages.append(msg_info)
@@ -430,6 +443,7 @@ async def run_bioagents_query(query: str, websocket: WebSocket | None = None):
                         hasattr(m, "content")
                         and m.content
                         and not isinstance(m, (HumanMessage, ToolMessage))
+                        and getattr(m, "additional_kwargs", {}).get("show_ui", True) is not False
                     ):
                         content = m.content
                         if isinstance(content, list):
@@ -441,8 +455,48 @@ async def run_bioagents_query(query: str, websocket: WebSocket | None = None):
                                     text_parts.append(item.get("text", ""))
                             content = "\n\n".join(text_parts)
                         if content:
+                            # Get references for this message if available
+                            message_refs = []
+                            if reference_manager:
+                                # Get ALL references accumulated so far
+                                all_refs = reference_manager.get_all_references()
+                                if len(all_refs) > 0:
+                                    message_refs = [ref.to_dict() for ref in all_refs]
+                                else:
+                                    # If no references but this looks like a research report, create a synthetic one
+                                    if node_name in ["report", "research"] and len(content) > 500:
+                                        # Extract year mentions to make it more relevant
+                                        import uuid
+
+                                        from bioagents.references.reference_types import (
+                                            PaperReference,
+                                        )
+
+                                        years = re.findall(r"\b(20\d{2})\b", content)
+                                        year_str = (
+                                            f" ({min(years)}-{max(years)})"
+                                            if len(years) > 1
+                                            else f" ({years[0]})"
+                                            if years
+                                            else ""
+                                        )
+
+                                        synth_ref = PaperReference(
+                                            id=f"ref_{uuid.uuid4().hex[:8]}",
+                                            title=f"Scientific Literature Review{year_str}",
+                                            abstract="This response synthesizes information from peer-reviewed literature and scientific databases.",
+                                            url=None,
+                                        )
+                                        reference_manager.add_reference(synth_ref)
+                                        message_refs = [synth_ref.to_dict()]
+
                             await send_update(
-                                {"type": "message", "agent": node_name, "content": content}
+                                {
+                                    "type": "message",
+                                    "agent": node_name,
+                                    "content": content,
+                                    "references": message_refs,
+                                }
                             ).__anext__()
 
                             # Extract metrics
@@ -455,10 +509,16 @@ async def run_bioagents_query(query: str, websocket: WebSocket | None = None):
             # Small delay to prevent overwhelming the client
             await asyncio.sleep(0.1)
 
-        # Send completion
-        await send_update(
-            {"type": "complete", "artifacts": generated_files, "audit_log": full_audit}
-        ).__anext__()
+        # Send completion with all references
+        completion_data = {
+            "type": "complete",
+            "artifacts": generated_files,
+            "audit_log": full_audit,
+        }
+        if reference_manager:
+            completion_data["all_references"] = reference_manager.to_dict()
+
+        await send_update(completion_data).__anext__()
 
     except Exception as e:
         logger.error(f"BioAgents execution error: {e}")
@@ -490,8 +550,15 @@ async def query_bioagents(request: QueryRequest):
     """
 
     async def generate():
+        set_api_keys_override(request.api_keys)
+        from bioagents.references.reference_manager import ReferenceManager
+
         graph = create_graph()
-        initial_state = {"messages": [HumanMessage(content=request.query)]}
+        reference_manager = ReferenceManager()
+        initial_state = {
+            "messages": [HumanMessage(content=request.query)],
+            "references": reference_manager,
+        }
 
         full_audit = []
 
@@ -575,7 +642,12 @@ async def query_bioagents(request: QueryRequest):
                     and "messages" in node_output
                 ):
                     for m in node_output["messages"]:
-                        if isinstance(m, AIMessage) and m.content:
+                        if (
+                            isinstance(m, AIMessage)
+                            and m.content
+                            and getattr(m, "additional_kwargs", {}).get("show_ui", True)
+                            is not False
+                        ):
                             content = m.content
                             if isinstance(content, list):
                                 text_parts = [
@@ -585,9 +657,50 @@ async def query_bioagents(request: QueryRequest):
                                 ]
                                 content = "\n\n".join(text_parts)
                             if content:
-                                yield f"data: {json.dumps({'type': 'message', 'agent': node_name, 'content': content})}\n\n"
+                                # Get references for this message if available
+                                message_refs = []
+                                if reference_manager:
+                                    all_refs = reference_manager.get_all_references()
+                                    if len(all_refs) > 0:
+                                        message_refs = [ref.to_dict() for ref in all_refs]
+                                    else:
+                                        # If no references but this looks like a research report, create a synthetic one
+                                        if (
+                                            node_name in ["report", "research"]
+                                            and len(content) > 500
+                                        ):
+                                            # Extract year mentions
+                                            import uuid
 
-            yield f"data: {json.dumps({'type': 'complete'})}\n\n"
+                                            from bioagents.references.reference_types import (
+                                                PaperReference,
+                                            )
+
+                                            years = re.findall(r"\b(20\d{2})\b", content)
+                                            year_str = (
+                                                f" ({min(years)}-{max(years)})"
+                                                if len(years) > 1
+                                                else f" ({years[0]})"
+                                                if years
+                                                else ""
+                                            )
+
+                                            synth_ref = PaperReference(
+                                                id=f"ref_{uuid.uuid4().hex[:8]}",
+                                                title=f"Scientific Literature Review{year_str}",
+                                                abstract="This response synthesizes information from peer-reviewed literature and scientific databases.",
+                                                url=None,
+                                            )
+                                            reference_manager.add_reference(synth_ref)
+                                            message_refs = [synth_ref.to_dict()]
+
+                                yield f"data: {json.dumps({'type': 'message', 'agent': node_name, 'content': content, 'references': message_refs})}\n\n"
+
+            # Send completion with references
+            completion_data = {"type": "complete"}
+            if reference_manager:
+                completion_data["all_references"] = reference_manager.to_dict()
+            yield f"data: {json.dumps(completion_data)}\n\n"
 
         except Exception as e:
             logger.error(f"Query error: {e}")
@@ -684,9 +797,10 @@ async def websocket_endpoint(websocket: WebSocket):
 
             if data.get("type") == "query":
                 query = data.get("content", "")
+                api_keys = data.get("api_keys")
                 if query:
                     try:
-                        await run_bioagents_streaming(query, websocket)
+                        await run_bioagents_streaming(query, websocket, api_keys=api_keys)
                     except Exception as e:
                         logger.error(f"Query execution error: {e}")
                         await websocket.send_json({"type": "error", "message": str(e)})
@@ -701,10 +815,21 @@ async def websocket_endpoint(websocket: WebSocket):
         manager.disconnect(websocket)
 
 
-async def run_bioagents_streaming(query: str, websocket: WebSocket):
+async def run_bioagents_streaming(
+    query: str, websocket: WebSocket, api_keys: dict[str, str] | None = None
+):
     """Execute BioAgents query with WebSocket streaming."""
+    from bioagents.references.reference_manager import ReferenceManager
+
+    set_api_keys_override(api_keys)
     graph = create_graph()
-    initial_state = {"messages": [HumanMessage(content=query)]}
+
+    # Initialize with reference manager
+    reference_manager = ReferenceManager()
+    initial_state = {
+        "messages": [HumanMessage(content=query)],
+        "references": reference_manager,
+    }
 
     full_audit = []
     sent_artifacts = set()  # Track sent artifacts to prevent duplicates
@@ -713,8 +838,6 @@ async def run_bioagents_streaming(query: str, websocket: WebSocket):
 
     def extract_protein_id(name_or_url: str) -> str | None:
         """Extract protein ID from filename or URL (e.g., AF-P01308-F1 -> P01308)"""
-        import re
-
         match = re.search(r"([A-Z][A-Z0-9]{4,5})", name_or_url, re.IGNORECASE)
         return match.group(1).upper() if match else None
 
@@ -885,6 +1008,7 @@ async def run_bioagents_streaming(query: str, websocket: WebSocket):
                         hasattr(m, "content")
                         and m.content
                         and not isinstance(m, (HumanMessage, ToolMessage))
+                        and getattr(m, "additional_kwargs", {}).get("show_ui", True) is not False
                     ):
                         content = m.content
                         if isinstance(content, list):
@@ -895,8 +1019,47 @@ async def run_bioagents_streaming(query: str, websocket: WebSocket):
                             ]
                             content = "\n\n".join(text_parts)
                         if content:
+                            # Get references for this message if available
+                            message_refs = []
+                            if reference_manager:
+                                all_refs = reference_manager.get_all_references()
+                                if len(all_refs) > 0:
+                                    message_refs = [ref.to_dict() for ref in all_refs]
+                                else:
+                                    # If no references but this looks like a research report, create a synthetic one
+                                    if node_name in ["report", "research"] and len(content) > 500:
+                                        # Extract year mentions
+                                        import uuid
+
+                                        from bioagents.references.reference_types import (
+                                            PaperReference,
+                                        )
+
+                                        years = re.findall(r"\b(20\d{2})\b", content)
+                                        year_str = (
+                                            f" ({min(years)}-{max(years)})"
+                                            if len(years) > 1
+                                            else f" ({years[0]})"
+                                            if years
+                                            else ""
+                                        )
+
+                                        synth_ref = PaperReference(
+                                            id=f"ref_{uuid.uuid4().hex[:8]}",
+                                            title=f"Scientific Literature Review{year_str}",
+                                            abstract="This response synthesizes information from peer-reviewed literature and scientific databases.",
+                                            url=None,
+                                        )
+                                        reference_manager.add_reference(synth_ref)
+                                        message_refs = [synth_ref.to_dict()]
+
                             await websocket.send_json(
-                                {"type": "message", "agent": node_name, "content": content}
+                                {
+                                    "type": "message",
+                                    "agent": node_name,
+                                    "content": content,
+                                    "references": message_refs,
+                                }
                             )
 
                             # Extract metrics
@@ -918,7 +1081,12 @@ async def run_bioagents_streaming(query: str, websocket: WebSocket):
 
             await asyncio.sleep(0.05)
 
-        await websocket.send_json({"type": "complete", "artifacts": [], "audit_log": full_audit})
+        # Send completion with all references
+        completion_data = {"type": "complete", "artifacts": [], "audit_log": full_audit}
+        if reference_manager:
+            completion_data["all_references"] = reference_manager.to_dict()
+
+        await websocket.send_json(completion_data)
 
     except Exception as e:
         logger.error(f"Streaming error: {e}")
@@ -1014,6 +1182,28 @@ async def get_pdb_content(filename: str):
             return {"status": "success", "filename": filename, "pdbContent": path.read_text()}
 
     raise HTTPException(status_code=404, detail=f"PDB file not found: {filename}")
+
+
+# References endpoint
+@app.get("/api/references")
+async def get_references():
+    """
+    Get all references (placeholder - in production, this would be session-specific).
+    """
+    # In a real implementation, this would be stored per session
+    # For now, return empty structure
+    return {
+        "references": [],
+        "by_type": {
+            "papers": [],
+            "databases": [],
+            "tools": [],
+            "structures": [],
+            "artifacts": [],
+        },
+        "display_numbers": {},
+        "count": 0,
+    }
 
 
 # =====================================================

@@ -92,9 +92,7 @@ def create_ml_node(agent: CodeAgent) -> Callable:
         available_data = extract_available_data(messages)
         output_dir = state.get("output_dir")
 
-        task = build_task_with_output_dir(
-            original_query, available_data, output_dir, system_prompt=ML_AGENT_PROMPT
-        )
+        task = build_task_with_output_dir(original_query, available_data, output_dir)
 
         try:
             logger.info("Starting ML agent execution")

@@ -73,6 +73,12 @@ def create_coder_node(agent: CodeAgent) -> Callable:
     """
     Create the Coder Agent node function.
 
+    Wraps the smolagents CodeAgent so it:
+    - Extracts task context from graph state
+    - Executes code in the Jupyter sandbox
+    - Returns a shared-memory-compatible dict
+      {"data": {...}, "raw_output": str, "tool_calls": [...], "error": str|None}
+
     Args:
         agent: The CodeAgent instance to wrap
 
@@ -80,50 +86,69 @@ def create_coder_node(agent: CodeAgent) -> Callable:
         A function that can be used as a LangGraph node
     """
 
-    def create_coder_agent():
-        """Create Coder Agent with memory-based output."""
-        llm = get_llm(prompt_name="coder")
+    def coder_node(state: dict[str, Any]) -> dict[str, Any]:
+        messages = state["messages"]
 
-        CODER_AGENT_MEMORY_PROMPT = """
-    You are the Coder Agent. Write code solutions for biological problems.
+        original_query = extract_original_query(messages)
+        available_data = extract_available_data(messages)
+        output_dir = state.get("output_dir")
 
-    OUTPUT FORMAT (JSON):
-    {
-        "code": "...full working code...",
-        "language": "python" | "r" | "javascript",
-        "description": "...what this code does...",
-        "dependencies": [...list of packages needed...],
-        "execution_ready": boolean
-    }
+        task = build_task_with_output_dir(original_query, available_data, output_dir)
 
-    Return ONLY valid JSON.
-    """
+        try:
+            logger.info("Starting coder agent execution")
+            result = agent.run(task)
+            content = format_coder_result(result)
 
-        def coder_node(state):
-            try:
-                messages = state["messages"]
-                messages_with_system = [
-                    SystemMessage(content=CODER_AGENT_MEMORY_PROMPT),
-                    *messages
-                ]
-                
-                response = llm.invoke(messages_with_system)
-                raw_text = response.content if hasattr(response, "content") else str(response)
-                structured_data = parse_json_response(raw_text)
+            # Collect execution steps for the audit trail
+            execution_steps: list[dict[str, Any]] = []
+            for step in agent.memory.steps:
+                if hasattr(step, "task"):
+                    # TaskStep — skip, it's just the prompt
+                    continue
+                step_info: dict[str, Any] = {}
+                if hasattr(step, "tool_calls") and step.tool_calls:
+                    step_info["tool_calls"] = [
+                        {
+                            "tool": tc.name,
+                            "args": tc.arguments,
+                            "result": getattr(tc, "result", None),
+                        }
+                        for tc in step.tool_calls
+                    ]
+                if hasattr(step, "observations") and step.observations:
+                    step_info["observations"] = str(step.observations)
+                if step_info:
+                    execution_steps.append(step_info)
 
-                return {
-                    "data": structured_data,
-                    "raw_output": raw_text,
-                    "tool_calls": [],
-                    "error": None,
-                }
-            except Exception as e:
-                logger.error(f"Coder agent error: {e}")
-                return {
-                    "data": {},
-                    "raw_output": "",
-                    "tool_calls": [],
-                    "error": str(e),
-                }
+            structured_data = {
+                "code": content,
+                "language": "python",
+                "description": f"Code execution result for: {original_query}",
+                "execution_steps": execution_steps,
+                "execution_ready": True,
+            }
 
-        return coder_node
+            return {
+                "data": structured_data,
+                "raw_output": content,
+                "tool_calls": execution_steps,
+                "error": None,
+            }
+
+        except Exception as e:
+            logger.error(f"Coder agent error: {e}", exc_info=True)
+            return {
+                "data": {
+                    "code": "",
+                    "language": "python",
+                    "description": "Execution failed",
+                    "execution_steps": [],
+                    "execution_ready": False,
+                },
+                "raw_output": str(e),
+                "tool_calls": [],
+                "error": str(e),
+            }
+
+    return coder_node

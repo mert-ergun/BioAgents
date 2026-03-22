@@ -60,6 +60,31 @@
     </capability>
 
     <capability>
+      <name>Custom Tool Registry</name>
+      <description>Access and execute custom tools created by the ToolBuilder agent</description>
+      <tools>
+        <tool>search_custom_tools</tool>
+        <tool>list_custom_tools</tool>
+        <tool>execute_custom_tool</tool>
+      </tools>
+      <workflow>
+        <step order="1">Use search_custom_tools to find available custom tools for your task</step>
+        <step order="2">Review the tool descriptions to ensure it matches your needs</step>
+        <step order="3">Use execute_custom_tool with the exact tool name and required arguments</step>
+        <step order="4">Parse and report the results</step>
+      </workflow>
+      <examples>
+        <example>
+          <query>Use the string_db_ppi_search tool to find protein interactions for BRCA1</query>
+          <action>
+            1. search_custom_tools(query="STRING database protein interactions", limit=5)
+            2. execute_custom_tool(tool_name="string_db_ppi_search", arguments={"gene_name": "BRCA1", "species": 9606})
+          </action>
+        </example>
+      </examples>
+    </capability>
+
+    <capability>
       <name>UniProt Data Retrieval</name>
       <description>Fetch protein sequences in FASTA format from UniProt</description>
       <tool>fetch_uniprot_fasta</tool>
@@ -137,7 +162,18 @@
 
   <instructions>
     <instruction priority="critical">
-      ALWAYS use tool_universe_find_tools FIRST to discover the best tool for a literature search or data retrieval task
+      When searching for tools, FIRST check the custom tool registry using search_custom_tools
+      before searching ToolUniverse. Custom tools are specifically created for bioinformatics tasks
+      and may be more suitable than generic tools.
+    </instruction>
+
+    <instruction priority="critical">
+      If the Supervisor mentions that a new custom tool was created (e.g., "Use the newly created tool string_db_ppi_search"),
+      use search_custom_tools to find it, then execute_custom_tool with the exact tool name and required arguments.
+    </instruction>
+
+    <instruction priority="critical">
+      If no custom tool is available, use tool_universe_find_tools to discover the best tool for a literature search or data retrieval task
     </instruction>
 
     <instruction priority="critical">
@@ -154,6 +190,7 @@
       - Number of results found
       - Key papers/data with titles, authors, and dates
       - Brief summary of relevant findings
+      - Use numbered citations [1], [2], [3] when referencing sources in your response
       - DOI or identifiers when available
     </instruction>
 

@@ -52,10 +52,469 @@ const state = {
         autoScroll: true,
         notifications: true,
         theme: 'dark',
+        apiKeys: {
+            openai: '',
+            gemini: '',
+        },
     },
     notifications: [],
     sidebarOpen: true,
+    // Reference tracking
+    references: new Map(),  // ref_id -> Reference object
+    referencesByMessage: new Map(),  // message_id -> [ref_ids]
+    referenceCounter: 0,
+    displayNumbers: new Map(),  // ref_id -> display number
 };
+
+// =====================================================
+// REFERENCE MANAGEMENT
+// =====================================================
+
+function addReference(reference) {
+    // Check if reference already exists
+    if (state.references.has(reference.id)) {
+        return reference.id;
+    }
+
+    // Add reference to map
+    state.references.set(reference.id, reference);
+
+    // Assign display number if not already assigned
+    if (!state.displayNumbers.has(reference.id)) {
+        state.referenceCounter++;
+        state.displayNumbers.set(reference.id, state.referenceCounter);
+    }
+
+    return reference.id;
+}
+
+function getReferenceNumber(refId) {
+    return state.displayNumbers.get(refId) || null;
+}
+
+function getAllReferences() {
+    return Array.from(state.references.values())
+        .sort((a, b) => {
+            const numA = state.displayNumbers.get(a.id) || 0;
+            const numB = state.displayNumbers.get(b.id) || 0;
+            return numA - numB;
+        });
+}
+
+function getReferencesByType(type) {
+    return getAllReferences().filter(ref => ref.type === type);
+}
+
+function attachReferencesToMessage(messageId, refIds) {
+    state.referencesByMessage.set(messageId, refIds);
+}
+
+function getMessageReferences(messageId) {
+    return state.referencesByMessage.get(messageId) || [];
+}
+
+// =====================================================
+// CITATION PARSING
+// =====================================================
+
+function parseCitationsInContent(content, messageRefs) {
+    if (!content || !messageRefs || messageRefs.length === 0) {
+        return content;
+    }
+
+    // Build a mapping of reference IDs for quick lookup
+    const refMap = new Map();
+    messageRefs.forEach(ref => {
+        refMap.set(ref.id, ref);
+    });
+
+    let result = content;
+
+    // STEP 1: Convert inline academic citations to numbered format
+    // Pattern: (Source Name, Year) or (Source Name et al., Year)
+    const academicCitationPattern = /\(([A-Za-z\s&\-]+(?:\set\sal\.)?),?\s*(\d{4})\)/g;
+    const citationsToReplace = [];
+
+    let match;
+    while ((match = academicCitationPattern.exec(content)) !== null) {
+        const fullMatch = match[0];
+        const source = match[1].trim();
+        const year = match[2];
+
+        // Try to find matching reference
+        const matchingRef = messageRefs.find(ref => {
+            if (ref.type === 'paper') {
+                // Match by journal name or first author
+                if (ref.journal && source.includes(ref.journal)) return true;
+                if (ref.authors && ref.authors.length > 0 && source.includes(ref.authors[0])) return true;
+            }
+            // Match by title containing source keywords
+            if (ref.title && ref.title.toLowerCase().includes(source.toLowerCase())) return true;
+            if (source.toLowerCase().includes(ref.title.toLowerCase())) return true;
+
+            return false;
+        });
+
+        if (matchingRef) {
+            const displayNum = state.displayNumbers.get(matchingRef.id);
+            if (displayNum) {
+                citationsToReplace.push({
+                    original: fullMatch,
+                    replacement: `<sup class="citation" data-ref-id="${matchingRef.id}" data-ref-num="${displayNum}">${displayNum}</sup>`,
+                    position: match.index
+                });
+            }
+        }
+    }
+
+    // Apply replacements in reverse order to maintain positions
+    for (let i = citationsToReplace.length - 1; i >= 0; i--) {
+        const {original, replacement, position} = citationsToReplace[i];
+        result = result.substring(0, position) + replacement + result.substring(position + original.length);
+    }
+
+    // STEP 2: Handle existing [1], [2] format citations
+    const citationPattern = /\[(\d+(?:[-,]\d+)*)\]/g;
+    const matches = [...result.matchAll(citationPattern)];
+
+    // Process in reverse to maintain correct positions
+    for (let i = matches.length - 1; i >= 0; i--) {
+        const match = matches[i];
+        const fullMatch = match[0];
+        const numbers = match[1];
+        const position = match.index;
+
+        // Parse the numbers (handle ranges like 1-3 and lists like 1,2)
+        const refNumbers = [];
+        const parts = numbers.split(',');
+        parts.forEach(part => {
+            if (part.includes('-')) {
+                const [start, end] = part.split('-').map(Number);
+                for (let n = start; n <= end; n++) {
+                    refNumbers.push(n);
+                }
+            } else {
+                refNumbers.push(Number(part));
+            }
+        });
+
+        // Find matching reference IDs
+        const matchingRefs = messageRefs.filter(ref => {
+            const displayNum = state.displayNumbers.get(ref.id);
+            return displayNum && refNumbers.includes(displayNum);
+        });
+
+        if (matchingRefs.length > 0) {
+            // Create clickable citation spans
+            const citationHtml = refNumbers.map(num => {
+                const ref = messageRefs.find(r => state.displayNumbers.get(r.id) === num);
+                const refId = ref ? ref.id : '';
+                return `<sup class="citation" data-ref-id="${refId}" data-ref-num="${num}">${num}</sup>`;
+            }).join(',');
+
+            result = result.substring(0, position) + citationHtml + result.substring(position + fullMatch.length);
+        }
+    }
+
+    return result;
+}
+
+function renderReferenceHoverCard(refId, targetElement) {
+    const ref = state.references.get(refId);
+    if (!ref) return null;
+
+    const displayNum = state.displayNumbers.get(refId);
+
+    // Create hover card HTML based on reference type
+    let cardContent = '';
+
+    if (ref.type === 'paper') {
+        const authors = ref.authors && ref.authors.length > 0
+            ? ref.authors.join(', ')
+            : 'Unknown authors';
+        const year = ref.year || 'n.d.';
+        const journal = ref.journal ? ` <em>${ref.journal}</em>` : '';
+
+        cardContent = `
+            <div class="reference-hover-card" id="refCard-${refId}">
+                <div class="flex items-start justify-between mb-2">
+                    <span class="text-xs font-bold text-primary">[${displayNum}] Paper</span>
+                    <button onclick="closeHoverCard('${refId}')" class="text-slate-400 hover:text-white">
+                        <span class="material-symbols-outlined text-sm">close</span>
+                    </button>
+                </div>
+                <div class="text-sm font-medium text-white mb-1">${ref.title}</div>
+                <div class="text-xs text-slate-400 mb-2">${authors} (${year})${journal}</div>
+                ${ref.doi ? `<div class="text-xs text-primary mb-1">DOI: ${ref.doi}</div>` : ''}
+                ${ref.pmid ? `<div class="text-xs text-primary mb-1">PMID: ${ref.pmid}</div>` : ''}
+                ${ref.url ? `<a href="${ref.url}" target="_blank" class="text-xs text-primary hover:underline">View paper →</a>` : ''}
+            </div>
+        `;
+    } else if (ref.type === 'database') {
+        const ids = ref.identifiers && ref.identifiers.length > 0
+            ? ref.identifiers.join(', ')
+            : '';
+
+        cardContent = `
+            <div class="reference-hover-card" id="refCard-${refId}">
+                <div class="flex items-start justify-between mb-2">
+                    <span class="text-xs font-bold text-primary">[${displayNum}] Database</span>
+                    <button onclick="closeHoverCard('${refId}')" class="text-slate-400 hover:text-white">
+                        <span class="material-symbols-outlined text-sm">close</span>
+                    </button>
+                </div>
+                <div class="text-sm font-medium text-white mb-1">${ref.title}</div>
+                <div class="text-xs text-slate-400 mb-2">${ref.database_name}</div>
+                ${ids ? `<div class="text-xs text-slate-300 mb-2">IDs: ${ids}</div>` : ''}
+                ${ref.url ? `<a href="${ref.url}" target="_blank" class="text-xs text-primary hover:underline">View entry →</a>` : ''}
+            </div>
+        `;
+    } else if (ref.type === 'structure') {
+        const source = ref.source || 'Unknown';
+        const method = ref.method ? ` (${ref.method})` : '';
+
+        cardContent = `
+            <div class="reference-hover-card" id="refCard-${refId}">
+                <div class="flex items-start justify-between mb-2">
+                    <span class="text-xs font-bold text-primary">[${displayNum}] Structure</span>
+                    <button onclick="closeHoverCard('${refId}')" class="text-slate-400 hover:text-white">
+                        <span class="material-symbols-outlined text-sm">close</span>
+                    </button>
+                </div>
+                <div class="text-sm font-medium text-white mb-1">${ref.title}</div>
+                <div class="text-xs text-slate-400 mb-2">${source}${method}</div>
+                ${ref.pdb_id ? `<div class="text-xs text-slate-300 mb-1">PDB: ${ref.pdb_id}</div>` : ''}
+                ${ref.uniprot_id ? `<div class="text-xs text-slate-300 mb-1">UniProt: ${ref.uniprot_id}</div>` : ''}
+                ${ref.url ? `<a href="${ref.url}" target="_blank" class="text-xs text-primary hover:underline">View structure →</a>` : ''}
+            </div>
+        `;
+    } else if (ref.type === 'tool') {
+        cardContent = `
+            <div class="reference-hover-card" id="refCard-${refId}">
+                <div class="flex items-start justify-between mb-2">
+                    <span class="text-xs font-bold text-primary">[${displayNum}] Tool</span>
+                    <button onclick="closeHoverCard('${refId}')" class="text-slate-400 hover:text-white">
+                        <span class="material-symbols-outlined text-sm">close</span>
+                    </button>
+                </div>
+                <div class="text-sm font-medium text-white mb-1">${ref.title}</div>
+                ${ref.description ? `<div class="text-xs text-slate-400 mb-2">${ref.description}</div>` : ''}
+                ${ref.source_url ? `<a href="${ref.source_url}" target="_blank" class="text-xs text-primary hover:underline">View tool →</a>` : ''}
+            </div>
+        `;
+    } else if (ref.type === 'artifact') {
+        const size = ref.size ? ` (${formatFileSize(ref.size)})` : '';
+
+        cardContent = `
+            <div class="reference-hover-card" id="refCard-${refId}">
+                <div class="flex items-start justify-between mb-2">
+                    <span class="text-xs font-bold text-primary">[${displayNum}] Artifact</span>
+                    <button onclick="closeHoverCard('${refId}')" class="text-slate-400 hover:text-white">
+                        <span class="material-symbols-outlined text-sm">close</span>
+                    </button>
+                </div>
+                <div class="text-sm font-medium text-white mb-1">${ref.file_name}</div>
+                <div class="text-xs text-slate-400 mb-2">${ref.file_type || 'File'}${size}</div>
+                ${ref.agent ? `<div class="text-xs text-slate-300 mb-1">Generated by: ${ref.agent}</div>` : ''}
+            </div>
+        `;
+    } else {
+        // Generic reference
+        cardContent = `
+            <div class="reference-hover-card" id="refCard-${refId}">
+                <div class="flex items-start justify-between mb-2">
+                    <span class="text-xs font-bold text-primary">[${displayNum}] Reference</span>
+                    <button onclick="closeHoverCard('${refId}')" class="text-slate-400 hover:text-white">
+                        <span class="material-symbols-outlined text-sm">close</span>
+                    </button>
+                </div>
+                <div class="text-sm font-medium text-white mb-1">${ref.title}</div>
+                ${ref.url ? `<a href="${ref.url}" target="_blank" class="text-xs text-primary hover:underline">View →</a>` : ''}
+            </div>
+        `;
+    }
+
+    return cardContent;
+}
+
+function showHoverCard(refId, event) {
+    // Remove any existing hover cards
+    document.querySelectorAll('.reference-hover-card').forEach(card => card.remove());
+
+    const cardHtml = renderReferenceHoverCard(refId, event.target);
+    if (!cardHtml) return;
+
+    // Create and position the card
+    const tempDiv = document.createElement('div');
+    tempDiv.innerHTML = cardHtml;
+    const card = tempDiv.firstElementChild;
+
+    document.body.appendChild(card);
+
+    // Position near the citation
+    const rect = event.target.getBoundingClientRect();
+    card.style.position = 'fixed';
+    card.style.left = `${rect.left}px`;
+    card.style.top = `${rect.bottom + 5}px`;
+    card.style.zIndex = '1000';
+
+    // Adjust if off-screen
+    const cardRect = card.getBoundingClientRect();
+    if (cardRect.right > window.innerWidth) {
+        card.style.left = `${window.innerWidth - cardRect.width - 10}px`;
+    }
+    if (cardRect.bottom > window.innerHeight) {
+        card.style.top = `${rect.top - cardRect.height - 5}px`;
+    }
+}
+
+function closeHoverCard(refId) {
+    const card = document.getElementById(`refCard-${refId}`);
+    if (card) card.remove();
+}
+
+function formatFileSize(bytes) {
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+    return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+}
+
+function updateReferencePanel() {
+    const referenceList = document.getElementById('referenceList');
+    const referenceCount = document.getElementById('referenceCount');
+
+    if (!referenceList || !referenceCount) return;
+
+    const allRefs = getAllReferences();
+
+    if (allRefs.length === 0) {
+        referenceList.innerHTML = `
+            <div class="text-center py-6 text-text-subtle text-xs">
+                <span class="material-symbols-outlined text-2xl text-border-dark mb-2 block">article</span>
+                No references yet
+            </div>
+        `;
+        referenceCount.textContent = '0 refs';
+        return;
+    }
+
+    referenceCount.textContent = `${allRefs.length} ref${allRefs.length !== 1 ? 's' : ''}`;
+
+    // Group references by type
+    const byType = {
+        paper: [],
+        database: [],
+        tool: [],
+        structure: [],
+        artifact: []
+    };
+
+    allRefs.forEach(ref => {
+        if (byType[ref.type]) {
+            byType[ref.type].push(ref);
+        }
+    });
+
+    let html = '';
+
+    // Render each type group
+    Object.entries(byType).forEach(([type, refs]) => {
+        if (refs.length === 0) return;
+
+        const typeLabels = {
+            paper: '📄 Papers',
+            database: '🗃️ Databases',
+            tool: '🔧 Tools',
+            structure: '🧬 Structures',
+            artifact: '📁 Artifacts'
+        };
+
+        html += `<div class="mb-3">`;
+        html += `<div class="text-[9px] font-bold text-slate-600 uppercase tracking-wider mb-1.5">${typeLabels[type]}</div>`;
+
+        refs.forEach(ref => {
+            const displayNum = state.displayNumbers.get(ref.id);
+            const truncTitle = ref.title.length > 50 ? ref.title.substring(0, 50) + '...' : ref.title;
+
+            let subtitle = '';
+            if (type === 'paper' && ref.authors && ref.authors.length > 0) {
+                subtitle = `${ref.authors[0]} ${ref.year ? `(${ref.year})` : ''}`;
+            } else if (type === 'database') {
+                subtitle = ref.database_name || '';
+            } else if (type === 'structure') {
+                subtitle = ref.source || '';
+            } else if (type === 'tool') {
+                subtitle = ref.tool_name || '';
+            } else if (type === 'artifact') {
+                subtitle = ref.file_type || '';
+            }
+
+            html += `
+                <div class="reference-item p-2 rounded bg-surface-dark border border-white/5 hover:border-primary/20 mb-1.5 transition-all" data-ref-id="${ref.id}" data-ref-num="${displayNum}">
+                    <div class="flex items-start gap-2">
+                        <span class="citation-number text-[10px]">[${displayNum}]</span>
+                        <div class="flex-1 min-w-0">
+                            <div class="text-[11px] font-medium text-white truncate">${truncTitle}</div>
+                            ${subtitle ? `<div class="text-[10px] text-slate-500 truncate">${subtitle}</div>` : ''}
+                            ${ref.url ? `<a href="${ref.url}" target="_blank" class="text-[10px] text-primary hover:underline" onclick="event.stopPropagation()">View →</a>` : ''}
+                        </div>
+                    </div>
+                </div>
+            `;
+        });
+
+        html += `</div>`;
+    });
+
+    referenceList.innerHTML = html;
+
+    // Add click handlers
+    document.querySelectorAll('.reference-item').forEach(item => {
+        item.addEventListener('click', (e) => {
+            const refId = e.currentTarget.dataset.refId;
+            if (refId) {
+                // Show expanded view in a modal or highlight
+                showReferenceDetails(refId);
+            }
+        });
+    });
+}
+
+function scrollToReference(refNum) {
+    // Switch to references tab
+    const referencesTab = document.querySelector('[data-tab="references"]');
+    if (referencesTab) {
+        referencesTab.click();
+    }
+
+    // Scroll to the reference item
+    setTimeout(() => {
+        const refItem = document.querySelector(`[data-ref-num="${refNum}"]`);
+        if (refItem) {
+            refItem.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            refItem.classList.add('ring-2', 'ring-primary');
+            setTimeout(() => {
+                refItem.classList.remove('ring-2', 'ring-primary');
+            }, 2000);
+        }
+    }, 100);
+}
+
+function showReferenceDetails(refId) {
+    const ref = state.references.get(refId);
+    if (!ref) return;
+
+    // For now, just show the hover card
+    const fakeEvent = {
+        target: document.querySelector(`[data-ref-id="${refId}"]`),
+        clientX: window.innerWidth / 2,
+        clientY: window.innerHeight / 2
+    };
+
+    if (fakeEvent.target) {
+        showHoverCard(refId, fakeEvent);
+    }
+}
 
 // =====================================================
 // DOM ELEMENTS
@@ -277,6 +736,9 @@ function loadFromStorage() {
             state.sessions = parsed.sessions || [];
             state.currentSessionId = parsed.currentSessionId;
             state.settings = { ...state.settings, ...parsed.settings };
+            if (!state.settings.apiKeys) {
+                state.settings.apiKeys = { openai: '', gemini: '' };
+            }
 
             // Load current session data (but NOT artifacts - they should be regenerated)
             const session = state.sessions.find(s => s.id === state.currentSessionId);
@@ -345,7 +807,8 @@ function handleMessage(data) {
             setActiveAgent(data.agent, data.progress);
             break;
         case 'message':
-            addAssistantMessage(data.content, data.agent);
+            // Pass the entire message object to preserve references
+            addAssistantMessage(data.content, data.agent, data.references);
             break;
         case 'audit':
             updateAuditLog(data.entries);
@@ -357,6 +820,10 @@ function handleMessage(data) {
             loadStructure(data.pdbContent);
             break;
         case 'complete':
+            // Handle all_references if provided
+            if (data.all_references) {
+                console.log('Received all references:', data.all_references);
+            }
             handleComplete();
             break;
         case 'error':
@@ -539,10 +1006,11 @@ async function handleSubmit() {
     logTerminal(`Query: "${query.substring(0, 50)}${query.length > 50 ? '...' : ''}"`);
 
     try {
+        const apiKeys = getApiKeysPayload();
         if (state.isConnected && state.ws?.readyState === WebSocket.OPEN) {
-            state.ws.send(JSON.stringify({ type: 'query', content: query }));
+            state.ws.send(JSON.stringify({ type: 'query', content: query, api_keys: apiKeys }));
         } else {
-            await sendQueryViaRest(query);
+            await sendQueryViaRest(query, apiKeys);
         }
     } catch (error) {
         console.error('Query error:', error);
@@ -550,13 +1018,24 @@ async function handleSubmit() {
     }
 }
 
-async function sendQueryViaRest(query) {
+function getApiKeysPayload() {
+    const keys = state.settings?.apiKeys || {};
+    const payload = {};
+    if (keys.openai?.trim()) payload.openai = keys.openai.trim();
+    if (keys.gemini?.trim()) payload.gemini = keys.gemini.trim();
+    return Object.keys(payload).length ? payload : undefined;
+}
+
+async function sendQueryViaRest(query, apiKeys) {
     logTerminal('Using REST API fallback');
+
+    const body = { query };
+    if (apiKeys && Object.keys(apiKeys).length) body.api_keys = apiKeys;
 
     const response = await fetch(`${CONFIG.apiBaseUrl}/api/query`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query }),
+        body: JSON.stringify(body),
     });
 
     if (!response.ok) {
@@ -750,8 +1229,14 @@ function addUserMessage(content) {
     saveCurrentSession();
 }
 
-function addAssistantMessage(content, agent = null) {
-    const message = { role: 'assistant', content, agent, timestamp: new Date().toISOString() };
+function addAssistantMessage(content, agent = null, references = null) {
+    const message = {
+        role: 'assistant',
+        content,
+        agent,
+        timestamp: new Date().toISOString(),
+        references: references || []
+    };
     state.messages.push(message);
     renderAssistantMessage(message);
     scrollToBottom();
@@ -780,10 +1265,27 @@ function renderAssistantMessage(message) {
     const colorClass = getColorClass(agent.color);
     const time = formatTime(new Date(message.timestamp));
 
+    // Add references from message if provided
+    let messageRefs = [];
+    if (message.references && Array.isArray(message.references)) {
+        console.log('Processing references for message:', message.references);
+        message.references.forEach(ref => {
+            addReference(ref);
+            messageRefs.push(ref);
+        });
+        updateReferencePanel();
+        console.log('Total references now:', state.references.size);
+    }
+
     // Parse markdown
     let contentHtml = message.content;
     if (typeof marked !== 'undefined') {
         contentHtml = marked.parse(message.content);
+    }
+
+    // Parse citations in content if there are references
+    if (messageRefs.length > 0) {
+        contentHtml = parseCitationsInContent(contentHtml, messageRefs);
     }
 
     const html = `
@@ -803,6 +1305,27 @@ function renderAssistantMessage(message) {
         </div>
     `;
     elements.chatMessages.insertAdjacentHTML('beforeend', html);
+
+    // Attach hover card event listeners to citations
+    setTimeout(() => {
+        document.querySelectorAll('.citation').forEach(citation => {
+            citation.addEventListener('mouseenter', (e) => {
+                const refId = e.target.dataset.refId;
+                if (refId) showHoverCard(refId, e);
+            });
+            citation.addEventListener('mouseleave', (e) => {
+                setTimeout(() => {
+                    const refId = e.target.dataset.refId;
+                    if (refId) closeHoverCard(refId);
+                }, 300);
+            });
+            citation.addEventListener('click', (e) => {
+                e.preventDefault();
+                const refNum = e.target.dataset.refNum;
+                scrollToReference(refNum);
+            });
+        });
+    }, 0);
 }
 
 function scrollToBottom() {
@@ -1940,6 +2463,24 @@ function showSettingsPanel() {
                         <span class="absolute top-1 ${state.settings.notifications ? 'right-1' : 'left-1'} w-4 h-4 bg-white rounded-full transition-all"></span>
                     </button>
                 </div>
+                <div class="pt-4 border-t border-white/5 space-y-3">
+                    <p class="text-sm font-medium text-white flex items-center gap-2">
+                        <span class="material-symbols-outlined text-primary text-[18px]">key</span>
+                        API Keys (optional)
+                    </p>
+                    <p class="text-xs text-slate-400">Use your own API keys. Leave blank to use server-configured keys.</p>
+                    <div>
+                        <label class="block text-xs text-slate-500 mb-1">OpenAI API Key</label>
+                        <input type="password" id="apiKeyOpenAI" class="api-key-input w-full px-3 py-2 rounded-lg bg-black/30 border border-white/10 text-sm text-white placeholder-slate-500 focus:border-primary/50 focus:ring-1 focus:ring-primary/30 outline-none" placeholder="sk-..." value="${state.settings.apiKeys?.openai || ''}" autocomplete="off"/>
+                    </div>
+                    <div>
+                        <label class="block text-xs text-slate-500 mb-1">Google Gemini API Key</label>
+                        <input type="password" id="apiKeyGemini" class="api-key-input w-full px-3 py-2 rounded-lg bg-black/30 border border-white/10 text-sm text-white placeholder-slate-500 focus:border-primary/50 focus:ring-1 focus:ring-primary/30 outline-none" placeholder="AIza..." value="${state.settings.apiKeys?.gemini || ''}" autocomplete="off"/>
+                    </div>
+                    <button class="api-keys-save w-full py-2 px-4 text-sm font-medium bg-primary/20 hover:bg-primary/30 border border-primary/30 text-primary rounded-lg transition-all">
+                        Save API Keys
+                    </button>
+                </div>
                 <div class="pt-4 border-t border-white/5">
                     <button class="clear-all-data w-full py-2.5 px-4 text-sm font-medium text-red-400 hover:text-red-300 hover:bg-red-500/10 border border-red-500/30 rounded-lg transition-all">
                         Clear All Data
@@ -1974,6 +2515,17 @@ function showSettingsPanel() {
 
             showToast(`${setting} ${state.settings[setting] ? 'enabled' : 'disabled'}`, 'success');
         });
+    });
+
+    // Save API keys
+    modal.querySelector('.api-keys-save')?.addEventListener('click', () => {
+        const openaiInput = modal.querySelector('#apiKeyOpenAI');
+        const geminiInput = modal.querySelector('#apiKeyGemini');
+        if (!state.settings.apiKeys) state.settings.apiKeys = { openai: '', gemini: '' };
+        state.settings.apiKeys.openai = openaiInput?.value?.trim() || '';
+        state.settings.apiKeys.gemini = geminiInput?.value?.trim() || '';
+        saveToStorage();
+        showToast('API keys saved', 'success');
     });
 
     // Clear all data
