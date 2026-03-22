@@ -5,7 +5,6 @@ import re
 from collections.abc import Callable
 from typing import Any
 
-from langchain_core.messages import AIMessage
 from smolagents import CodeAgent
 
 from bioagents.llms.adapters import LangChainModelAdapter
@@ -100,7 +99,12 @@ def create_ml_node(agent: CodeAgent) -> Callable:
             content = format_coder_result(result)
 
             execution_steps: list[dict[str, Any]] = []
-            for step in getattr(agent, "memory", []).steps if hasattr(agent, "memory") else []:
+
+            # Guard against union type: agent.memory may not have .steps
+            agent_memory = getattr(agent, "memory", None)
+            raw_steps = getattr(agent_memory, "steps", []) if agent_memory is not None else []
+
+            for step in raw_steps:
                 if hasattr(step, "task"):
                     continue
 
