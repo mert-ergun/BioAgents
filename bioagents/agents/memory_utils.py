@@ -1,7 +1,8 @@
 """Utilities for working with shared memory in multi-agent system."""
 
 import json
-from typing import Any, Optional
+from datetime import datetime
+from typing import Any
 
 
 def write_to_memory(
@@ -15,19 +16,15 @@ def write_to_memory(
     """
     Write agent results to shared memory.
 
-    This is a helper called by agent_node wrapper.
-
     Args:
         state: The AgentState dict
-        agent_name: Name of the agent writing
+        name: Name of the agent writing
         data: Structured JSON-like results
         raw_output: Full text output
         tool_calls: List of tool names used
         error: Any error encountered
     """
-    from datetime import datetime
-    
-    memory_key = agent_name.lower()
+    memory_key = name.lower()
     state["memory"][memory_key] = {
         "status": "error" if error else "success",
         "timestamp": datetime.now().isoformat(),
@@ -71,12 +68,12 @@ def get_memory_summary(state: dict) -> str:
     """
     memory = state.get("memory", {})
     lines = []
-    
+
     for agent_name, agent_data in sorted(memory.items()):
         status = agent_data.get("status", "unknown")
         has_data = bool(agent_data.get("data", {}))
         lines.append(f"{agent_name}: status={status}, has_data={has_data}")
-    
+
     return "\n".join(lines)
 
 
@@ -91,7 +88,4 @@ def get_completed_agents(state: dict) -> list[str]:
         List of agent names
     """
     memory = state.get("memory", {})
-    return [
-        name for name, data in memory.items()
-        if data.get("status") == "success"
-    ]
+    return [name for name, data in memory.items() if data.get("status") == "success"]
