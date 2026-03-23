@@ -1,0 +1,1165 @@
+use_cases:
+
+  # ── PATHWAY / GENOMICS ──────────────────────────────────────────────────────
+
+  - id: stella_kegg_complement
+    name: "KEGG Complement Cascade Extraction"
+    category: pathway_genomics
+    tags: [stella, kegg, pathway, genomics]
+    description: >
+      Retrieve the KEGG pathway ID for "Complement and coagulation cascades" and
+      list all genes in the complement arm (map04610).
+    prompt: >
+      Given the KEGG pathway "Complement and coagulation cascades", retrieve the
+      pathway ID and list all genes involved in the complement arm (classical,
+      lectin, and alternative activation routes) as shown in KEGG pathway map04610.
+    expected_tools: []
+    expected_output_contains:
+      - map04610
+      - C1QA
+      - C3
+      - CFB
+    reference_output: |
+      pathway_id: map04610
+      complement_genes: [C1QA, C1QB, C1QC, C1R, C1S, C2, C3, C4A, C4B, C5, C6,
+        C7, C8A, C8B, C8G, C9, MASP1, MASP2, MBL2, CFP, CFH, CFI, SERPING1,
+        CFB, CFD, CD55, CD59]
+    evaluation_criteria: |
+      - pathway_id must be map04610.
+      - All key genes in the classical, lectin, and alternative complement cascades are listed.
+      - Gene symbols are HGNC-compliant.
+
+  - id: stella_kegg_neuroactive
+    name: "KEGG Neuroactive Ligand-Receptor Extraction"
+    category: pathway_genomics
+    tags: [stella, kegg, pathway, genomics]
+    description: >
+      Extract the full ligand-receptor gene pairs from KEGG pathway
+      "Neuroactive ligand-receptor interaction" (map04080).
+    prompt: >
+      Given the KEGG pathway "Neuroactive ligand-receptor interaction", extract
+      the full list of ligand-receptor gene pairs shown in KEGG pathway map04080.
+      Include GPCRs and hormone receptor families involved in neurotransmitter
+      and hormone signaling.
+    expected_output_contains:
+      - map04080
+      - CHRM
+      - DRD
+      - HTR
+    reference_output: |
+      pathway_id: map04080
+      ligand_receptor_pairs:
+        - {ligand: CHRM, receptor: CHRM}
+        - {ligand: ADR, receptor: ADR}
+        - {ligand: DRD, receptor: DRD}
+        - {ligand: HRH, receptor: HRH}
+        - {ligand: HTR, receptor: HTR}
+        - {ligand: AVP, receptor: AVPR}
+        - {ligand: GHRL, receptor: GHSR}
+        - {ligand: NPY, receptor: NPYR}
+    evaluation_criteria: |
+      - All receptor genes in the diagram are extracted.
+      - Ligands and receptors are matched as gene symbol pairs.
+      - Gene symbols must be HGNC-valid.
+
+  - id: stella_go_mitotic_checkpoint
+    name: "GO Gene Association – Mitotic Spindle Checkpoint"
+    category: pathway_genomics
+    tags: [stella, go, gene_ontology, genomics]
+    description: >
+      Identify human genes associated with GO term "mitotic spindle assembly
+      checkpoint signaling" (GO:0007094) using synonyms and LLM-assisted matching.
+    prompt: >
+      Identify human genes associated with the GO term "mitotic spindle assembly
+      checkpoint signaling" (GO:0007094). Search using synonyms such as "mitotic
+      checkpoint", "SAC-independent checkpoint", "Mad2-dependent checkpoint", and
+      related signaling pathway terms.
+    expected_output_contains:
+      - GO:0007094
+      - BUB1
+      - MAD2L1
+      - CDC20
+    reference_output: |
+      GO_term: "GO:0007094 – Mitotic spindle assembly checkpoint signaling"
+      expected_genes: [BUB1, BUB1B, MAD2L1, TTK, CDC20, NDC80, SPC25, KNL1]
+    evaluation_criteria: |
+      - GO:0007094 must be matched for at least one query synonym.
+      - BUB1, BUB1B, MAD2L1, TTK, CDC20, NDC80, SPC25, and KNL1 should appear in output.
+      - Normalized scores assigned to valid genes.
+
+  - id: stella_depmap_essential_genes
+    name: "Essential Genes – U2OS DepMap"
+    category: pathway_genomics
+    tags: [stella, depmap, crispr, rnai, genomics]
+    description: >
+      Analyze essential genes in U2OS (ACH-000364) using CRISPR (Chronos) and
+      RNAi (DEMETER2) datasets from DepMap.
+    prompt: >
+      Analyze essential genes in the U2OS osteosarcoma cell line (DepMap ID:
+      ACH-000364) using CRISPR (Chronos) and RNAi (DEMETER2) datasets from DepMap.
+      Identify the top 10 preferentially essential genes for each method.
+    expected_output_contains:
+      - ACH-000364
+      - SUB1
+      - Chronos
+      - DEMETER2
+    reference_output: |
+      CRISPR_top_essential: [DCAF12L1, FBXL18, SUB1, ATCAY, HS2ST1, MAP2K7,
+        R3HCC1, SLC35B2, ZNF655, ZNF700]
+      RNAi_top_essential: [NOM1, SUB1, GTPBP4, GAL, FIP1L1, LONP1, MPI,
+        ICOSLG, OR2T11, AVIL]
+    evaluation_criteria: |
+      - Top 10 essential genes extracted from each screening method (CRISPR and RNAi).
+      - Output clearly separates CRISPR and RNAi results.
+      - Correct mapping to U2OS (ACH-000364).
+
+  # ── DISEASE / GENE ASSOCIATION ───────────────────────────────────────────────
+
+  - id: stella_disease_cystic_fibrosis
+    name: "Disease Gene Association – Cystic Fibrosis (Text Mining)"
+    category: disease_gene_association
+    tags: [stella, disease, text_mining, cystic_fibrosis]
+    description: >
+      Identify top genes associated with Cystic Fibrosis from the DISEASES
+      database using a Z-score threshold of ≥5.7.
+    prompt: >
+      Identify the top 10 genes associated with Cystic Fibrosis based on
+      text-mining evidence from the DISEASES database (Jensen Lab). Use a Z-score
+      threshold of ≥5.7 to select genes. Report the gene symbol, Z-score, and
+      confidence for each.
+    expected_output_contains:
+      - CFTR
+      - ELANE
+      - CXCL8
+    reference_output: |
+      genes:
+        - {gene: CFTR, z_score: 8.9}
+        - {gene: ELANE, z_score: 6.5}
+        - {gene: CXCL8, z_score: 6.2}
+        - {gene: MUC5AC, z_score: 6.0}
+        - {gene: MUC5B, z_score: 5.9}
+        - {gene: SERPINA1, z_score: 5.9}
+        - {gene: IL1B, z_score: 5.9}
+        - {gene: IL6, z_score: 5.8}
+        - {gene: TNF, z_score: 5.8}
+        - {gene: SCNN1B, z_score: 5.7}
+    evaluation_criteria: |
+      - CFTR must be ranked highest (Z-score 8.9).
+      - All 10 genes from the DISEASES text-mining list with Z-score ≥5.7 are present.
+      - Z-score and confidence reported for each gene.
+
+  - id: stella_disease_parkinsons
+    name: "Disease Gene Association – Parkinson's Disease (Text Mining)"
+    category: disease_gene_association
+    tags: [stella, disease, text_mining, parkinsons]
+    description: >
+      Identify top genes associated with Parkinson's disease from the DISEASES
+      database using a Z-score threshold of ≥7.1.
+    prompt: >
+      Identify the top 10 genes associated with Parkinson's disease (DOID:14330)
+      based on text-mining evidence from the DISEASES database. Use a Z-score
+      threshold of ≥7.1. Report gene symbol, Z-score, and confidence for each.
+    expected_output_contains:
+      - SNCA
+      - LRRK2
+      - PINK1
+      - PRKN
+    reference_output: |
+      genes:
+        - {gene: SNCA, z_score: 9.0}
+        - {gene: LRRK2, z_score: 7.9}
+        - {gene: TH, z_score: 7.8}
+        - {gene: PRKN, z_score: 7.7}
+        - {gene: SLC6A3, z_score: 7.7}
+        - {gene: PINK1, z_score: 7.7}
+        - {gene: PARK7, z_score: 7.6}
+        - {gene: MAOB, z_score: 7.4}
+        - {gene: BDNF, z_score: 7.2}
+        - {gene: APP, z_score: 7.1}
+    evaluation_criteria: |
+      - SNCA must be ranked highest (Z-score 9.0).
+      - All 10 genes with Z-score ≥7.1 are present.
+      - Source must be traceable to the DISEASES database.
+
+  - id: stella_omim_colorectal
+    name: "OMIM Colorectal Cancer Gene Mapping"
+    category: disease_gene_association
+    tags: [stella, omim, cancer, colorectal]
+    description: >
+      Map genes associated with colorectal cancer susceptibility (OMIM 608812)
+      including genetic linkage evidence.
+    prompt: >
+      Using OMIM entry 608812, describe the genes associated with colorectal
+      cancer susceptibility (CRCS1). Include chromosomal locations, molecular
+      evidence, and genetic linkage studies supporting susceptibility on 9q.
+    expected_output_contains:
+      - GALNT12
+      - TGFBR1
+      - 9q22
+      - 608812
+    reference_output: |
+      associated_genes:
+        - gene: GALNT12
+          location: 9q22.33
+        - gene: TGFBR1
+          location: 9q22
+      genetic_linkage:
+        - chromosome: 9q22.2–q31.2
+    evaluation_criteria: |
+      - Describes at least two associated genes with chromosomal locations.
+      - Cites molecular evidence (germline/somatic mutations, ASE).
+      - Summarizes genetic linkage studies on 9q.
+
+  # ── PROTEIN INTERACTION ──────────────────────────────────────────────────────
+
+  - id: stella_string_phb2
+    name: "STRING Protein Interaction – PHB2"
+    category: protein_interaction
+    tags: [stella, string, ppi, protein]
+    description: >
+      Identify top protein-protein interaction partners for PHB2 from STRING
+      with combined score ≥0.88. Include GO and PubMed enrichment.
+    prompt: >
+      Using the STRING database (species: Homo sapiens, NCBI:9606), identify the
+      top protein-protein interaction partners for PHB2 with a combined score
+      ≥0.88. Report the top 10 partners with scores, and list relevant GO
+      biological processes and PubMed references from the enrichment analysis.
+    expected_output_contains:
+      - PHB
+      - ESR1
+      - C1QBP
+      - mitochondrial
+    reference_output: |
+      PHB2_partners:
+        - {gene: PHB, score: 0.999}
+        - {gene: ESR1, score: 0.985}
+        - {gene: C1QBP, score: 0.964}
+        - {gene: HDAC1, score: 0.946}
+        - {gene: MFN1, score: 0.907}
+        - {gene: OPA1, score: 0.905}
+      enrichment_biological_process:
+        - "GO:0008053: Mitochondrial fusion"
+    evaluation_criteria: |
+      - Returns top 10 PHB2 interactors with STRING score ≥0.88.
+      - Interactions match STRING DB output for PHB2.
+      - GO terms and PubMed enrichment included.
+
+  - id: stella_string_ndc80
+    name: "STRING Protein Interaction – NDC80"
+    category: protein_interaction
+    tags: [stella, string, ppi, protein]
+    description: >
+      Identify predicted PPI partners for NDC80 (Homo sapiens) from STRING
+      with score ≥0.99.
+    prompt: >
+      Using the STRING database, identify the top predicted protein-protein
+      interaction partners for the human gene NDC80 (NCBI:9606) with a combined
+      score ≥0.99. Report the top 10 partners with their scores.
+    expected_output_contains:
+      - NUF2
+      - SPC25
+      - SPC24
+      - BUB1
+      - KNL1
+    reference_output: |
+      NDC80_partners:
+        - {gene: NUF2, score: 0.999}
+        - {gene: SPC25, score: 0.999}
+        - {gene: SPC24, score: 0.999}
+        - {gene: BUB1, score: 0.998}
+        - {gene: KNL1, score: 0.995}
+        - {gene: CKAP5, score: 0.994}
+        - {gene: BUB1B, score: 0.992}
+        - {gene: TTK, score: 0.992}
+        - {gene: ZWINT, score: 0.991}
+        - {gene: MIS12, score: 0.991}
+    evaluation_criteria: |
+      - At least 10 high-confidence partners (score ≥0.99) returned.
+      - NUF2, SPC25, SPC24, BUB1, and KNL1 must be present.
+      - Interactions supported by multiple evidence channels.
+
+  # ── CANCER BIOLOGY ───────────────────────────────────────────────────────────
+
+  - id: stella_aml_general_info
+    name: "AML General Info – NCI"
+    category: cancer_biology
+    tags: [stella, cancer, aml, nci, literature]
+    description: >
+      Provide a structured NCI-based summary of adult acute myeloid leukemia
+      covering definition, risk factors, symptoms, diagnosis, and prognosis.
+    prompt: >
+      Using the NCI patient treatment guide for adult acute myeloid leukemia
+      (AML), provide a structured summary covering: blood cell types affected,
+      risk factors, common symptoms, diagnostic steps, and prognosis
+      considerations.
+    expected_output_contains:
+      - myeloid
+      - bone marrow
+      - chemotherapy
+      - fatigue
+    reference_output: |
+      summary:
+        definition: Cancer in which bone marrow produces abnormal blood cells.
+        affected_cells: [red blood cells, white blood cells, platelets]
+        risk_factors: [smoking, prior chemotherapy, radiation exposure]
+        symptoms: [fever, fatigue, easy bruising or bleeding]
+        diagnosis: [blood tests, bone marrow tests]
+    evaluation_criteria: |
+      - Includes structure of blood development from stem cells.
+      - Describes affected blood cell types.
+      - Lists AML symptoms, risk factors, and diagnostic methods.
+      - Captures key patient-oriented insights from NCI.
+
+  - id: stella_cancer_gene_classification
+    name: "Cancer Gene Classification"
+    category: cancer_biology
+    tags: [stella, cancer, cosmic, pcawg, classification]
+    description: >
+      Classify genes as cancer-related vs. normal using COSMIC and PCAWG
+      curated databases.
+    prompt: >
+      Using the COSMIC cancer gene census (~700 genes) and PCAWG 2020 datasets
+      (87 cancer genes, 93 normal-pathway genes), classify a given gene list as
+      cancer-related or normal. Report classification metrics including accuracy,
+      overlap analysis between databases, and confidence scores.
+    expected_output_contains:
+      - COSMIC
+      - PCAWG
+      - cancer
+      - normal
+    evaluation_criteria: |
+      - Can classify genes as cancer vs normal with >80% accuracy.
+      - Identifies overlapping genes across COSMIC and PCAWG databases.
+      - Provides confidence scores for classifications.
+
+  # ── DRUG / COMPOUND ──────────────────────────────────────────────────────────
+
+  - id: stella_pubchem_imatinib
+    name: "PubChem Structure Info – Imatinib"
+    category: drug_compound
+    tags: [stella, pubchem, drug, structure]
+    description: >
+      Retrieve chemical structure information for Imatinib (PubChem CID 5291)
+      including IUPAC name, InChI, SMILES, synonyms, and hazard classifications.
+    prompt: >
+      Using PubChem (CID: 5291), retrieve the chemical structure information for
+      Imatinib. Report the IUPAC name, InChI, canonical SMILES, known synonyms,
+      and GHS hazard classifications.
+    expected_output_contains:
+      - Imatinib
+      - 5291
+      - piperazin
+      - InChI
+    reference_output: |
+      iupac_name: >
+        4-[(4-methylpiperazin-1-yl)methyl]-N-[4-methyl-3-[(4-pyridin-3-ylpyrimidin-2-yl)amino]phenyl]benzamide
+      synonyms: [Imatinib, 152459-95-5, Glamox]
+      hazards: [Irritant, Health Hazard]
+    evaluation_criteria: |
+      - IUPAC name contains "piperazin".
+      - InChI and SMILES are provided.
+      - At least two synonyms listed (including Imatinib and CAS number).
+      - Hazard classification includes at least one GHS category.
+
+  # ── PROTEIN STRUCTURE ────────────────────────────────────────────────────────
+
+  - id: stella_pdb_structure_1pc2
+    name: "PDB Structure Analysis – 1PC2"
+    category: protein_structure
+    tags: [stella, pdb, structure, protein]
+    description: >
+      Analyze PDB structure 1PC2: count VAL and TRP residues (alpha carbons
+      only) and calculate the CA distance between ASP72 and GLY144 in chain A.
+    prompt: >
+      Analyze the PDB structure 1PC2. Perform two analyses on chain A:
+      (1) Count the number of VAL and TRP residues (alpha carbon atoms only).
+      (2) Calculate the distance in Angstroms between the alpha carbons of
+      ASP72 and GLY144.
+    expected_output_contains:
+      - 1PC2
+      - VAL
+      - TRP
+      - ASP72
+      - GLY144
+    reference_output: |
+      residue_counts:
+        VAL: 12
+        TRP: 1
+      distance_CA_ASP72_GLY144: 47.14
+    evaluation_criteria: |
+      - VAL count must be 12.
+      - TRP count must be 1.
+      - Distance between CA of ASP72 and GLY144 must be approximately 47.14 Å (±0.1).
+
+  - id: stella_pdb_chain_3bdp
+    name: "PDB Chain Analysis – 3BDP"
+    category: protein_structure
+    tags: [stella, pdb, structure, dna, protein]
+    description: >
+      Identify and describe all unique chains in PDB structure 3BDP
+      (protein, DNA).
+    prompt: >
+      Analyze the PDB structure 3BDP and identify all unique chains. For each
+      chain, describe its type (protein, DNA, RNA, etc.) and composition.
+    expected_output_contains:
+      - 3BDP
+      - chain A
+      - chain P
+      - chain T
+    reference_output: |
+      chains: [A, P, T]
+      chain_count: 3
+    evaluation_criteria: |
+      - All three chains (A, P, T) must be identified.
+      - Chain types correctly described (protein and DNA).
+
+  - id: stella_pdb_protein_dna_interaction
+    name: "Protein-DNA Interaction Analysis – 3BDP"
+    category: protein_structure
+    tags: [stella, pdb, structure, interaction, dna]
+    description: >
+      Analyze protein-DNA contacts in PDB 3BDP between protein chain A and
+      DNA chain P using a 4.0 Å distance cutoff.
+    prompt: >
+      Analyze the protein-DNA interactions in PDB structure 3BDP. Identify
+      residues in protein chain A and nucleotides in DNA chain P that are
+      within 4.0 Å of each other. List all interacting residue pairs.
+    expected_output_contains:
+      - 3BDP
+      - LYS
+      - ARG
+      - chain A
+      - chain P
+    reference_output: |
+      interacting_residues:
+        chain_A: [LYS431, PRO531, THR550, LYS551, SER555, THR556, SER557,
+          ALA558, ARG578, GLN579, LYS582, TYR587, GLN624, ASN625, ILE626,
+          PRO627, ILE628, ARG629]
+        chain_P: [DC8, DT10, DG11, DA12, DT13, DG14, DC15]
+    evaluation_criteria: |
+      - Interacting residues from chain A are listed with residue numbers.
+      - DNA nucleotides from chain P are listed.
+      - Distance cutoff of 4.0 Å is applied.
+
+  - id: stella_pdb_secondary_structure
+    name: "Secondary Structure Analysis – 3BDP Chain A"
+    category: protein_structure
+    tags: [stella, pdb, secondary_structure, protein]
+    description: >
+      Analyze the secondary structure composition (helix, sheet, coil) of
+      chain A in PDB structure 3BDP.
+    prompt: >
+      Analyze the secondary structure composition of chain A in PDB structure
+      3BDP. Report the number of residues in helix, sheet, and coil
+      conformations.
+    expected_output_contains:
+      - 3BDP
+      - helix
+      - sheet
+    reference_output: |
+      secondary_structure:
+        helix_residues: 668
+        sheet_residues: 128
+        coil_residues: 0
+    evaluation_criteria: |
+      - Helix residue count approximately 668.
+      - Sheet residue count approximately 128.
+      - Coil residues reported (reference value: 0).
+
+  - id: stella_pdb_ligand_3bdp
+    name: "Ligand Analysis – 3BDP"
+    category: protein_structure
+    tags: [stella, pdb, ligand, structure]
+    description: >
+      Identify all non-water ligands in PDB structure 3BDP including sulfate
+      ions and modified nucleotides.
+    prompt: >
+      Identify and analyze all non-water ligands in PDB structure 3BDP. For
+      each ligand, report the residue name, residue number, and chain.
+    expected_output_contains:
+      - 3BDP
+      - SO4
+      - chain A
+      - chain P
+    reference_output: |
+      ligands:
+        - {resn: SO4, resi: 910, chain: A}
+        - {resn: SO4, resi: 912, chain: A}
+        - {resn: SO4, resi: 915, chain: A}
+        - {resn: SO4, resi: 920, chain: A}
+        - {resn: 2DT, resi: 16, chain: P}
+    evaluation_criteria: |
+      - All 4 sulfate (SO4) ligands in chain A are identified.
+      - The 2DT modified nucleotide in chain P is identified.
+      - Non-water ligand identification is complete.
+
+  # ── MOLECULAR CLONING ────────────────────────────────────────────────────────
+
+  - id: stella_pcr_primer_tm60_eyfp
+    name: "PCR Primer Design – Tm 60°C (eYFP CDS)"
+    category: molecular_cloning
+    tags: [stella, pcr, primer_design, cloning]
+    description: >
+      Design forward and reverse primers flanking an eYFP CDS-like region
+      targeting an annealing temperature of 60°C.
+    prompt: >
+      Design forward and reverse PCR primers for the following DNA sequence,
+      targeting an annealing temperature of approximately 60°C. Report primer
+      sequences, lengths, Tm values, GC content, and expected product size.
+
+      Sequence:
+      ATGGTGTCCAAGGGCGAAGAGGACAACATGGCCAGCCTGCCTGCCACCCACGAGCTGCACATCTTCGGCAGCATCAACGGCGTGGACTTCGACATGGTGGGACAGGGCACCGGCAACCCCAACGACGGCTACGAGGAACTGAACCTGAAGTCCACAAAGGGCGACCTGCAGTTCAGCCCCTGGATCCTGGTGCCCCACATCGGCTACGGCTTCCACCAGTACCTGCCCTACCCCGACGGCATGAGCCCTTTTCAGGCCGCCATGGTGGATGGCAGCGGCTACCAGGTGCACCGGACCATGCAGTTTGAGGACGGCGCCAGCCTGACCGTGAACTACCGGTACACATACGAGGGCAGCCACATCAAGGGCGAGGCCCAAGTGAAGGGCACAGGCTTTCCAGCCGACGGCCCCGTGATGACCAATAGCCTGACAGCCGCCGACTGGTGCAGAAGCAAGAAAACCTACCCCAATGACAAGACCATCATCAGCACCTTCAAGTGGTCCTACACCACCGGCAATGGCAAGCGGTACAGAAGCACCGCCCGGACCACCTACACCTTCGCCAAACCCATGGCCGCCAACTACCTGAAGAACCAGCCTATGTACGTGTTCCGCAAGACCGAGCTGAAGCACTCCAAGACAGAACTGAACTTCAAAGAGTGGCAGAAAGCCTTCACCGACGTGATGGGCATGGACGAGCTGTACAAG
+    expected_output_contains:
+      - ATGGTGTCCAAGGGCGAAG
+      - CTTGTACAGCTCGTCCATGCC
+    reference_output: |
+      primer_forward: {sequence: ATGGTGTCCAAGGGCGAAG, length: 19, Tm_C: 59.7, GC_percent: 52.6}
+      primer_reverse: {sequence: CTTGTACAGCTCGTCCATGCC, length: 21, Tm_C: 60.4, GC_percent: 52.4}
+      expected_product_size_bp: 702
+    evaluation_criteria: |
+      - Forward primer must be ATGGTGTCCAAGGGCGAAG.
+      - Reverse primer must be CTTGTACAGCTCGTCCATGCC.
+      - Expected product size is 702 bp.
+      - Tm values within ±1°C of 60°C.
+
+  - id: stella_pcr_primer_tm60_kanamycin
+    name: "PCR Primer Design – Tm 60°C (Kanamycin resistance)"
+    category: molecular_cloning
+    tags: [stella, pcr, primer_design, cloning]
+    description: >
+      Design primers for a kanamycin resistance CDS targeting 60°C annealing
+      temperature.
+    prompt: >
+      Design forward and reverse PCR primers for the following DNA sequence
+      (kanamycin resistance gene), targeting an annealing temperature of ~60°C.
+
+      Sequence:
+      atgagccatattcaacgggaaacgtcttgctctaggccgcgattaaattccaacatggatgctgatttatatgggtataaatgggctcgcgataatgtcgggcaatcaggtgcgacaatctatcgattgtatgggaagcccgatgcgccagagttgtttctgaaacatggcaaaggtagcgttgccaatgatgttacagatgagatggtcagactaaactggctgacggaatttatgcctcttccgaccatcaagcattttatccgtactcctgatgatgcatggttactcaccactgcgatccccgggaaaacagcattccaggtattagaagaatatcctgattcaggtgaaaatattgttgatgcgctggcagtgttcctgcgccggttgcattcgattcctgtttgtaattgtccttttaacagcgatcgcgtatttcgtctcgctcaggcgcaatcacgaatgaataacggtttggttgatgcgagtgattttgatgacgagcgtaatggctggcctgttgaacaagtctggaaagaaatgcataaacttttgccattctcaccggattcagtcgtcactcatggtgatttctcacttgataaccttatttttgacgaggggaaattaataggttgtattgatgttggacgagtcggaatcgcagaccgataccaggatcttgccatcctatggaactgcctcggtgagttttctccttcattacagaaacggctttttcaaaaatatggtattgataatcctgatatgaataaattgcagtttcatttgatgctcgatgagtttttctaa
+    expected_output_contains:
+      - atgagccatattcaacgggaaacg
+      - ttagaaaaactcatcgagcatcaaatgaaact
+    reference_output: |
+      primer_forward: {sequence: atgagccatattcaacgggaaacg, length: 24}
+      primer_reverse: {sequence: ttagaaaaactcatcgagcatcaaatgaaact, length: 32}
+    evaluation_criteria: |
+      - Forward primer starts at the 5' ATG of the sequence.
+      - Reverse primer is the reverse complement of the 3' end.
+      - Tm values within ±1°C of 60°C.
+      - GC content between 40–60%.
+
+  - id: stella_pcr_primer_tm60_ampicillin
+    name: "PCR Primer Design – Tm 60°C (Ampicillin resistance)"
+    category: molecular_cloning
+    tags: [stella, pcr, primer_design, cloning]
+    description: >
+      Design primers for an ampicillin resistance gene targeting 60°C annealing
+      temperature.
+    prompt: >
+      Design forward and reverse PCR primers for the following DNA sequence
+      (ampicillin resistance / beta-lactamase gene), targeting an annealing
+      temperature of ~60°C.
+
+      Sequence:
+      atgagtattcaacatttccgtgtcgcccttattcccttttttgcggcattttgccttcctgtttttgctcacccagaaacgctggtgaaagtaaaagatgctgaagatcagttgggtgcacgagtgggttacatcgaactggatctcaacagcggtaagatccttgagagttttcgccccgaagaacgttttccaatgatgagcacttttaaagttctgctatgtggcgcggtattatcccgtattgacgccgggcaagagcaactcggtcgccgcatacactattctcagaatgacttggttgagtactcaccagtcacagaaaagcatcttacggatggcatgacagtaagagaattatgcagtgctgccataaccatgagtgataacactgcggccaacttacttctgacaacgatcggaggaccgaaggagctaaccgcttttttgcacaacatgggggatcatgtaactcgccttgatcgttgggaaccggagctgaatgaagccataccaaacgacgagcgtgacaccacgatgcctgtagcaatggcaacaacgttgcgcaaactattaactggcgaactacttactctagcttcccggcaacaattaatagactggatggaggcggataaagttgcaggaccacttctgcgctcggcccttccggctggctggtttattgctgataaatctggagccggtgagcgtgggtctcgcggtatcattgcagcactggggccagatggtaagccctcccgtatcgtagttatctacacgacggggagtcaggcaactatggatgaacgaaatagacagatcgctgagataggtgcctcactgattaagcattggtaa
+    expected_output_contains:
+      - atgagtattcaacatttccgtgtcgc
+      - ttaccaatgcttaatcagtgaggcac
+    reference_output: |
+      primer_forward: {sequence: atgagtattcaacatttccgtgtcgc, length: 26, Tm_C: ~60}
+      primer_reverse: {sequence: ttaccaatgcttaatcagtgaggcac, length: 26, Tm_C: ~60}
+    evaluation_criteria: |
+      - Forward primer starts at sequence start (5' ATG).
+      - Reverse primer is the reverse complement of the sequence end.
+      - Tm values within ±1°C of 60°C.
+      - GC content between 40–60%.
+
+  - id: stella_pcr_primer_tm55_ampicillin
+    name: "PCR Primer Design – Tm 55°C (Ampicillin resistance)"
+    category: molecular_cloning
+    tags: [stella, pcr, primer_design, cloning]
+    description: >
+      Design primers for an ampicillin resistance gene targeting 55°C annealing
+      temperature.
+    prompt: >
+      Design forward and reverse PCR primers for the following DNA sequence
+      targeting an annealing temperature of ~55°C. The same ampicillin
+      resistance gene sequence is used but primers should be shorter to achieve
+      the lower Tm.
+
+      Sequence:
+      atgagtattcaacatttccgtgtcgcccttattcccttttttgcggcattttgccttcctgtttttgctcacccagaaacgctggtgaaagtaaaagatgctgaagatcagttgggtgcacgagtgggttacatcgaactggatctcaacagcggtaagatccttgagagttttcgccccgaagaacgttttccaatgatgagcacttttaaagttctgctatgtggcgcggtattatcccgtattgacgccgggcaagagcaactcggtcgccgcatacactattctcagaatgacttggttgagtactcaccagtcacagaaaagcatcttacggatggcatgacagtaagagaattatgcagtgctgccataaccatgagtgataacactgcggccaacttacttctgacaacgatcggaggaccgaaggagctaaccgcttttttgcacaacatgggggatcatgtaactcgccttgatcgttgggaaccggagctgaatgaagccataccaaacgacgagcgtgacaccacgatgcctgtagcaatggcaacaacgttgcgcaaactattaactggcgaactacttactctagcttcccggcaacaattaatagactggatggaggcggataaagttgcaggaccacttctgcgctcggcccttccggctggctggtttattgctgataaatctggagccggtgagcgtgggtctcgcggtatcattgcagcactggggccagatggtaagccctcccgtatcgtagttatctacacgacggggagtcaggcaactatggatgaacgaaatagacagatcgctgagataggtgcctcactgattaagcattggtaa
+    expected_output_contains:
+      - atgagtattcaacatttccgtgt
+      - ttaccaatgcttaatcagtgagg
+    reference_output: |
+      primer_forward: {sequence: atgagtattcaacatttccgtgt, length: 23, Tm_C: ~55}
+      primer_reverse: {sequence: ttaccaatgcttaatcagtgagg, length: 23, Tm_C: ~55}
+    evaluation_criteria: |
+      - Primers are shorter than the 60°C variant to achieve lower Tm.
+      - Tm values within ±1°C of 55°C.
+      - GC content between 30–60%.
+
+  - id: stella_pcr_primer_tm60_at_rich
+    name: "PCR Primer Design – Tm 60°C (AT-rich region)"
+    category: molecular_cloning
+    tags: [stella, pcr, primer_design, cloning]
+    description: >
+      Design primers for an AT-rich DNA region targeting 60°C annealing
+      temperature.
+    prompt: >
+      Design forward and reverse PCR primers for the following AT-rich DNA
+      sequence, targeting an annealing temperature of approximately 60°C:
+
+      ctagttagaaaaagacatttttgctgtcagtcactgtcaagagattcttttgctggcatttcttctagaagcaaaaagagcgatgcgtcttttccgctgaaccgttccagcaaaaaagactaccaacgcaatatggattgtcagaatcatataaaagagaagcaaataactccttgtcttgtatcaattgcattataatatcttcttgttagtgcaatatcatatagaagtcatc
+    expected_output_contains:
+      - CTAGTTAGAAAAAGACATTTTTGC
+      - GATGACTTCTATATGATATTGCAC
+    reference_output: |
+      primer_forward: {sequence: CTAGTTAGAAAAAGACATTTTTGC, length: 24, Tm_C: 59.8, GC_percent: 33.3}
+      primer_reverse: {sequence: GATGACTTCTATATGATATTGCAC, length: 24, Tm_C: 60.1, GC_percent: 37.5}
+      expected_product_size_bp: 199
+    evaluation_criteria: |
+      - Forward primer matches CTAGTTAGAAAAAGACATTTTTGC.
+      - Reverse primer matches GATGACTTCTATATGATATTGCAC.
+      - Expected product size is 199 bp.
+      - Tm values within ±1°C of 60°C.
+
+  - id: stella_pcr_primer_tm55_at_rich
+    name: "PCR Primer Design – Tm 55°C (AT-rich region)"
+    category: molecular_cloning
+    tags: [stella, pcr, primer_design, cloning]
+    description: >
+      Design primers for an AT-rich 95 bp region targeting 55°C annealing
+      temperature.
+    prompt: >
+      Design forward and reverse PCR primers for the following AT-rich DNA
+      sequence, targeting an annealing temperature of approximately 55°C:
+
+      TTTGTTTATTTTTCTAAATACATTCAAATATGTATCCGCTCATGAGACAATAACCCTGATAAATGCTTCAATAATATTGAAAAAGGAAGAGT
+    expected_output_contains:
+      - TTTGTTTATTTTTCTAAATACATTCAAATAT
+      - ACTCTTCCTTTTTCAATATTATTGAAGC
+    reference_output: |
+      primer_forward: {sequence: TTTGTTTATTTTTCTAAATACATTCAAATAT, length: 31, Tm_C: 54.8, GC_percent: 19.4}
+      primer_reverse: {sequence: ACTCTTCCTTTTTCAATATTATTGAAGC, length: 28, Tm_C: 55.0, GC_percent: 33.3}
+      expected_product_size_bp: 95
+    evaluation_criteria: |
+      - Forward primer starts at 5' end of sequence.
+      - Reverse primer is reverse complement of 3' end.
+      - Tm values within ±1°C of 55°C.
+
+  - id: stella_restriction_digest_ecori_aatii
+    name: "Restriction Digest Planning – EcoRI + AatII"
+    category: molecular_cloning
+    tags: [stella, restriction_digest, cloning, neb]
+    description: >
+      Plan a double restriction digest with EcoRI and AatII at 37°C and
+      recommend the optimal NEB buffer.
+    prompt: >
+      Plan a restriction enzyme double digest using EcoRI and AatII at 37°C.
+      Evaluate the following NEB buffer options: NEBuffer r1.1, r2.1, r3.1,
+      and rCutSmart. Recommend the optimal buffer, report enzyme activities (%)
+      in the chosen buffer, and specify heat inactivation temperatures.
+    expected_output_contains:
+      - EcoRI
+      - AatII
+      - NEBuffer r3.1
+    reference_output: |
+      recommended_buffer: NEBuffer r3.1
+      enzyme_activities:
+        EcoRI: {activity_percent: 50}
+        AatII: {activity_percent: 50, time_saver: true}
+      heat_inactivation:
+        EcoRI: 65°C
+        AatII: 80°C
+    evaluation_criteria: |
+      - NEBuffer r3.1 recommended as optimal buffer.
+      - Activity percentages reported for both enzymes.
+      - Heat inactivation temperatures specified.
+
+  - id: stella_restriction_digest_sacii_aatii
+    name: "Restriction Digest Planning – SacII + AatII"
+    category: molecular_cloning
+    tags: [stella, restriction_digest, cloning, neb]
+    description: >
+      Plan a double restriction digest with SacII and AatII and recommend the
+      optimal NEB buffer.
+    prompt: >
+      Plan a restriction enzyme double digest using SacII and AatII at 37°C.
+      Evaluate NEB buffers: r1.1, r2.1, r3.1, rCutSmart. Recommend the optimal
+      buffer, report enzyme activities, heat inactivation temperatures, and
+      methylation sensitivities.
+    expected_output_contains:
+      - SacII
+      - AatII
+      - rCutSmart
+    reference_output: |
+      recommended_buffer: rCutSmart
+      enzyme_activities:
+        SacII: {activity_percent: 100}
+        AatII: {activity_percent: 100, time_saver: true}
+      heat_inactivation:
+        SacII: 65°C
+        AatII: 80°C
+      methylation_sensitivity:
+        SacII: cpg (Blocked)
+        AatII: cpg (Blocked)
+    evaluation_criteria: |
+      - rCutSmart recommended as optimal buffer.
+      - Both enzymes show 100% activity.
+      - CpG methylation sensitivity reported for both.
+
+  - id: stella_restriction_digest_nhei_hindiii
+    name: "Restriction Digest Planning – NheI-HF + HindIII-HF"
+    category: molecular_cloning
+    tags: [stella, restriction_digest, cloning, neb]
+    description: >
+      Plan a double restriction digest with NheI-HF and HindIII-HF and
+      recommend the optimal NEB buffer.
+    prompt: >
+      Plan a restriction enzyme double digest using NheI-HF and HindIII-HF at
+      37°C. Evaluate NEB buffers: r1.1, r2.1, r3.1, rCutSmart. Recommend the
+      optimal buffer, report enzyme activities, heat inactivation temperatures,
+      and methylation sensitivities.
+    expected_output_contains:
+      - NheI-HF
+      - HindIII-HF
+      - rCutSmart
+    reference_output: |
+      recommended_buffer: rCutSmart
+      enzyme_activities:
+        NheI-HF: {activity_percent: 100}
+        HindIII-HF: {activity_percent: 100, time_saver: true}
+      heat_inactivation:
+        NheI-HF: 80°C
+        HindIII-HF: 80°C
+    evaluation_criteria: |
+      - rCutSmart recommended as optimal buffer.
+      - Both enzymes at 100% activity.
+      - Heat inactivation at 80°C for both enzymes.
+
+  - id: stella_pcr_onetaq
+    name: "PCR Primer Annealing – OneTaq Polymerase"
+    category: molecular_cloning
+    tags: [stella, pcr, primer_design, cloning, neb]
+    description: >
+      Calculate the optimal annealing temperature for two primers using OneTaq
+      DNA Polymerase (Standard Buffer) at 200 nM primer concentration.
+    prompt: >
+      Using OneTaq DNA Polymerase (Standard Buffer) at 200 nM primer
+      concentration, calculate the optimal annealing temperature for the
+      following primers:
+        Primer 1: TAACGAAGCTTTCGATATCAGGCATGCAG (29 nt)
+        Primer 2: CTCAACAGCCTCGCGCGC (18 nt)
+      Report the Tm of each primer, GC content, and the recommended annealing
+      temperature for the PCR.
+    expected_output_contains:
+      - TAACGAAGCTTTCGATATCAGGCATGCAG
+      - CTCAACAGCCTCGCGCGC
+      - annealing
+    reference_output: |
+      primer_1: {length: 29, gc_content: 45%, tm: "62°C"}
+      primer_2: {length: 18, gc_content: 72%, tm: "65°C"}
+      annealing_temperature: "57°C"
+    evaluation_criteria: |
+      - Tm of primer 1 approximately 62°C.
+      - Tm of primer 2 approximately 65°C.
+      - Recommended annealing temperature is 57°C (5°C below lower Tm).
+
+  - id: stella_non_cutter_puc19
+    name: "Non-Cutter Restriction Enzyme Identification – pUC19"
+    category: molecular_cloning
+    tags: [stella, restriction_digest, plasmid, cloning]
+    description: >
+      Identify all restriction enzymes from REBASE 2024 that do NOT cut within
+      the pUC19 plasmid sequence.
+    prompt: >
+      Given the pUC19 plasmid sequence (Addgene #50005), identify all
+      restriction enzymes from REBASE 2024 that do not cut within the plasmid.
+      Provide a comprehensive list of non-cutters as enzyme names.
+    expected_output_contains:
+      - NotI
+      - SfiI
+      - AscI
+      - pUC19
+    evaluation_criteria: |
+      - Non-cutter list includes well-known enzymes such as NotI, SfiI, AscI, XhoI, PacI.
+      - Enzymes that cut pUC19 (e.g. EcoRI, HindIII, BamHI) are NOT in the non-cutter list.
+      - Comprehensive list covering at least 50 enzymes.
+
+  - id: stella_non_cutter_pcmv_pe6c
+    name: "Non-Cutter Restriction Enzyme Identification – pCMV-PE6c"
+    category: molecular_cloning
+    tags: [stella, restriction_digest, plasmid, cloning]
+    description: >
+      Identify all restriction enzymes from REBASE 2024 that do NOT cut within
+      the pCMV-PE6c plasmid sequence (Addgene #207853).
+    prompt: >
+      Given the pCMV-PE6c plasmid sequence (Addgene #207853), identify all
+      restriction enzymes from REBASE 2024 that do not cut within this plasmid.
+      Provide a comprehensive list of non-cutters.
+    expected_output_contains:
+      - pCMV-PE6c
+      - XhoI
+      - SfiI
+    evaluation_criteria: |
+      - Non-cutter list includes enzymes that don't cut in the larger pCMV-PE6c context.
+      - Comprehensive list covering at least 40 enzymes.
+
+  - id: stella_pcr_q5_hifi
+    name: "PCR Protocol – Q5 High-Fidelity Polymerase"
+    category: molecular_cloning
+    tags: [stella, pcr, wet_lab, neb]
+    description: >
+      Design a PCR experiment using Q5 High-Fidelity DNA Polymerase to amplify
+      a 1.5 kb target from a plasmid at 60°C annealing.
+    prompt: >
+      Design and simulate a complete PCR protocol using Q5 High-Fidelity DNA
+      Polymerase (NEB) to amplify a 1.5 kb target from a plasmid template with
+      a primer Tm of 60°C. Provide the full reaction setup (volumes, components)
+      and thermocycling conditions following the official NEB Q5 protocol.
+    expected_output_contains:
+      - Q5
+      - 98°C
+      - 72°C
+      - 30 cycles
+    reference_output: |
+      reaction_setup:
+        buffer: "5X Q5 Reaction Buffer"
+        dntps: "10 mM dNTPs"
+        primer_concentration_uM: 0.5
+        polymerase_volume_ul: 0.5
+      thermocycling:
+        initial_denaturation: {temp: 98, time: 30s}
+        cycles: 30
+        denaturation: {temp: 98, time: 10s}
+        annealing: {temp: 60, time: 20s}
+        extension: {temp: 72, time: "30s/kb"}
+        final_extension: {temp: 72, time: 2min}
+    evaluation_criteria: |
+      - Initial denaturation at 98°C for 30 s.
+      - 30 amplification cycles specified.
+      - Annealing at 60°C for 20 s.
+      - Extension at 72°C at 30 s/kb rate, ~45 s for 1.5 kb.
+      - Final extension at 72°C for 2 min.
+
+  - id: stella_gibson_assembly
+    name: "Gibson Assembly – Two Fragments"
+    category: molecular_cloning
+    tags: [stella, gibson_assembly, cloning, wet_lab]
+    description: >
+      Setup a Gibson Assembly reaction: 1.5 kb insert into a 5 kb vector using
+      the NEB Gibson Assembly Kit at 50°C for 15 min.
+    prompt: >
+      Plan a Gibson Assembly reaction to clone a 1.5 kb gene insert into a 5 kb
+      plasmid vector (vector mass: 50 ng) using the NEB Gibson Assembly Kit.
+      Use a 3:1 molar excess of insert over vector, total reaction volume 20 µl,
+      at 50°C for 15 min. Provide the complete reaction setup.
+    expected_output_contains:
+      - Gibson
+      - 50°C
+      - 15 min
+      - 20 µl
+    reference_output: |
+      reaction_setup:
+        gibson_master_mix_2x_ul: 10
+        vector_mass_ng: 50
+        insert_calculated_mass_ng: ~15
+        water_ul: to_volume_20ul
+      incubation: {temp_celsius: 50, time_minutes: 15}
+      transformation: {competent_cells: "NEB 5-alpha E. coli", volume_ul: 2}
+    evaluation_criteria: |
+      - Gibson master mix is 10 µl (half of total volume).
+      - Total reaction volume is 20 µl.
+      - Insert molar excess ~3x relative to vector mass.
+      - Incubation conditions: 50°C, 15 min.
+
+  - id: stella_golden_gate_assembly
+    name: "Golden Gate Assembly – Multi-Insert"
+    category: molecular_cloning
+    tags: [stella, golden_gate, cloning, wet_lab]
+    description: >
+      Setup a Golden Gate Assembly (BsaI-HFv2, NEB E1601) to assemble 4 inserts
+      into pGGAselect at 2:1 molar ratio, 30 cycles.
+    prompt: >
+      Design a Golden Gate Assembly reaction using the NEB E1601 kit (BsaI-HFv2)
+      to assemble 4 DNA inserts (500, 700, 900, 300 bp) into the pGGAselect
+      vector (2133 bp, 75 ng/µl). Use a 2:1 insert-to-vector molar ratio, total
+      volume 20 µl, with the NEB thermocycling protocol (30 cycles alternating
+      37°C/16°C). Provide the complete reaction setup.
+    expected_output_contains:
+      - BsaI
+      - pGGAselect
+      - 37°C
+      - 16°C
+      - 30 cycles
+    reference_output: |
+      enzyme: BsaI-HFv2
+      reaction_setup:
+        vector_volume_ul: 1.0
+        ligase_buffer_10x_ul: 2.0
+        golden_gate_mix_ul: 1.0
+      thermocycling:
+        cycles: 30
+        step1: {temp: 37, time: 1min}
+        step2: {temp: 16, time: 1min}
+        final: {temp: 60, time: 5min}
+    evaluation_criteria: |
+      - BsaI-HFv2 specified as restriction enzyme.
+      - 30 cycles with alternating 37°C/16°C (1 min each).
+      - Total reaction volume is 20 µl.
+      - Insert-vector ratio 2:1 molar.
+
+  # ── WET LAB / FORMULA ────────────────────────────────────────────────────────
+
+  - id: stella_lb_media_calculation
+    name: "LB Media Ingredient Calculation"
+    category: wet_lab
+    tags: [stella, wet_lab, media, formula]
+    description: >
+      Calculate ingredient masses for 250 mL of Miller LB broth without agar.
+    prompt: >
+      Calculate the correct ingredient masses to prepare 250 mL of LB broth
+      using Miller formulation (no agar). Report mass of each component in grams.
+    expected_output_contains:
+      - tryptone
+      - yeast extract
+      - NaCl
+    reference_output: |
+      components:
+        tryptone: {amount_g: 2.5, concentration_g_per_l: 10}
+        yeast_extract: {amount_g: 1.25, concentration_g_per_l: 5}
+        sodium_chloride: {amount_g: 2.5, concentration_g_per_l: 10}
+    evaluation_criteria: |
+      - Tryptone: 2.5 g (10 g/L × 0.25 L).
+      - Yeast extract: 1.25 g (5 g/L × 0.25 L).
+      - NaCl: 2.5 g (10 g/L × 0.25 L).
+      - Miller formulation uses 10 g/L NaCl.
+
+  - id: stella_miniprep_buffer_order
+    name: "QIAprep Spin Miniprep Buffer Order"
+    category: wet_lab
+    tags: [stella, wet_lab, miniprep, protocol]
+    description: >
+      Specify correct buffer volumes and order for QIAprep Spin Miniprep from
+      3 mL bacterial culture (endA+ strain).
+    prompt: >
+      For a 3 mL bacterial culture from an endA+ strain, specify the correct
+      volumes and order of buffers for plasmid isolation using the QIAprep Spin
+      Miniprep Kit. Elute in 50 µl.
+    expected_output_contains:
+      - Buffer P1
+      - Buffer P2
+      - Buffer N3
+      - Buffer PE
+      - Buffer EB
+    reference_output: |
+      buffer_order:
+        - {name: "Buffer P1", volume_ul: 250, function: "Resuspension"}
+        - {name: "Buffer P2", volume_ul: 250, function: "Alkaline lysis"}
+        - {name: "Buffer N3", volume_ul: 350, function: "Neutralization"}
+        - {name: "Buffer PB", volume_ul: 500, function: "Optional wash (endA+ strains)"}
+        - {name: "Buffer PE", volume_ul: 750, function: "Ethanol wash"}
+        - {name: "Buffer EB", volume_ul: 50, function: "Elution"}
+    evaluation_criteria: |
+      - Correct buffer order: P1 → P2 → N3 → PB → PE → EB.
+      - Buffer volumes match standard QIAprep protocol.
+      - Buffer PB included (endA+ strain).
+      - Elution (EB) volume is 50 µL.
+
+  - id: stella_agarose_gel_prep
+    name: "Agarose Gel Electrophoresis Prep"
+    category: wet_lab
+    tags: [stella, wet_lab, agarose, gel, formula]
+    description: >
+      Calculate ingredients and specify preparation order for a 1% TAE agarose
+      gel (100 mL) with EtBr staining.
+    prompt: >
+      Calculate the ingredients and preparation steps for a 100 mL, 1.0% agarose
+      gel using 1× TAE buffer with EtBr staining (0.5 µg/mL). Specify the
+      correct order of components.
+    expected_output_contains:
+      - agarose
+      - TAE
+      - EtBr
+    reference_output: |
+      components:
+        agarose_g: 1.0
+        buffer_volume_ml: 100
+        stain: {name: EtBr, concentration_ug_per_ml: 0.5}
+      gel_pouring_order:
+        - buffer
+        - agarose
+        - heat (until clear)
+        - cool ~5 min
+        - add EtBr stain
+    evaluation_criteria: |
+      - Agarose mass: 1.0 g (1% × 100 mL / 100).
+      - Buffer volume: 100 mL.
+      - EtBr at 0.5 µg/mL.
+      - Correct preparation order: dissolve agarose in buffer → cool → add stain.
+
+  - id: stella_glycerol_stock_prep
+    name: "Bacterial Glycerol Stock Prep"
+    category: wet_lab
+    tags: [stella, wet_lab, glycerol_stock, formula]
+    description: >
+      Calculate the mixture for preparing a 20% final glycerol stock from 500 µL
+      of overnight bacterial culture using 50% glycerol solution.
+    prompt: >
+      Calculate the correct mixture to prepare a bacterial glycerol stock from
+      500 µL of overnight culture and 50% glycerol solution, targeting a final
+      glycerol concentration of 20%.
+    expected_output_contains:
+      - glycerol
+      - 500 µL
+      - 20%
+    reference_output: |
+      glycerol_stock:
+        culture_ul: 500
+        glycerol_stock_solution_ul: 500  # 50% glycerol
+        final_volume_ul: 1000
+        final_glycerol_percent: 20
+    evaluation_criteria: |
+      - Equal volumes of culture and 50% glycerol (500 µL each) gives 20% final.
+      - Final volume: 1000 µL.
+      - Formula: culture × (desired_percent / glycerol_stock_percent) = 500 × (20/50) = 200... OR equal volumes for 25% — model must correctly arrive at 25% or note the discrepancy.
+      - Correct concentration calculation shown.
+
+  - id: stella_amicon_protein_concentration
+    name: "Protein Concentration – Amicon Centrifugal Filter"
+    category: wet_lab
+    tags: [stella, wet_lab, protein, concentration, formula]
+    description: >
+      Simulate protein concentration using a 10 kDa Amicon Ultra centrifugal
+      filter from 1 mL at 1.5 mg/mL to 10 mg/mL target.
+    prompt: >
+      Calculate the expected final volume and fold-concentration when using an
+      Amicon Ultra 10 kDa centrifugal filter to concentrate a protein from
+      1000 µL at 1.5 mg/mL to a target concentration of 10 mg/mL in Tris pH 7.5,
+      150 mM NaCl buffer. Specify centrifugation settings.
+    expected_output_contains:
+      - Amicon
+      - 10 kDa
+      - 14000
+    reference_output: |
+      final_volume_ul: 150
+      fold_concentration: 6.67
+      centrifugation: {speed_rcf: 14000, time_minutes: 10, temperature_c: 4}
+    evaluation_criteria: |
+      - Final volume: 150 µL (1.5/10 × 1000).
+      - Fold concentration: ~6.67.
+      - Centrifugation speed: 14,000 × g.
+      - Temperature: 4°C.
+
+  # ── GENOMICS / SEQUENCING ────────────────────────────────────────────────────
+
+  - id: stella_bwa_mem_alignment
+    name: "BWA-MEM Read Alignment"
+    category: genomics
+    tags: [stella, genomics, alignment, bwa, sequencing]
+    description: >
+      Align paired-end Illumina reads to GRCh38 reference using BWA-MEM with
+      4 threads and proper read group tags.
+    prompt: >
+      Align paired-end Illumina short reads (sample_R1.fastq.gz, sample_R2.fastq.gz)
+      to the GRCh38 reference genome (ref/GRCh38.fa) using BWA-MEM. Use 4 threads,
+      mark secondary alignments, add read group tags (ID:sample, SM:sample,
+      PL:ILLUMINA), and produce a BAM output.
+    expected_output_contains:
+      - bwa mem
+      - GRCh38
+      - -t 4
+      - read group
+    reference_output: |
+      command: >
+        bwa mem -t 4 -M -R "@RG\tID:sample\tSM:sample\tPL:ILLUMINA"
+        ref/GRCh38.fa reads/sample_R1.fastq.gz reads/sample_R2.fastq.gz
+        | samtools sort -o aligned.bam
+      output: aligned.bam
+    evaluation_criteria: |
+      - BWA-MEM command includes -t 4 for 4 threads.
+      - Read group tag (@RG) includes ID, SM, and PL fields.
+      - Output is a BAM file.
+      - Mapping rate >90% expected.
+
+  - id: stella_macs2_peak_calling
+    name: "MACS2 ChIP-seq Peak Calling"
+    category: genomics
+    tags: [stella, genomics, chipseq, macs2, epigenomics]
+    description: >
+      Call peaks from H1hESC Nanog ChIP-seq data using MACS2 with input control.
+    prompt: >
+      Call ChIP-seq peaks from H1hESC Nanog data using MACS2. Treatment BAM:
+      H1hesc_Nanog_Rep1_aln.bam; Control BAM: H1hesc_Input_Rep1_aln.bam.
+      Use human genome size (hs) and output prefix "nanog_peaks". Provide the
+      complete MACS2 command.
+    expected_output_contains:
+      - macs2 callpeak
+      - nanog_peaks
+      - hs
+      - narrowPeak
+    reference_output: |
+      command: >
+        macs2 callpeak -t H1hesc_Nanog_Rep1_aln.bam
+        -c H1hesc_Input_Rep1_aln.bam -f BAM -g hs -n nanog_peaks
+      output_files:
+        - nanog_peaks_peaks.narrowPeak
+        - nanog_peaks_summits.bed
+        - nanog_peaks_model.r
+    evaluation_criteria: |
+      - MACS2 callpeak command with -t (treatment) and -c (control).
+      - Genome size set to hs.
+      - Output name prefix is nanog_peaks.
+      - Expected output files listed (narrowPeak, summits.bed).
+
+  - id: stella_chipqc_quality
+    name: "ChIPQC Quality Assessment"
+    category: genomics
+    tags: [stella, genomics, chipseq, qc, epigenomics]
+    description: >
+      Assess ChIP-seq quality for H1hESC Nanog and Pou5f1 samples using ChIPQC
+      in R with a sample sheet.
+    prompt: >
+      Using ChIPQC in R, assess ChIP-seq data quality for H1hESC Nanog and
+      Pou5f1 samples. Use the sample sheet samplesheet_chr12.csv and
+      TxDb.Hsapiens.UCSC.hg19.knownGene annotation. Enable consensus peaks and
+      bCount. Describe the key quality metrics reported.
+    expected_output_contains:
+      - ChIPQC
+      - SSD
+      - NSC
+      - RSC
+    reference_output: |
+      quality_metrics:
+        SSD: "Sample-specific distance (signal enrichment)"
+        NSC: "Normalized strand cross-correlation"
+        RSC: "Relative strand cross-correlation"
+      output: chipqc_report.html
+    evaluation_criteria: |
+      - ChIPQC R package usage described.
+      - SSD, NSC, and RSC metrics defined.
+      - QC report generated as HTML.
+
+  - id: stella_dreme_motif_analysis
+    name: "DREME Motif Discovery"
+    category: genomics
+    tags: [stella, genomics, motif, dreme, epigenomics]
+    description: >
+      Discover DNA binding motifs from Nanog ChIP-seq peaks using DREME.
+    prompt: >
+      Discover DNA binding motifs from Nanog ChIP-seq peak sequences using DREME.
+      Use the nanog_peaks_peaks.narrowPeak file as input with hg19 reference
+      genome for sequence extraction. Set k=8 (motif length), m=10 (max motifs),
+      significance threshold p=0.05. Describe the expected output and how to
+      interpret motif E-values.
+    expected_output_contains:
+      - DREME
+      - motif
+      - E-value
+      - narrowPeak
+    evaluation_criteria: |
+      - DREME command includes input peak file and genome.
+      - Motif length (k=8) specified.
+      - E-value interpretation explained.
+      - Output includes motif sequences and statistical significance.
