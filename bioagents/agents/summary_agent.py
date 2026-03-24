@@ -12,6 +12,20 @@ logger = logging.getLogger(__name__)
 
 SUMMARY_AGENT_PROMPT = load_prompt("summary")
 
+
+def assess_execution_complexity(memory: dict) -> str:
+    """Classify execution as simple or complex from shared memory."""
+    successful = [
+        name for name, agent_data in memory.items() if agent_data.get("status") == "success"
+    ]
+    if len(successful) >= 2:
+        return "complex"
+    for agent_data in memory.values():
+        if agent_data.get("status") == "success" and agent_data.get("tool_calls"):
+            return "complex"
+    return "simple"
+
+
 SUMMARY_AGENT_SYSTEM_PROMPT = """
 You are the Summary Agent. Generate the final user-facing output.
 
@@ -32,6 +46,7 @@ def create_summary_agent():
     Returns:
         Agent node function
     """
+    load_prompt("summary")
     llm = get_llm(prompt_name="summary")
 
     def summary_node(state):
@@ -59,14 +74,17 @@ def create_summary_agent():
             if not has_results:
                 # Empty memory: answer directly
                 prompt = """
-You are a helpful assistant. Answer the user's question directly and clearly.
+You are a helpful assistant. Directly answer the user's question clearly.
 Do not mention agents, tools, or technical systems.
 """
                 full_prompt = prompt
             else:
                 # Has memory: synthesize findings
+                complexity = assess_execution_complexity(memory)
                 memory_context = format_memory_for_summary(memory)
                 full_prompt = f"""{SUMMARY_AGENT_SYSTEM_PROMPT}
+
+EXECUTION COMPLEXITY: {complexity}
 
 SHARED MEMORY STATE:
 {memory_context}
@@ -92,8 +110,8 @@ SHARED MEMORY STATE:
         except Exception as e:
             logger.error(f"Summary agent error: {e}", exc_info=True)
             return {
-                "data": {"summary": f"Error: {e!s}"},
-                "raw_output": str(e),
+                "data": {},
+                "raw_output": "",
                 "tool_calls": [],
                 "error": str(e),
             }
@@ -119,4 +137,4 @@ def format_memory_for_summary(memory: dict) -> str:
             except (TypeError, ValueError):
                 lines.append(str(agent_data["data"]))
 
-    return "\n".join(lines) if lines else "No data available."
+    return "\n".join(lines) if lines else "No completed agent tasks."
