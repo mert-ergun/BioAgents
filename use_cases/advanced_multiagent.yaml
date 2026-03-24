@@ -1,0 +1,995 @@
+use_cases:
+
+  # ══════════════════════════════════════════════════════════════════════════════
+  # CATEGORY: protein_design
+  # ══════════════════════════════════════════════════════════════════════════════
+
+  - id: adv_binder_design_pd1
+    name: "De Novo PD-1 Binder Design Pipeline"
+    category: protein_design
+    tags: [advanced, protein_design, rfdiffusion, proteinmpnn, alphafold]
+    description: >
+      Full de novo binder design campaign against PD-1 (PDB: 4ZQK) including
+      hotspot identification, backbone generation, sequence design, structure
+      prediction, binding metric scoring, and ranked experimental recommendations.
+    prompt: >
+      I want to design a brand new protein that can bind to the PD-1 immune
+      checkpoint receptor and potentially block the PD-1/PD-L1 interaction.
+      The PD-1 structure is available as PDB entry 4ZQK. Please identify the
+      key interface residues where PD-L1 contacts PD-1, design several candidate
+      binder proteins targeting that site, predict how well each candidate would
+      bind, and give me a ranked list of the most promising designs with an
+      explanation of why they should work structurally. I'd like a clear
+      recommendation on which design to take forward for experimental validation.
+    expected_agents: [research, protein_design, analysis, critic, report]
+    expected_tools:
+      - fetch_pdb_structure
+      - get_pdb_polymer_entities
+      - analyze_interface_contacts
+      - design_binders_bindcraft
+      - generate_binder_backbones
+      - design_binder_sequences
+      - predict_complex_structure
+      - compute_binding_metrics
+      - rank_binder_designs
+    expected_output_contains:
+      - PD-1
+      - 4ZQK
+      - iPTM
+      - ipSAE
+      - hotspot
+      - binder
+    evaluation_criteria: |
+      - PD-L1 interface residues on PD-1 correctly identified from structure.
+      - Multiple binder backbone designs generated.
+      - Sequences designed for each backbone.
+      - Complex structures predicted and binding metrics (iPTM, ipSAE) computed.
+      - Designs ranked; top candidate identified with structural rationale.
+      - Scientific validity of hotspot selection assessed critically.
+      - Clear experimental validation recommendation given.
+
+  - id: adv_binder_design_egfr
+    name: "EGFR Domain III Binder Design with Custom Scoring"
+    category: protein_design
+    tags: [advanced, protein_design, tool_builder, egfr]
+    description: >
+      De novo binder design against the EGFR cetuximab epitope on domain III,
+      including autonomous construction of an interface energy scoring method,
+      full design pipeline, and critical competitive assessment against cetuximab.
+    prompt: >
+      I'm working on alternatives to cetuximab for EGFR-targeted therapy. I'd
+      like you to design novel protein binders that target the same epitope on
+      EGFR extracellular domain III that cetuximab binds — the structure is PDB
+      1IVO. For each design candidate, I need an estimate of the binding energy
+      at the interface so I can compare them to each other and to the antibody.
+      Please also flag any potential issues like aggregation tendency or
+      requirement for structural disulfide bonds. Tell me which candidates are
+      most likely to outcompete cetuximab and which ones you'd recommend
+      advancing, with a clear rationale.
+    expected_agents: [research, protein_design, tool_builder, analysis, critic, report]
+    expected_tools:
+      - fetch_pdb_structure
+      - analyze_interface_contacts
+      - compute_interface_metrics
+      - generate_tool_wrapper
+      - register_custom_tool
+      - execute_custom_tool
+      - generate_binder_backbones
+      - design_binder_sequences
+      - predict_complex_structure
+      - compute_binding_metrics
+      - rank_binder_designs
+    expected_output_contains:
+      - EGFR
+      - cetuximab
+      - domain III
+      - interface
+      - iPTM
+    evaluation_criteria: |
+      - EGFR domain III structure fetched and cetuximab epitope residues identified.
+      - An interface energy scoring method created and applied to all designs.
+      - Full binder design pipeline executed.
+      - Aggregation and disulfide concerns assessed for each candidate.
+      - Competitive comparison against cetuximab made quantitatively.
+      - Go/no-go recommendation per candidate with supporting metrics.
+
+  - id: adv_multi_target_binder_ranking
+    name: "Multi-Target Binder Campaign: IL-6R vs TNF-α"
+    category: protein_design
+    tags: [advanced, protein_design, il6r, tnf, comparative]
+    description: >
+      Parallel binder design campaign for IL-6Rα and TNF-α, cross-ranking all
+      designs by binding quality, and assessing therapeutic relevance and
+      developability of each target.
+    prompt: >
+      We're deciding between two inflammatory targets for a new biologic program
+      — IL-6 receptor alpha (IL-6Rα, PDB: 1N26) and TNF-alpha (PDB: 1TNF) —
+      and I'd like you to run binder design campaigns against both in parallel.
+      For each target, identify the therapeutically relevant binding site, design
+      several binder candidates, and predict their binding quality. Then compare
+      all designs across both targets, tell me which target produced the
+      stronger binders overall, and give me your assessment of which target
+      is the better opportunity from both a structural and therapeutic
+      development perspective — considering things like immunogenicity risk,
+      molecule size, and what's already in the clinic.
+    expected_agents: [research, protein_design, analysis, critic, report]
+    expected_tools:
+      - fetch_pdb_structure
+      - analyze_interface_contacts
+      - generate_binder_backbones
+      - design_binder_sequences
+      - predict_complex_structure
+      - compute_binding_metrics
+      - rank_binder_designs
+    expected_output_contains:
+      - IL-6
+      - TNF
+      - iPTM
+      - ipSAE
+    evaluation_criteria: |
+      - Both IL-6Rα and TNF-α binding sites identified from structures.
+      - Binder designs generated and scored for both targets.
+      - Cross-target ranking table produced.
+      - Therapeutic opportunity, developability, and off-target risk assessed.
+      - One target recommended with quantitative and clinical justification.
+
+  # ══════════════════════════════════════════════════════════════════════════════
+  # CATEGORY: ml_genomics
+  # ══════════════════════════════════════════════════════════════════════════════
+
+  - id: adv_ml_tcga_survival
+    name: "Multi-Omics Survival Prediction on TCGA-BRCA"
+    category: ml_genomics
+    tags: [advanced, ml, survival, tcga, multi_omics]
+    description: >
+      Build and evaluate a multi-omics survival prediction model for breast
+      cancer using synthetic TCGA-BRCA-style RNA-seq, CNV, and mutation data,
+      with LASSO feature selection, three model types, Kaplan-Meier analysis,
+      and critical statistical assessment.
+    prompt: >
+      I have breast cancer patient data with RNA-seq expression, copy number
+      variation, and mutation burden features from a TCGA-BRCA-style cohort of
+      500 patients, and I want to predict overall survival. Please build a
+      rigorous survival prediction analysis: use appropriate feature selection
+      to narrow down the most informative multi-omics features, then train and
+      compare multiple survival model types so I can see which approach works
+      best. I need proper cross-validation, concordance index estimates for each
+      model, and Kaplan-Meier curves separating high-risk from low-risk patients
+      with a log-rank p-value. Tell me which features are the strongest
+      predictors and what they might mean biologically. Also flag any statistical
+      concerns I should be aware of before publishing these results.
+    expected_agents: [coder, ml, critic, report]
+    expected_tools:
+      - execute_ml_code
+      - design_ml_pipeline
+      - optimize_ml_pipeline
+    expected_output_contains:
+      - concordance index
+      - C-index
+      - Kaplan-Meier
+      - LASSO
+      - Cox
+      - RNA-seq
+      - CNV
+    evaluation_criteria: |
+      - Multi-omics feature matrix (RNA-seq + CNV + mutation) used.
+      - Feature selection applied before modelling.
+      - At least three survival model types trained and compared.
+      - C-index with cross-validation reported for all models.
+      - Kaplan-Meier curves with log-rank p-value produced.
+      - Top predictive features identified with biological interpretation.
+      - Statistical concerns (censoring, sample size, overfitting) addressed.
+
+  - id: adv_dl_variant_pathogenicity
+    name: "Deep Learning Variant Pathogenicity Classifier"
+    category: ml_genomics
+    tags: [advanced, deep_learning, variant, pathogenicity, pytorch]
+    description: >
+      Design and train a PyTorch sequence-based classifier to predict variant
+      pathogenicity from nucleotide context windows, with attention
+      visualisation and clinical applicability assessment.
+    prompt: >
+      I want a deep learning model that can classify genomic variants as
+      pathogenic or benign based on the DNA sequence context around the variant
+      site. The model should be able to learn which positions in the surrounding
+      sequence are most important for the prediction — I'm particularly interested
+      in seeing attention or importance maps so I can understand what the model
+      is picking up on. Please train this on a balanced dataset of pathogenic and
+      benign variants, evaluate it properly including AUROC and precision-recall,
+      and show me the attention patterns for a few example variants. I also need
+      an honest assessment of whether this kind of architecture is actually
+      appropriate for clinical variant interpretation and what the risks are.
+    expected_agents: [dl, coder, critic, report]
+    expected_tools:
+      - execute_ml_code
+      - design_ml_pipeline
+    expected_output_contains:
+      - AUROC
+      - attention
+      - pathogenic
+      - benign
+      - precision
+      - recall
+    evaluation_criteria: |
+      - Sequence context window data used as input.
+      - Model includes attention or importance mechanism.
+      - Training with proper early stopping and class balancing.
+      - AUROC, accuracy, and F1 all reported on held-out test set.
+      - Attention visualisation for example variants produced.
+      - Architecture appropriateness and clinical risk critically assessed.
+
+  - id: adv_ml_drug_response_transfer
+    name: "Drug Response Prediction with Transfer Learning (GDSC → TCGA)"
+    category: ml_genomics
+    tags: [advanced, ml, drug_response, transfer_learning, gdsc, tcga]
+    description: >
+      Train a multi-task drug response model on synthetic GDSC cell line data
+      and fine-tune it on TCGA patient expression data, quantifying transfer
+      improvement and flagging domain shift risks.
+    prompt: >
+      I want to use cell line drug response data to build a model that can
+      predict which patients are likely to respond to chemotherapy drugs, but
+      I know there's a big gap between cell lines and actual tumours. Can you
+      train a model on GDSC-style cell line expression and IC50 data for five
+      chemotherapy drugs — paclitaxel, docetaxel, doxorubicin, cisplatin, and
+      5-FU — and then adapt it to work on TCGA patient expression data using
+      transfer learning? I need to see how much the transfer improves predictions
+      for paclitaxel specifically, which gene features matter most for predicting
+      paclitaxel response, and what pathway they belong to. I'm also worried about
+      domain shift between cell lines and patients — please tell me honestly where
+      the model is likely to break down and what I'd need to do to trust these
+      predictions clinically.
+    expected_agents: [ml, dl, coder, critic, report]
+    expected_tools:
+      - execute_ml_code
+      - design_ml_pipeline
+      - optimize_ml_pipeline
+    expected_output_contains:
+      - GDSC
+      - TCGA
+      - paclitaxel
+      - transfer
+      - Pearson
+      - domain shift
+    evaluation_criteria: |
+      - Multi-task model trained on cell line data for 5 drugs.
+      - Pearson R and RMSE reported per drug on held-out cell lines.
+      - Fine-tuning applied to TCGA patient data.
+      - Transfer improvement quantified before vs. after fine-tuning.
+      - Top predictive genes mapped to a biological pathway.
+      - Domain shift, batch effects, and clinical trust concerns addressed.
+
+  # ══════════════════════════════════════════════════════════════════════════════
+  # CATEGORY: literature_synthesis
+  # ══════════════════════════════════════════════════════════════════════════════
+
+  - id: adv_lit_immunotherapy_resistance
+    name: "Literature Synthesis: Immunotherapy Resistance Mechanisms"
+    category: literature_synthesis
+    tags: [advanced, literature, immunotherapy, resistance]
+    description: >
+      Multi-source literature synthesis covering molecular resistance mechanisms
+      to anti-PD-1/PD-L1 therapy across five tumour types, with pathway mapping,
+      clinical trial identification, pan-tumour patterns, and novel combination
+      therapy hypotheses.
+    prompt: >
+      I'm writing a review on why patients stop responding to anti-PD-1 and
+      anti-PD-L1 immunotherapy, and I need a thorough synthesis of the resistance
+      mechanisms across five tumour types: non-small cell lung cancer, melanoma,
+      microsatellite-stable colorectal cancer, hepatocellular carcinoma, and
+      urothelial carcinoma. For each tumour type, give me the main molecular
+      mechanisms of acquired resistance, the relevant signalling pathways they
+      affect, the key genes involved, and at least one active clinical trial
+      that's targeting that resistance mechanism. Then step back and tell me
+      which resistance mechanisms appear across multiple tumour types —
+      those are the ones I'm most interested in therapeutically. Based on that,
+      propose two combination therapy strategies that could overcome the shared
+      resistance mechanisms, and give me your assessment of how clinically
+      feasible each combination actually is.
+    expected_agents: [research, critic, report]
+    expected_output_contains:
+      - PD-1
+      - PD-L1
+      - MHC-I
+      - TGF-β
+      - LAG-3
+      - NSCLC
+      - melanoma
+      - NCT
+    evaluation_criteria: |
+      - At least 3 resistance mechanisms identified per tumour type.
+      - Each mechanism linked to a signalling pathway.
+      - At least one actionable gene target per mechanism.
+      - At least one clinical trial (NCT number) cited per tumour type.
+      - Pan-tumour shared mechanisms identified across ≥3 tumour types.
+      - Two combination therapy strategies proposed with approved agents.
+      - Clinical feasibility of each strategy critically evaluated.
+      - Structured per-tumour resistance table included.
+
+  - id: adv_lit_crispri_screen_analysis
+    name: "CRISPRi Screen Interpretation: K562 Leukaemia Essential Genes"
+    category: literature_synthesis
+    tags: [advanced, literature, crispr, screen, synthetic_lethal]
+    description: >
+      Interpret genome-wide CRISPRi growth screen hits from K562 CML cells,
+      clustering by function, cross-referencing DepMap essentiality,
+      identifying synthetic lethal pairs with imatinib resistance mechanisms,
+      and nominating therapeutic targets.
+    prompt: >
+      We ran a genome-wide CRISPRi growth screen in K562 chronic myeloid
+      leukaemia cells and got the following top 20 essential gene hits by
+      depletion score: RPS3, RPS6, RPL5, RPL11, EIF4E, EIF3A, MYC, MAX, BRD4,
+      CDK9, POLR2A, POLR2B, SF3B1, SRSF1, HNRNPA1, CCND2, CDK4, CDK6, MCM2,
+      MCM4. I need help making sense of these results. Can you group them into
+      functional categories, tell me which ones are general cellular
+      housekeeping genes versus K562-specific dependencies by comparing against
+      published CRISPR essentiality databases, and identify which of these hits
+      might represent synthetic lethal opportunities with known imatinib
+      resistance mechanisms like BCR-ABL1 reactivation or STAT5 upregulation?
+      I want your top 5 therapeutic target recommendations from this list, with
+      reasoning based on essentiality, selectivity, and how druggable the target
+      actually is.
+    expected_agents: [research, analysis, critic, report]
+    expected_output_contains:
+      - CRISPRi
+      - K562
+      - BRD4
+      - MYC
+      - SF3B1
+      - synthetic lethal
+      - DepMap
+      - imatinib
+    evaluation_criteria: |
+      - 20 hits clustered into functional modules (≥4 categories).
+      - Pan-essential vs. K562-specific distinction made using DepMap.
+      - ≥3 synthetic lethal pairs with imatinib-resistance mechanisms proposed.
+      - Literature evidence cited for top synthetic lethal pair.
+      - Top 5 therapeutic targets ranked with druggability rationale.
+      - Screen design quality and off-target risk assessed.
+
+  - id: adv_lit_single_cell_pdac_tme
+    name: "Single-Cell Atlas Synthesis: PDAC Tumour Microenvironment"
+    category: literature_synthesis
+    tags: [advanced, literature, single_cell, scRNA, TME, PDAC]
+    description: >
+      Synthesise published scRNA-seq atlas data on the PDAC tumour
+      microenvironment, covering cell type marker genes, functional states,
+      intercellular communication axes, CAF differentiation, spatial context,
+      and TME-directed therapeutic strategies.
+    prompt: >
+      I'm building a grant proposal around targeting the tumour microenvironment
+      in pancreatic ductal adenocarcinoma, and I need a comprehensive synthesis
+      of what single-cell RNA-seq atlases have revealed about the PDAC TME.
+      Please cover all the major cell populations present — tumour cells, cancer-
+      associated fibroblasts, tumour-associated macrophages, T cells, NK cells,
+      B cells, endothelial cells, and any others — with their defining marker
+      genes and the functional subtypes that have been described. I'm particularly
+      interested in how these cell populations talk to each other: what are the
+      dominant ligand-receptor signalling axes and which cell types are sending
+      and receiving those signals? Also walk me through the CAF differentiation
+      trajectory and what transcription factors drive the transition to the
+      pro-tumorigenic myofibroblastic state. Finally, what have spatial
+      transcriptomics experiments added beyond what single-cell data alone shows?
+      I need this to culminate in three concrete TME-targeting strategies that
+      are directly supported by the atlas data, and I want an honest assessment
+      of how reproducible these findings are across different patient cohorts
+      and sequencing platforms.
+    expected_agents: [research, critic, report]
+    expected_output_contains:
+      - PDAC
+      - CAF
+      - TAM
+      - CXCL12
+      - TGF-β
+      - scRNA-seq
+      - spatial transcriptomics
+      - ACTA2
+    evaluation_criteria: |
+      - ≥8 TME cell types described with ≥3 marker genes each.
+      - Functional subtypes described for CAFs and TAMs.
+      - ≥5 ligand-receptor axes with sender/receiver cell types identified.
+      - CAF differentiation trajectory and driving TFs described.
+      - Spatial transcriptomics findings included.
+      - ≥3 TME-targeting therapeutic strategies proposed.
+      - Cross-cohort and cross-platform reproducibility concerns addressed.
+
+  # ══════════════════════════════════════════════════════════════════════════════
+  # CATEGORY: structural_biology
+  # ══════════════════════════════════════════════════════════════════════════════
+
+  - id: adv_struct_allosteric_site_discovery
+    name: "Allosteric Site Discovery and Druggability Assessment: K-Ras G12D"
+    category: structural_biology
+    tags: [advanced, structure, allosteric, kras, druggability, tool_builder]
+    description: >
+      Allosteric pocket discovery on K-Ras G12D (PDB: 4OBE) with autonomous
+      construction of a pocket druggability scoring method, comparison of three
+      pockets, literature-backed validation, and experimental recommendations.
+    prompt: >
+      K-Ras G12D is notoriously difficult to drug directly, and I want to
+      understand all its potential druggable pockets — not just the active site.
+      Using the G12D structure (PDB: 4OBE), can you identify the distinct
+      binding pockets on the protein surface, particularly the switch II pocket
+      that's attracted recent attention, score each one for druggability based
+      on its geometry and chemical character, and compare them? I want to know
+      which pocket gives the best chance of finding a small molecule that
+      disrupts the oncogenic function. Please cross-reference your pocket
+      assessment against the published covalent inhibitors like sotorasib and
+      adagrasib to see whether your analysis correctly identifies their binding
+      site, and tell me what experimental approaches — structural, biophysical,
+      or biochemical — you'd recommend to validate the druggability of the
+      most promising pocket.
+    expected_agents: [research, analysis, tool_builder, critic, report]
+    expected_tools:
+      - fetch_pdb_structure
+      - get_pdb_polymer_entities
+      - analyze_interface_contacts
+      - compute_interface_metrics
+      - generate_tool_wrapper
+      - register_custom_tool
+      - validate_custom_tool
+      - execute_custom_tool
+    expected_output_contains:
+      - K-Ras
+      - G12D
+      - 4OBE
+      - allosteric
+      - switch II
+      - sotorasib
+      - druggability
+    evaluation_criteria: |
+      - K-Ras G12D structure fetched; switch I/II regions identified.
+      - Custom pocket druggability scoring method created and applied.
+      - At least three distinct pockets scored and compared quantitatively.
+      - Switch II pocket recommended with quantitative justification.
+      - Published SII-P binders (sotorasib/adagrasib) cross-referenced against analysis.
+      - Experimental validation approaches recommended.
+      - Scoring limitations acknowledged.
+
+  - id: adv_struct_kinase_resistance_comparison
+    name: "Structural Basis of Kinase Drug Resistance: EGFR, ABL1, ALK"
+    category: structural_biology
+    tags: [advanced, structure, kinase, resistance, comparative]
+    description: >
+      Comparative structural analysis of wild-type vs. gatekeeper resistance
+      mutant structures for EGFR, ABL1, and ALK, mapping pocket geometry changes
+      to approved inhibitor strategies and deriving design principles.
+    prompt: >
+      I'm studying how gatekeeper mutations in kinases cause drug resistance and
+      I want a systematic structural comparison. For three clinically important
+      kinases — EGFR with the T790M mutation, ABL1 with T315I, and ALK with
+      L1196M — please compare the wild-type and mutant structures to show me
+      exactly how the gatekeeper substitution changes the shape and chemistry
+      of the ATP binding pocket. Use the following PDB entries: EGFR WT 1IEP vs
+      T790M 2JIU; ABL1 WT 2HYY vs T315I 2Z60; ALK WT 2XP2 vs L1196M 4ANS.
+      For each kinase, tell me which pocket residues move the most and how that
+      explains why the first-generation inhibitor stopped working, and how the
+      approved next-generation inhibitor overcomes that. Then give me an overview
+      of what structural features these three gatekeeper mutations share, and
+      derive two concrete design principles that could guide the development of
+      inhibitors that are inherently resistant to this class of mutation.
+    expected_agents: [research, analysis, critic, report]
+    expected_tools:
+      - fetch_pdb_structure
+      - get_pdb_polymer_entities
+      - download_structure_file
+      - analyze_interface_contacts
+      - compute_interface_metrics
+    expected_output_contains:
+      - EGFR
+      - T790M
+      - ABL1
+      - T315I
+      - ALK
+      - L1196M
+      - RMSD
+      - osimertinib
+      - ponatinib
+      - lorlatinib
+    evaluation_criteria: |
+      - All six structures fetched and paired per kinase.
+      - Structural alignment and Cα RMSD computed for each kinase pair.
+      - ATP pocket residue shifts identified for all three kinase pairs.
+      - First-generation inhibitor failure mechanistically explained per kinase.
+      - Next-generation inhibitor binding mode described for each.
+      - Shared structural feature of gatekeeper mutations identified.
+      - ≥2 resistance-proof design principles derived.
+      - Structural claims critically challenged where data is limited.
+
+  # ══════════════════════════════════════════════════════════════════════════════
+  # CATEGORY: multi_omics_integration
+  # ══════════════════════════════════════════════════════════════════════════════
+
+  - id: adv_omics_wgbs_chipseq_integration
+    name: "WGBS + H3K27ac ChIP-seq Integration: Active Enhancer Discovery"
+    category: multi_omics_integration
+    tags: [advanced, epigenomics, wgbs, chipseq, enhancer, integration]
+    description: >
+      Integrative epigenomic workflow combining WGBS methylation and H3K27ac
+      ChIP-seq to identify active enhancers, quantify methylation-activity
+      correlation, discover super-enhancers, map target genes, and run pathway
+      enrichment in MCF-7 breast cancer cells.
+    prompt: >
+      I have whole-genome bisulfite sequencing data and H3K27ac ChIP-seq data
+      from MCF-7 breast cancer cells, and I want to find the active enhancers
+      in this cell line. I know that active enhancers tend to be hypomethylated
+      and marked by H3K27ac, so please combine those two signals to identify the
+      regions that qualify. I'm specifically interested in super-enhancers —
+      the large clusters of enhancers that drive oncogene expression. For the
+      super-enhancers you identify, tell me which genes they're likely regulating
+      and run a pathway analysis to see what biological programs they're
+      controlling. I also want to understand how strongly DNA methylation
+      anti-correlates with H3K27ac signal across all peaks, with a proper
+      statistical test. Please highlight any assumptions in the analysis that
+      could affect the reliability of the results.
+    expected_agents: [coder, ml, critic, report]
+    expected_tools:
+      - execute_ml_code
+      - design_ml_pipeline
+    expected_output_contains:
+      - WGBS
+      - H3K27ac
+      - enhancer
+      - methylation
+      - super-enhancer
+      - Spearman
+      - GSEA
+      - MCF-7
+    evaluation_criteria: |
+      - Both H3K27ac signal and methylation criteria applied for active enhancer calling.
+      - Spearman correlation between methylation and H3K27ac signal computed with p-value.
+      - Super-enhancer identification using inflection-point method.
+      - Super-enhancer to target gene table produced.
+      - Pathway enrichment run on target genes with NES and FDR.
+      - Coverage and proximity-assignment assumptions critically evaluated.
+
+  - id: adv_omics_proteogenomics_gbm
+    name: "Proteogenomics: Somatic Mutations Driving Protein Abundance in GBM"
+    category: multi_omics_integration
+    tags: [advanced, proteogenomics, mutations, protein, glioblastoma]
+    description: >
+      Integrative proteogenomics analysis linking somatic mutations to protein
+      abundance changes (cis and trans pQTL) in a GBM CPTAC-style cohort,
+      with co-mutation landscape, druggable target nomination, and statistical
+      power assessment.
+    prompt: >
+      I'm doing a proteogenomics analysis on a glioblastoma cohort from CPTAC —
+      I have somatic mutation calls and quantitative TMT proteomics data for
+      80 patients with 200 proteins measured. The key driver genes have these
+      mutation frequencies: TP53 around 35%, EGFR amplification 25%, PTEN loss
+      20%, RB1 mutation 15%, and IDH1 mutation 10%. I want to know two things:
+      first, which of these driver mutations have a significant effect on their
+      own protein abundance in cis — and does TP53 mutation reduce TP53 protein
+      as expected? Second, which other proteins are significantly changed in
+      trans in TP53-mutant tumours, and what pathways do those trans-affected
+      proteins belong to? I also want a co-mutation analysis to see which driver
+      pairs tend to co-occur or mutually exclude each other. From all of this,
+      give me a prioritised list of druggable protein targets that are most
+      significantly altered in this cohort, and be upfront about the statistical
+      limitations — I know 80 patients is not a lot for proteogenomics.
+    expected_agents: [coder, ml, critic, report]
+    expected_tools:
+      - execute_ml_code
+      - design_ml_pipeline
+    expected_output_contains:
+      - TP53
+      - EGFR
+      - cis
+      - trans
+      - Wilcoxon
+      - FDR
+      - TMT
+      - proteogenomics
+      - co-mutation
+    evaluation_criteria: |
+      - Cis-pQTL analysis run for driver genes with FDR correction.
+      - TP53 cis effect correctly identified.
+      - Trans differential abundance analysis for TP53 mutation performed.
+      - Co-mutation mutual exclusivity tested statistically.
+      - Druggable target nomination with scoring rationale.
+      - Statistical power limitations (n=80, multiple testing burden) addressed.
+
+  # ══════════════════════════════════════════════════════════════════════════════
+  # CATEGORY: tool_creation
+  # ══════════════════════════════════════════════════════════════════════════════
+
+  - id: adv_tool_build_open_targets
+    name: "Open Targets Disease-Target Association Query"
+    category: tool_creation
+    tags: [advanced, tool_builder, open_targets, disease, association]
+    description: >
+      Trigger autonomous tool construction for the Open Targets Platform GraphQL
+      API, validate it on Parkinson's disease, then use it to identify and
+      annotate the top genetic associations for Alzheimer's disease with drug
+      concordance analysis.
+    prompt: >
+      I want to use the Open Targets Platform to look up the strongest
+      genetically associated targets for Alzheimer's disease and understand
+      which of them are already being targeted by approved drugs. The Open
+      Targets API is publicly accessible at their GraphQL endpoint. Can you
+      query it to get the top genetic evidence associations for Alzheimer's
+      disease, tell me the association scores for each target, and then check
+      which of the top targets have concordance with approved Alzheimer's
+      therapies like memantine, aducanumab, and lecanemab? I want to understand
+      where genetic evidence and the existing drug landscape overlap and where
+      there are high-confidence genetically validated targets that aren't yet
+      drugged.
+    expected_agents: [research, tool_builder, analysis, report]
+    expected_tools:
+      - tool_universe_find_tools
+      - generate_tool_wrapper
+      - register_custom_tool
+      - validate_custom_tool
+      - execute_custom_tool
+      - list_custom_tools
+    expected_output_contains:
+      - Open Targets
+      - Alzheimer
+      - association score
+      - LRRK2
+      - EFO
+      - memantine
+    evaluation_criteria: |
+      - Open Targets API queried successfully for Alzheimer's disease associations.
+      - ≥10 targets retrieved with genetic association scores.
+      - Top targets assessed for druggability.
+      - Concordance with approved drugs (memantine, aducanumab, lecanemab) assessed.
+      - Genetically validated but undrugged targets highlighted.
+      - API tool reusable and registered for future queries.
+
+  - id: adv_tool_build_pubmed_cooccurrence
+    name: "PubMed Literature Co-occurrence Mining: ALS Gene Network"
+    category: tool_creation
+    tags: [advanced, tool_builder, ncbi, pubmed, literature_mining, ALS]
+    description: >
+      Autonomously build a PubMed gene co-occurrence mining pipeline, validate
+      on a test disease, then apply it to characterise the ALS gene
+      co-publication network and generate mechanistic hypotheses from the
+      most co-studied gene pair.
+    prompt: >
+      I want to understand which ALS-associated genes tend to be studied together
+      in the literature, because co-publication patterns often reflect shared
+      biology. The genes I'm interested in are SOD1, TDP-43, FUS, C9orf72, and
+      ATXN2. Can you search PubMed to find how frequently each pair of genes
+      co-appears in ALS papers, build a co-occurrence matrix, and tell me which
+      gene pair has the strongest co-publication relationship? For that top pair,
+      pull out the most relevant recent papers and summarise the biological
+      mechanism they have in common. Then, based on what the literature shows
+      about this gene pair's shared biology, propose a hypothesis about a
+      molecular interaction between them that could be relevant for therapy.
+      I'm also aware that co-occurrence isn't the same as biological interaction,
+      so please reflect on how much weight I should actually give these
+      co-publication patterns.
+    expected_agents: [research, tool_builder, analysis, critic, report]
+    expected_tools:
+      - generate_tool_wrapper
+      - register_custom_tool
+      - validate_custom_tool
+      - execute_custom_tool
+    expected_output_contains:
+      - PubMed
+      - co-occurrence
+      - SOD1
+      - TDP-43
+      - FUS
+      - C9orf72
+      - ALS
+      - PMID
+    evaluation_criteria: |
+      - PubMed co-occurrence mining pipeline built and validated.
+      - Co-occurrence matrix produced for 5 ALS genes.
+      - Highest co-occurring gene pair identified.
+      - Top papers for that pair retrieved with PMIDs.
+      - Shared biological mechanism summarised from literature.
+      - Mechanistic interaction hypothesis proposed.
+      - Publication bias and co-occurrence limitations assessed.
+
+  # ══════════════════════════════════════════════════════════════════════════════
+  # CATEGORY: clinical_genomics
+  # ══════════════════════════════════════════════════════════════════════════════
+
+  - id: adv_clinical_variant_curation
+    name: "ACMG/AMP Variant Classification: BRCA1/BRCA2 VUS Panel"
+    category: clinical_genomics
+    tags: [advanced, clinical, variant, ACMG, BRCA, VUS]
+    description: >
+      ACMG/AMP 2015 curation of five BRCA1/BRCA2 variants of uncertain
+      significance, applying PVS1/PS4/PM2/PP3/BA1 criteria with gnomAD and
+      functional evidence, proposing experimental follow-up for remaining VUS.
+    prompt: >
+      I'm a clinical geneticist and I need to classify five BRCA1/BRCA2 variants
+      that are currently reported as uncertain significance in our patients with
+      hereditary breast and ovarian cancer syndrome. Can you work through each
+      one using the ACMG/AMP 2015 criteria and give me a classification with the
+      specific evidence codes that support it?
+
+      The variants are:
+        BRCA1 c.5266dupC (p.Gln1756ProfsTer74) in NM_007294.4
+        BRCA2 c.6272_6275del (p.Asn2091IlefsTer12) in NM_000059.4
+        BRCA1 c.5030_5033del (p.Val1677CysfsTer3) in NM_007294.4
+        BRCA2 c.1813A>T (p.Lys605X) in NM_000059.4
+        BRCA1 c.3331_3334del (p.Gln1111ArgfsTer4) in NM_007294.4
+
+      For each variant, I need the mutation type, predicted protein consequence,
+      the ACMG criteria codes that apply and why, and the final classification.
+      If any variant remains a VUS after your assessment, tell me exactly what
+      type of additional evidence — functional assays, segregation studies, RNA
+      splicing data — would be most likely to resolve the classification. Give me
+      a table I can bring to our variant curation committee.
+    expected_agents: [research, analysis, critic, report]
+    expected_output_contains:
+      - BRCA1
+      - BRCA2
+      - ACMG
+      - PVS1
+      - PM2
+      - Pathogenic
+      - gnomAD
+      - frameshift
+    evaluation_criteria: |
+      - All 5 variants analysed individually with mutation type identified.
+      - PVS1 correctly applied to frameshift/nonsense variants.
+      - PM2 criterion addresses gnomAD population frequency.
+      - Final classification assigned for each variant.
+      - Clinical significance statement includes HBOC context.
+      - VUS variants have specific proposed experimental follow-up.
+      - ACMG criteria matrix table produced for committee use.
+      - Rule application verified and inconsistencies flagged.
+
+  - id: adv_clinical_pgx_panel
+    name: "Pharmacogenomics Panel Report: 12-Gene Pre-emptive Interpretation"
+    category: clinical_genomics
+    tags: [advanced, clinical, pharmacogenomics, PGx, CPIC]
+    description: >
+      Interpret a 12-gene pre-emptive pharmacogenomics panel using CPIC
+      guidelines, mapping star-allele diplotypes to phenotypes and drug
+      interactions with dosing recommendations, priority alerts, and a
+      patient-facing summary.
+    prompt: >
+      I need a clinical pharmacogenomics report for a patient who just had our
+      pre-emptive 12-gene panel completed. Here are the diplotype results:
+      CYP2D6 *4/*10, CYP2C19 *1/*17, CYP2C9 *1/*3, CYP3A5 *3/*3,
+      CYP2B6 *1/*6, SLCO1B1 *1a/*5, DPYD *1/*1, TPMT *1/*3A, NUDT15 *1/*1,
+      G6PD B/B, HLA-B *15:02 not detected, UGT1A1 *1/*28.
+
+      For each gene, tell me the predicted metaboliser or activity phenotype,
+      and list the most clinically important drug interactions with specific
+      CPIC-guided recommendations — whether to use an alternative drug, adjust
+      the dose, or proceed normally. I need a high-priority alert table that
+      calls out the most actionable drug-gene pairs. Please also flag the HLA-B
+      result for carbamazepine safety and the UGT1A1 result for irinotecan, and
+      explain the concept of phenoconversion if this patient is also taking a
+      strong CYP2D6 inhibitor. Finally, write a plain-language summary paragraph
+      that I can include in the patient's chart, and note where the CPIC evidence
+      is strong versus where there's more uncertainty.
+    expected_agents: [research, analysis, critic, report]
+    expected_output_contains:
+      - CYP2D6
+      - CYP2C19
+      - CPIC
+      - Intermediate Metaboliser
+      - SLCO1B1
+      - irinotecan
+      - UGT1A1
+      - HLA-B
+      - carbamazepine
+      - phenoconversion
+    evaluation_criteria: |
+      - All 12 genes assigned correct phenotype from diplotype.
+      - ≥3 drug interactions listed per gene with CPIC guidance.
+      - High-priority alert table produced with actionable recommendations.
+      - Phenoconversion concept applied for CYP2D6 in context of inhibitor use.
+      - HLA-B*15:02 carbamazepine safety correctly addressed.
+      - UGT1A1 *1/*28 irinotecan dose adjustment flagged.
+      - Plain-language patient summary included.
+      - Strong (A) vs. uncertain (B/C) CPIC evidence distinguished.
+
+  # ══════════════════════════════════════════════════════════════════════════════
+  # CATEGORY: systems_biology
+  # ══════════════════════════════════════════════════════════════════════════════
+
+  - id: adv_sysbio_ppi_network_cancer
+    name: "Cancer Dependency PPI Network: Hub, Bottleneck, and SL Discovery"
+    category: systems_biology
+    tags: [advanced, systems_biology, PPI, network, synthetic_lethal, coder]
+    description: >
+      Build and analyse a PPI network for 20 cancer driver genes using graph
+      theory metrics, Louvain community detection, synthetic lethality
+      prediction, and druggable subgraph analysis.
+    prompt: >
+      I want to understand the protein interaction network topology around the
+      major cancer driver genes and use it to find both therapeutic hub targets
+      and potential synthetic lethal pairs. The gene set I'm interested in is:
+      EGFR, MYC, TP53, KRAS, PIK3CA, PTEN, RB1, CDKN2A, APC, VHL, BRCA1,
+      BRCA2, ATM, MTOR, BRAF, NRAS, NFE2L2, SMAD4, ARID1A, EP300. Please build
+      their interaction network including first-shell interaction partners,
+      compute proper network centrality measures to identify both the most
+      connected hubs and the proteins that act as critical bridges between
+      different parts of the network, and cluster the network into functional
+      modules. From those modules, find pairs of genes in different modules that
+      share common neighbours — those are my candidate synthetic lethal pairs.
+      Tell me which of the top hub and bottleneck proteins are currently druggable,
+      and give me an honest assessment of whether the network structure you've
+      built is biologically reasonable — are there any critical known interactions
+      that are missing?
+    expected_agents: [coder, analysis, critic, report]
+    expected_tools:
+      - execute_ml_code
+    expected_output_contains:
+      - NetworkX
+      - betweenness centrality
+      - degree centrality
+      - Louvain
+      - synthetic lethal
+      - hub
+      - MYC
+      - EGFR
+    evaluation_criteria: |
+      - PPI network with ≥50 nodes constructed with STRING-like scores.
+      - Degree and betweenness centrality computed for all nodes.
+      - Top 5 hubs and top 5 bottlenecks identified.
+      - Louvain community detection applied; ≥3 named functional modules.
+      - ≥5 synthetic lethal candidate pairs reported.
+      - Druggable subgraph identified and characterised.
+      - Biological plausibility of network assessed; missing edges flagged.
+
+  - id: adv_sysbio_boolean_pi3k_model
+    name: "Boolean Network Simulation: PI3K-AKT-mTOR Signalling and Drug Perturbation"
+    category: systems_biology
+    tags: [advanced, systems_biology, boolean_model, signalling, PI3K, mTOR]
+    description: >
+      Build and simulate a Boolean network of the PI3K-AKT-mTOR-S6K axis,
+      comparing WT vs. PTEN-null states, single and combined drug perturbations,
+      and sensitivity analysis identifying which nodes most effectively suppress
+      proliferation.
+    prompt: >
+      I want to model how PI3K-AKT-mTOR signalling drives proliferation in
+      a PTEN-null tumour context and predict which drug combinations would be
+      most effective. Can you build a Boolean network model of this pathway —
+      including growth factor input, EGFR, RAS, the RAF-MEK-ERK branch, the
+      PI3K-PIP3-AKT branch, TSC complex, RHEB, mTORC1, S6K, and a proliferation
+      output node — and simulate it under four conditions: normal growth factor
+      signalling, PTEN loss alone, PTEN loss with rapamycin treatment, and PI3K
+      inhibition? I want to see which nodes are active at steady state in each
+      condition, how many nodes change state when you knock out PTEN, and whether
+      rapamycin alone is sufficient to block proliferation in a PTEN-null tumour.
+      Then find out what would happen if you combined MEK inhibition with
+      mTORC1 inhibition in the PTEN-null context. Finally, tell me which nodes,
+      if forced off, would most reliably shut down proliferation — those are
+      my candidate combination targets. Please be clear about what this kind of
+      model can and can't tell me compared to real kinetic data.
+    expected_agents: [coder, analysis, critic, report]
+    expected_tools:
+      - execute_ml_code
+    expected_output_contains:
+      - Boolean
+      - PI3K
+      - AKT
+      - mTORC1
+      - PTEN
+      - rapamycin
+      - attractor
+      - proliferation
+    evaluation_criteria: |
+      - Boolean rules correctly implemented for all pathway nodes.
+      - 4 conditions simulated with synchronous update.
+      - Proliferation output correctly differs between WT and PTEN-null.
+      - Rapamycin partial suppression in PTEN-null correctly modelled.
+      - MEK + rapamycin combination result reported.
+      - Sensitivity analysis identifies ≥2 candidate combination targets.
+      - Model limitations vs. kinetic ODE modelling discussed.
+
+  # ══════════════════════════════════════════════════════════════════════════════
+  # CATEGORY: end_to_end_discovery
+  # ══════════════════════════════════════════════════════════════════════════════
+
+  - id: adv_e2e_target_discovery_alzheimers
+    name: "End-to-End Therapeutic Target Discovery: Alzheimer's Disease"
+    category: end_to_end_discovery
+    tags: [advanced, end_to_end, alzheimers, target_discovery]
+    description: >
+      Complete autonomous target discovery for Alzheimer's disease spanning
+      GWAS evidence, transcriptomics, CSF proteomics, PPI network analysis,
+      structural druggability assessment, and a fully scored ranked target report
+      engaging all major agent types.
+    prompt: >
+      I'm leading a target identification program for Alzheimer's disease and
+      I need a comprehensive evidence-based target prioritisation. Please pull
+      together the genetic evidence from GWAS — give me the top loci from the
+      NHGRI-EBI Catalog with their mapped genes and p-values — and combine that
+      with what transcriptomics studies have found consistently dysregulated in
+      AD brain tissue and what proteomics has found changed in CSF. Then build
+      an interaction network around this combined gene set and use it to
+      identify which targets are network hubs that might have disproportionate
+      influence. For the top candidates coming out of the network, check what
+      structural data exists and whether the proteins have known ligandable
+      pockets. I want each candidate scored on multiple evidence pillars:
+      genetic, transcriptomic, proteomic, network position, structural
+      druggability, and human genetic validation. The final output should be a
+      ranked table of your top ten targets with scores across all pillars, and
+      a written recommendation for the three you think are most worth pursuing,
+      with a mechanistic hypothesis for each explaining how targeting it could
+      modify disease. Please also give me your assessment of CNS drug delivery
+      challenges for each of those three.
+    expected_agents: [research, coder, analysis, critic, report]
+    expected_tools:
+      - fetch_pdb_structure
+      - get_pdb_polymer_entities
+      - analyze_interface_contacts
+      - execute_ml_code
+      - tool_universe_find_tools
+      - tool_universe_call_tool
+    expected_output_contains:
+      - Alzheimer
+      - GWAS
+      - APOE
+      - BIN1
+      - druggability
+      - network
+      - CSF
+      - blood-brain barrier
+    evaluation_criteria: |
+      - ≥15 GWAS loci listed with SNP, gene, and p-value.
+      - ≥10 transcriptomic genes with study support.
+      - ≥5 CSF proteomic proteins identified.
+      - PPI network built; degree/betweenness centrality computed.
+      - Top 5 network hubs identified as candidate targets.
+      - PDB availability and pocket druggability assessed for top targets.
+      - Multi-pillar scoring (genetic/transcriptomic/proteomic/network/structural) applied.
+      - Ranked table of top 10 targets produced.
+      - Top 3 targets recommended with mechanistic hypothesis each.
+      - CNS penetrance and BBB challenges assessed per recommendation.
+
+  - id: adv_e2e_neoantigen_vaccine
+    name: "Personalised Neoantigen Cancer Vaccine Design: Melanoma"
+    category: end_to_end_discovery
+    tags: [advanced, end_to_end, neoantigen, vaccine, immunology, melanoma]
+    description: >
+      Autonomous personalised neoantigen vaccine design: mutation calling,
+      MHC-I binding prediction, immunogenicity scoring, structural epitope
+      analysis, and RNA-LNP formulation recommendation for a simulated
+      melanoma patient.
+    prompt: >
+      I have whole-exome sequencing data from a melanoma patient and I want to
+      design a personalised neoantigen vaccine. The patient's tumour has somatic
+      missense mutations in these melanoma driver genes: BRAF, NRAS, NF1, CDKN2A,
+      TP53, PTEN, RAC1, PREX2, MAP2K1, and ARID2, with various amino acid
+      substitutions and variant allele fractions ranging from 10% to 90%.
+      The patient's HLA type is HLA-A*02:01, HLA-A*24:02, HLA-B*07:02,
+      HLA-B*15:01, HLA-C*06:02, and HLA-C*07:02. From these mutations, identify
+      which ones generate neopeptides that are predicted to bind well to the
+      patient's HLA alleles, then narrow down the candidates based on
+      immunogenicity factors — I want peptides that are from clonally dominant
+      mutations, that create a change likely to be recognised by T cells, and
+      that don't resemble self. Give me your final top 10 vaccine peptides with
+      binding predictions and immunogenicity scores. For the top candidates,
+      tell me what structural features of the HLA-peptide complex support good
+      TCR engagement. Then give me a concrete vaccine formulation recommendation
+      — delivery vehicle, adjuvant system, dosing rationale — and be honest
+      about where the predictions are most uncertain compared to real
+      experimental binding assays.
+    expected_agents: [coder, analysis, research, critic, report]
+    expected_tools:
+      - execute_ml_code
+      - search_pdb_complexes
+      - fetch_pdb_structure
+      - analyze_interface_contacts
+    expected_output_contains:
+      - neoantigen
+      - HLA-A*02:01
+      - MHC-I
+      - IC50
+      - immunogenicity
+      - RNA-LNP
+      - TCR
+      - VAF
+    evaluation_criteria: |
+      - Neopeptides generated from somatic mutations covering driver genes.
+      - MHC-I binding prediction applied across all patient HLA alleles.
+      - Top 20 binders ranked by predicted IC50.
+      - Immunogenicity scoring applied (clonality, TCR contact, self-similarity).
+      - Top 10 final vaccine candidates selected with combined scores.
+      - HLA-peptide structural context from PDB discussed.
+      - TCR contact residues identified.
+      - RNA-LNP delivery and adjuvant rationale included.
+      - Prediction uncertainty vs. experimental assays (netMHCpan) addressed.
