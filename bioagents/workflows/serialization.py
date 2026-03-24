@@ -12,6 +12,8 @@ from bioagents.workflows.graph import WorkflowGraph, WorkflowGraphError
 
 if TYPE_CHECKING:
     from bioagents.workflows.node import WorkflowNode
+from bioagents.workflows.nodes.bioinformatics_fetch_nodes import BIOINFORMATICS_FETCH_NODES
+from bioagents.workflows.nodes.bioinformatics_nodes import BIOINFORMATICS_COMPUTE_NODES
 from bioagents.workflows.nodes.dummy_embedder import DummyEmbedderNode
 from bioagents.workflows.nodes.esm2_embedder import Esm2EmbedderNode
 from bioagents.workflows.nodes.export_extra import (
@@ -73,6 +75,8 @@ _NODE_TYPES: list[type[WorkflowNode]] = [
     TerminalResidueNode,
     SequenceLengthNode,
     CompactBiochemRecordNode,
+    *BIOINFORMATICS_COMPUTE_NODES,
+    *BIOINFORMATICS_FETCH_NODES,
 ]
 
 NODE_REGISTRY: dict[str, type[WorkflowNode]] = {cls.workflow_type_id: cls for cls in _NODE_TYPES}

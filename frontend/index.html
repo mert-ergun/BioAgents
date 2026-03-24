@@ -166,6 +166,70 @@
             to { opacity: 1; transform: translateY(0); }
         }
         .animate-fadeIn { animation: fadeIn 0.3s ease-out; }
+
+        /* Workflow builder — n8n-inspired canvas */
+        .wb-viewport {
+            cursor: grab;
+            background-color: #12121a;
+            background-image: radial-gradient(circle, rgba(120, 130, 150, 0.22) 1px, transparent 1px);
+            background-size: 18px 18px;
+        }
+        .wb-viewport.wb-panning { cursor: grabbing; }
+        .wb-world { position: relative; width: 3200px; height: 2400px; transform-origin: 0 0; }
+        .wb-edges-svg { position: absolute; left: 0; top: 0; width: 100%; height: 100%; z-index: 0; overflow: visible; }
+        .wb-edges-svg path.wb-wire { fill: none; pointer-events: none; stroke: rgba(125, 211, 252, 0.55); stroke-width: 2; }
+        .wb-edges-svg path.wb-wire-sel { stroke: #f472b6; stroke-width: 3; filter: drop-shadow(0 0 5px rgba(244, 114, 182, 0.45)); }
+        .wb-edges-svg path.wb-wire-hit { fill: none; stroke: transparent; stroke-width: 16; pointer-events: stroke; cursor: pointer; }
+        .wb-edges-svg path.wb-wire-temp { pointer-events: none; stroke: rgba(244, 114, 182, 0.85); stroke-dasharray: 6 4; stroke-width: 2; fill: none; }
+        .wb-nodes-layer { position: relative; z-index: 1; width: 100%; height: 100%; pointer-events: none; }
+        .wb-node {
+            position: absolute; width: 260px; max-width: min(280px, 92vw); pointer-events: auto;
+            background: linear-gradient(180deg, #2a2a32 0%, #232329 100%);
+            border: 1px solid #3f3f4a; border-radius: 10px;
+            box-shadow: 0 8px 28px rgba(0,0,0,0.45), 0 0 0 1px rgba(0,0,0,0.2) inset;
+            user-select: none;
+        }
+        .wb-node.wb-node-selected { border-color: #07b6d5; box-shadow: 0 0 0 2px rgba(7, 182, 213, 0.35), 0 8px 28px rgba(0,0,0,0.45); }
+        .wb-node-header {
+            display: flex; align-items: center; gap: 6px; padding: 8px 10px;
+            border-radius: 9px 9px 0 0; font-size: 11px; font-weight: 600; color: #f4f4f5;
+            cursor: grab;
+        }
+        .wb-node-header:active { cursor: grabbing; }
+        .wb-node-cat-data { background: linear-gradient(90deg, rgba(6,182,212,0.35), transparent); border-bottom: 1px solid rgba(6,182,212,0.25); }
+        .wb-node-cat-tool { background: linear-gradient(90deg, rgba(245,158,11,0.35), transparent); border-bottom: 1px solid rgba(245,158,11,0.25); }
+        .wb-node-cat-model { background: linear-gradient(90deg, rgba(168,85,247,0.35), transparent); border-bottom: 1px solid rgba(168,85,247,0.25); }
+        .wb-node-cat-agent { background: linear-gradient(90deg, rgba(34,197,94,0.35), transparent); border-bottom: 1px solid rgba(34,197,94,0.25); }
+        .wb-node-body { padding: 6px 8px 10px; font-size: 10px; color: #a1a1aa; }
+        .wb-node-id-row { font-family: ui-monospace, monospace; color: #e4e4e7; font-size: 10px; margin-bottom: 6px; }
+        .wb-port-row { display: flex; align-items: center; justify-content: space-between; min-height: 22px; gap: 6px; }
+        .wb-port-label { flex: 1; text-align: right; font-size: 9px; color: #a1a1aa; font-family: ui-monospace, monospace; }
+        .wb-port-label-out { text-align: left; }
+        .wb-port {
+            width: 12px; height: 12px; border-radius: 9999px; flex-shrink: 0;
+            background: #3f3f46; border: 2px solid #71717a;
+            cursor: crosshair; transition: transform 0.12s, border-color 0.12s, box-shadow 0.12s;
+        }
+        .wb-port-in { margin-right: 4px; }
+        .wb-port-out { margin-left: 4px; }
+        .wb-port:hover { border-color: #07b6d5; box-shadow: 0 0 0 3px rgba(7,182,213,0.25); transform: scale(1.08); }
+        .wb-palette-item {
+            display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 8px;
+            font-size: 11px; color: #e4e4e7; cursor: pointer; border: 1px solid transparent;
+        }
+        .wb-palette-item:hover { background: rgba(255,255,255,0.06); border-color: rgba(255,255,255,0.08); }
+        .wb-palette-cat { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: #71717a; padding: 10px 10px 4px; }
+        .wb-inspector-panel { background: #1a1a22; border-left: 1px solid rgba(255,255,255,0.08); }
+        .wb-node-run { margin-top: 6px; padding-top: 8px; border-top: 1px solid rgba(255,255,255,0.08); }
+        .wb-run-chip { display: inline-flex; align-items: center; gap: 4px; font-size: 9px; font-weight: 700; padding: 3px 8px; border-radius: 9999px; letter-spacing: 0.02em; }
+        .wb-run-ok { background: rgba(34, 197, 94, 0.18); color: #86efac; border: 1px solid rgba(34, 197, 94, 0.35); }
+        .wb-run-err { background: rgba(248, 113, 113, 0.15); color: #fca5a5; border: 1px solid rgba(248, 113, 113, 0.35); }
+        .wb-run-wait { background: rgba(234, 179, 8, 0.12); color: #fde047; border: 1px solid rgba(234, 179, 8, 0.3); }
+        .wb-run-kv { font-size: 9px; font-family: ui-monospace, monospace; margin-top: 5px; color: #d4d4d8; line-height: 1.4; word-break: break-word; }
+        .wb-run-k { color: #22d3ee; font-weight: 600; }
+        .wb-conn-row { display: flex; align-items: center; justify-content: space-between; gap: 6px; font-size: 10px; padding: 6px 8px; border-radius: 6px; background: rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.06); margin-bottom: 4px; }
+        .wb-conn-row button { flex-shrink: 0; padding: 2px 6px; border-radius: 4px; color: #fca5a5; border: 1px solid rgba(248,113,113,0.35); background: transparent; cursor: pointer; font-size: 10px; }
+        .wb-conn-row button:hover { background: rgba(248,113,113,0.12); }
     </style>
 </head>
 
@@ -738,84 +802,85 @@
                         <span class="material-symbols-outlined text-primary text-2xl">schema</span>
                         <div>
                             <h1 class="text-base font-bold text-white">Workflow builder</h1>
-                            <p class="text-[11px] text-text-subtle">Compose nodes and edges, then run on the server (<span id="wb-node-type-count">…</span> node types)</p>
+                            <p class="text-[11px] text-text-subtle">Canvas editor (n8n-style) · <span id="wb-node-type-count">…</span> node types · drag nodes, wire outputs → inputs</p>
                         </div>
                     </div>
                     <span id="wb-status" class="text-xs font-mono px-2 py-1 rounded bg-white/5 text-text-subtle border border-white/10">Idle</span>
                 </div>
-                <div class="flex-1 overflow-y-auto custom-scrollbar p-6 min-h-0">
-                    <div class="max-w-6xl mx-auto flex flex-col gap-6">
-                        <div class="rounded-xl border border-white/10 bg-surface-card/40 p-5">
-                            <div class="flex flex-col sm:flex-row sm:items-end gap-4 mb-4">
-                                <div class="flex-1 min-w-0">
-                                    <label class="text-[10px] text-text-subtle uppercase tracking-wider block mb-1">Start from template</label>
-                                    <select id="wb-template-select" class="w-full max-w-md rounded-lg bg-surface-dark border border-white/10 text-sm text-white px-3 py-2 focus:border-primary/50 focus:ring-1 focus:ring-primary/30"></select>
-                                </div>
-                                <p class="text-[11px] text-text-subtle max-w-xl leading-relaxed">Source nodes need values in <strong class="text-white/80">Initial inputs</strong> (JSON). Edges with empty port maps use matching port names automatically.</p>
+                <div class="flex flex-1 flex-col min-h-0 border-t border-white/5">
+                    <div class="flex items-center gap-2 px-3 py-2 border-b border-white/5 bg-surface-darker/80 flex-shrink-0 flex-wrap">
+                        <label class="text-[9px] text-text-subtle uppercase tracking-wider shrink-0">Template</label>
+                        <select id="wb-template-select" class="rounded-lg bg-surface-dark border border-white/10 text-xs text-white px-2 py-1.5 max-w-[220px] focus:border-primary/50"></select>
+                        <div class="w-px h-5 bg-white/10 mx-1 hidden sm:block"></div>
+                        <button type="button" id="wb-zoom-out" class="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-text-subtle hover:text-white" title="Zoom out"><span class="material-symbols-outlined text-[18px]">remove</span></button>
+                        <button type="button" id="wb-zoom-in" class="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-text-subtle hover:text-white" title="Zoom in"><span class="material-symbols-outlined text-[18px]">add</span></button>
+                        <button type="button" id="wb-zoom-fit" class="px-2 py-1 rounded-lg bg-white/5 hover:bg-white/10 text-[10px] text-text-subtle hover:text-white" title="Fit view">Fit</button>
+                        <span id="wb-zoom-label" class="text-[10px] font-mono text-text-subtle w-12">100%</span>
+                        <div class="flex-1"></div>
+                        <button type="button" id="wb-clear-run" class="px-2 py-1 rounded-lg bg-white/5 hover:bg-white/10 text-[10px] text-text-subtle hover:text-white border border-white/10" title="Clear output badges on nodes">Clear results</button>
+                        <span class="text-[10px] text-text-subtle hidden lg:inline max-w-[200px] xl:max-w-none truncate xl:whitespace-normal">Wire: drag output→input · Delete: selected node or selected wire · Click wire to select</span>
+                        <button type="button" id="wb-run-btn" class="flex items-center gap-1.5 px-4 py-2 rounded-lg font-bold text-sm text-white shadow-lg transition-all bg-gradient-to-r from-rose-500 to-orange-500 hover:from-rose-400 hover:to-orange-400">
+                            <span class="material-symbols-outlined text-[18px]">play_arrow</span>
+                            Execute workflow
+                        </button>
+                    </div>
+                    <div class="flex flex-1 min-h-0">
+                        <aside class="w-[min(260px,32vw)] sm:w-[260px] flex-shrink-0 border-r border-white/5 bg-surface-darker flex flex-col min-h-0">
+                            <div class="p-3 border-b border-white/5">
+                                <input type="search" id="wb-palette-search" placeholder="Search nodes…" class="w-full rounded-lg bg-surface-dark border border-white/10 text-xs text-white px-3 py-2 placeholder:text-text-subtle focus:border-primary/50 focus:ring-1 focus:ring-primary/30" />
                             </div>
-                            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                                <div>
-                                    <div class="flex items-center justify-between mb-2">
-                                        <h2 class="text-xs font-bold text-white uppercase tracking-wide">Nodes</h2>
-                                        <div class="flex items-center gap-2 flex-wrap justify-end">
-                                            <select id="wb-palette-type" class="rounded-lg bg-surface-dark border border-white/10 text-xs text-white px-2 py-1.5 max-w-[200px]"></select>
-                                            <button type="button" id="wb-add-node-btn" class="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/15 border border-white/10 text-xs text-white transition-all">
-                                                <span class="material-symbols-outlined text-[16px]">add</span> Add node
-                                            </button>
-                                        </div>
-                                    </div>
-                                    <div class="overflow-x-auto rounded-lg border border-white/10">
-                                        <table class="w-full text-left text-xs">
-                                            <thead class="bg-black/30 text-text-subtle uppercase tracking-wider">
-                                                <tr>
-                                                    <th class="px-3 py-2 font-medium">Id</th>
-                                                    <th class="px-3 py-2 font-medium">Type</th>
-                                                    <th class="px-3 py-2 font-medium">Params (JSON)</th>
-                                                    <th class="px-3 py-2 w-10"></th>
-                                                </tr>
-                                            </thead>
-                                            <tbody id="wb-nodes-tbody"></tbody>
-                                        </table>
-                                    </div>
-                                </div>
-                                <div>
-                                    <div class="flex items-center justify-between mb-2">
-                                        <h2 class="text-xs font-bold text-white uppercase tracking-wide">Edges</h2>
-                                        <button type="button" id="wb-add-edge-btn" class="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/15 border border-white/10 text-xs text-white transition-all">
-                                            <span class="material-symbols-outlined text-[16px]">add</span> Add edge
-                                        </button>
-                                    </div>
-                                    <div class="overflow-x-auto rounded-lg border border-white/10 mb-4">
-                                        <table class="w-full text-left text-xs">
-                                            <thead class="bg-black/30 text-text-subtle uppercase tracking-wider">
-                                                <tr>
-                                                    <th class="px-3 py-2 font-medium">Source</th>
-                                                    <th class="px-3 py-2 font-medium">Target</th>
-                                                    <th class="px-3 py-2 font-medium">Port map (optional JSON)</th>
-                                                    <th class="px-3 py-2 w-10"></th>
-                                                </tr>
-                                            </thead>
-                                            <tbody id="wb-edges-tbody"></tbody>
-                                        </table>
-                                    </div>
-                                    <label class="text-[10px] text-text-subtle uppercase tracking-wider block mb-1">Initial inputs (JSON object: node id → port values)</label>
-                                    <textarea id="wb-initial-inputs" rows="6" class="w-full rounded-lg bg-black/50 border border-white/10 text-[11px] font-mono text-cyan-100/90 px-3 py-2 focus:border-primary/50 focus:ring-1 focus:ring-primary/30 resize-y min-h-[7rem]" spellcheck="false">{}</textarea>
-                                    <div class="mt-4 flex flex-wrap gap-3">
-                                        <button type="button" id="wb-run-btn" class="flex items-center gap-2 px-5 py-2.5 bg-primary hover:bg-primary/90 text-background-dark font-bold text-sm rounded-lg transition-all shadow-[0_0_15px_rgba(7,182,213,0.2)]">
-                                            <span class="material-symbols-outlined text-[18px]">play_arrow</span>
-                                            Run workflow
-                                        </button>
-                                    </div>
-                                </div>
+                            <div id="wb-palette-list" class="flex-1 overflow-y-auto custom-scrollbar min-h-0 p-2"></div>
+                        </aside>
+                        <div id="wb-canvas-viewport" class="wb-viewport flex-1 relative min-w-0 min-h-[420px] overflow-hidden">
+                            <div id="wb-canvas-world" class="wb-world">
+                                <svg id="wb-edges-svg" class="wb-edges-svg" xmlns="http://www.w3.org/2000/svg"></svg>
+                                <div id="wb-nodes-layer" class="wb-nodes-layer"></div>
                             </div>
                         </div>
-                        <div>
-                            <h3 class="text-[10px] font-bold text-text-subtle uppercase tracking-wider mb-2">Sink outputs</h3>
-                            <pre id="wb-sink-json" class="text-[11px] font-mono text-cyan-200/90 bg-black/50 border border-white/10 rounded-lg p-4 overflow-x-auto min-h-[4rem] whitespace-pre-wrap">{}</pre>
+                        <aside class="wb-inspector-panel w-[min(280px,40vw)] lg:w-[300px] flex-shrink-0 flex flex-col min-h-0 max-md:hidden">
+                            <div class="p-3 border-b border-white/5">
+                                <h2 class="text-[10px] font-bold text-text-subtle uppercase tracking-wider" id="wb-inspector-title">Node</h2>
+                                <p id="wb-inspector-hint" class="text-[11px] text-text-subtle mt-1">Select a node or a wire</p>
+                                <p id="wb-inspector-wire-label" class="text-[10px] font-mono text-primary mt-2 hidden"></p>
+                                <button type="button" id="wb-inspector-remove-wire" class="hidden mt-2 w-full py-2 rounded-lg bg-rose-500/20 border border-rose-500/40 text-rose-200 text-xs hover:bg-rose-500/30">Remove selected wire</button>
+                            </div>
+                            <div id="wb-inspector-fields" class="flex-1 overflow-y-auto custom-scrollbar p-3 space-y-3 hidden">
+                                <div>
+                                    <label class="text-[9px] text-text-subtle uppercase block mb-1">Node ID</label>
+                                    <input type="text" id="wb-inspector-id" class="w-full rounded-lg bg-surface-dark border border-white/10 text-xs text-white px-2 py-1.5 font-mono" />
+                                </div>
+                                <div>
+                                    <label class="text-[9px] text-text-subtle uppercase block mb-1">Type</label>
+                                    <div id="wb-inspector-type" class="text-xs text-primary font-mono"></div>
+                                    <p id="wb-inspector-desc" class="text-[10px] text-text-subtle mt-1 leading-relaxed"></p>
+                                </div>
+                                <div>
+                                    <label class="text-[9px] text-text-subtle uppercase block mb-1">Parameters (JSON)</label>
+                                    <textarea id="wb-inspector-params" rows="6" class="w-full rounded-lg bg-black/40 border border-white/10 text-[11px] font-mono text-cyan-100/90 px-2 py-1.5 resize-y min-h-[5rem]" spellcheck="false"></textarea>
+                                </div>
+                                <div id="wb-inspector-connections-wrap" class="hidden">
+                                    <label class="text-[9px] text-text-subtle uppercase block mb-1">Connections</label>
+                                    <p class="text-[9px] text-text-subtle mb-1">Remove individual wires or whole links</p>
+                                    <div id="wb-inspector-connections" class="max-h-40 overflow-y-auto custom-scrollbar"></div>
+                                </div>
+                                <div id="wb-inspector-lastrun-wrap" class="hidden">
+                                    <label class="text-[9px] text-text-subtle uppercase block mb-1">Last run output (this node)</label>
+                                    <pre id="wb-inspector-lastrun" class="text-[10px] font-mono text-slate-300 bg-black/40 border border-white/10 rounded-lg p-2 max-h-48 overflow-auto custom-scrollbar whitespace-pre-wrap"></pre>
+                                </div>
+                                <button type="button" id="wb-inspector-delete" class="w-full py-2 rounded-lg border border-rose-500/40 text-rose-300 text-xs hover:bg-rose-500/10">Remove node</button>
+                            </div>
+                        </aside>
+                    </div>
+                    <div class="border-t border-white/5 bg-surface-darker/90 flex-shrink-0 max-h-[38vh] flex flex-col min-h-0">
+                        <div class="flex border-b border-white/5 text-[10px] font-medium">
+                            <button type="button" class="wb-bottom-tab px-4 py-2 text-white border-b-2 border-primary bg-white/5" data-wb-tab="inputs">Initial inputs</button>
+                            <button type="button" class="wb-bottom-tab px-4 py-2 text-text-subtle hover:text-white border-b-2 border-transparent" data-wb-tab="sink">Sink output</button>
+                            <button type="button" class="wb-bottom-tab px-4 py-2 text-text-subtle hover:text-white border-b-2 border-transparent" data-wb-tab="nodes">All nodes</button>
                         </div>
-                        <div>
-                            <h3 class="text-[10px] font-bold text-text-subtle uppercase tracking-wider mb-2">All node outputs</h3>
-                            <pre id="wb-builder-nodes-json" class="text-[11px] font-mono text-slate-300 bg-black/50 border border-white/10 rounded-lg p-4 overflow-x-auto max-h-[38vh] whitespace-pre-wrap">// Run a workflow to see results</pre>
+                        <div class="flex-1 min-h-0 overflow-hidden p-3 grid">
+                            <textarea id="wb-initial-inputs" class="wb-bottom-panel row-start-1 col-start-1 w-full h-full min-h-[120px] rounded-lg bg-black/40 border border-white/10 text-[11px] font-mono text-cyan-100/90 px-3 py-2 resize-none focus:border-primary/50 custom-scrollbar" spellcheck="false">{}</textarea>
+                            <pre id="wb-sink-json" class="wb-bottom-panel row-start-1 col-start-1 hidden w-full h-full min-h-[120px] overflow-auto rounded-lg bg-black/40 border border-white/10 text-[11px] font-mono text-cyan-200/90 p-3 custom-scrollbar whitespace-pre-wrap">{}</pre>
+                            <pre id="wb-builder-nodes-json" class="wb-bottom-panel row-start-1 col-start-1 hidden w-full h-full min-h-[120px] overflow-auto rounded-lg bg-black/40 border border-white/10 text-[11px] font-mono text-slate-300 p-3 custom-scrollbar whitespace-pre-wrap">// Run to see outputs</pre>
                         </div>
                     </div>
                 </div>
