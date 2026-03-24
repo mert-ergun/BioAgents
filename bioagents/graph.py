@@ -118,9 +118,10 @@ def agent_node(state: AgentState, agent, name: str) -> dict:
         agent_error = result.get("error", None)
 
         memory_key = name.lower()
+        memory = state.setdefault("memory", {})
 
         # Write structured output to shared memory
-        state["memory"][memory_key] = {
+        memory[memory_key] = {
             "status": "error" if agent_error else "success",
             "timestamp": datetime.now().isoformat(),
             "data": agent_data,
@@ -152,17 +153,18 @@ def agent_node(state: AgentState, agent, name: str) -> dict:
             )
             return {
                 "messages": [*outgoing_messages, completion_msg],
-                "memory": state["memory"],
+                "memory": memory,
             }
 
         return {
             "messages": [],
-            "memory": state["memory"],
+            "memory": memory,
         }
 
     except Exception as e:
         memory_key = name.lower()
-        state["memory"][memory_key] = {
+        memory = state.setdefault("memory", {})
+        memory[memory_key] = {
             "status": "error",
             "timestamp": datetime.now().isoformat(),
             "data": {},
@@ -178,7 +180,7 @@ def agent_node(state: AgentState, agent, name: str) -> dict:
         logger.exception(f"agent_node caught unhandled error in '{name}': {e}")
         return {
             "messages": [error_msg],
-            "memory": state["memory"],
+            "memory": memory,
         }
 
 

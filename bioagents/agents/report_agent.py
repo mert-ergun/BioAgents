@@ -4,7 +4,7 @@ import json
 import logging
 import re
 
-from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
 from bioagents.llms.llm_provider import get_llm
 from bioagents.prompts.prompt_loader import load_prompt
@@ -83,11 +83,13 @@ def create_report_agent():
                     "Report agent: result already in memory (status=success). "
                     "Returning cached data without re-invoking LLM."
                 )
+                cached_raw = existing_report.get("raw_output", "")
                 return {
                     "data": existing_report["data"],
-                    "raw_output": existing_report.get("raw_output", ""),
+                    "raw_output": cached_raw,
                     "tool_calls": [],
                     "error": None,
+                    "messages": [AIMessage(content=cached_raw or "Report (cached)", name="Report")],
                 }
             # ───────────────────────────────────────────────────────────────────
 
@@ -129,20 +131,28 @@ SHARED MEMORY STATE:
 
             logger.info(f"Report agent structured data keys: {list(structured_data.keys())}")
 
+            out_msg = (
+                response
+                if isinstance(response, AIMessage)
+                else AIMessage(content=raw_output, name="Report")
+            )
             return {
                 "data": structured_data,
                 "raw_output": raw_output,
                 "tool_calls": [],
                 "error": None,
+                "messages": [out_msg],
             }
 
         except Exception as e:
             logger.error(f"Report agent error: {e}", exc_info=True)
+            err_txt = str(e)
             return {
                 "data": create_fallback_report("", memory),
-                "raw_output": str(e),
+                "raw_output": err_txt,
                 "tool_calls": [],
-                "error": str(e),
+                "error": err_txt,
+                "messages": [AIMessage(content=err_txt, name="Report")],
             }
 
     return report_node

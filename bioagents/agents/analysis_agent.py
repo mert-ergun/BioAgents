@@ -6,6 +6,7 @@ from langchain_core.messages import HumanMessage
 from langchain_core.tools import BaseTool
 
 from bioagents.agents.agent_executor import execute_agent_with_tools, safe_json_output
+from bioagents.agents.helpers import resolve_tool_name
 from bioagents.llms.llm_provider import get_llm
 from bioagents.prompts.prompt_loader import load_prompt
 
@@ -62,11 +63,8 @@ def create_analysis_agent(tools: list):
     for tool in tools:
         if isinstance(tool, BaseTool):
             tools_dict[tool.name] = tool.func if hasattr(tool, "func") else tool
-        elif callable(tool):
-            tool_name = getattr(tool, "name", None) or getattr(tool, "__name__", "unknown")
-            tools_dict[tool_name] = tool
         else:
-            tools_dict[str(tool)] = tool
+            tools_dict[resolve_tool_name(tool)] = tool
 
     logger.info(f"Analysis agent tools: {list(tools_dict.keys())}")
 
@@ -86,12 +84,13 @@ def create_analysis_agent(tools: list):
                 user_message = HumanMessage(content="Analyze the biological data.")
 
             # Execute agent with tools
-            raw_output, tool_calls_used = execute_agent_with_tools(
+            raw_output, tool_calls_used, last_ai, exec_err = execute_agent_with_tools(
                 llm_with_tools=llm_with_tools,
                 system_prompt=ANALYSIS_AGENT_SYSTEM_PROMPT,
                 user_message=user_message,
                 tools_dict=tools_dict,
                 max_iterations=5,
+                full_message_history=messages,
             )
 
             # Parse JSON with fallback
@@ -112,12 +111,15 @@ def create_analysis_agent(tools: list):
 
             structured_data = safe_json_output(raw_output, default_json)
 
-            return {
+            out = {
                 "data": structured_data,
                 "raw_output": raw_output,
                 "tool_calls": tool_calls_used,
-                "error": None,
+                "error": exec_err,
             }
+            if last_ai is not None:
+                out["messages"] = [last_ai]
+            return out
 
         except Exception as e:
             logger.error(f"Analysis agent error: {e}", exc_info=True)

@@ -1,8 +1,11 @@
 """Tests for shared memory architecture."""
 
-from langchain_core.messages import HumanMessage
+from functools import partial
 
-from bioagents.graph import AgentState, create_graph
+from langchain_core.messages import AIMessage, HumanMessage
+from langgraph.graph import END, StateGraph
+
+from bioagents.graph import AgentState, agent_node
 
 
 def test_initial_state_has_memory():
@@ -30,8 +33,22 @@ def test_memory_initialization():
 
 
 def test_graph_preserves_memory():
-    """Verify graph execution preserves and updates memory."""
-    graph = create_graph()
+    """Verify a minimal compiled graph streams memory updates (no live LLM)."""
+
+    def stub_agent(state):
+        return {
+            "data": {"ok": True},
+            "raw_output": "ok",
+            "tool_calls": [],
+            "error": None,
+            "messages": [AIMessage(content="ok")],
+        }
+
+    workflow = StateGraph(AgentState)
+    workflow.add_node("research", partial(agent_node, agent=stub_agent, name="Research"))
+    workflow.set_entry_point("research")
+    workflow.add_edge("research", END)
+    graph = workflow.compile()
 
     initial_state = {
         "messages": [HumanMessage(content="Simple test query")],
@@ -40,16 +57,14 @@ def test_graph_preserves_memory():
         "memory": {
             "research": {"status": "pending", "data": {}, "errors": []},
             "analysis": {"status": "pending", "data": {}, "errors": []},
-            # ... initialize all agents
         },
     }
 
-    # Run one step
     for step_output in graph.stream(initial_state):
-        # Each step should return updated memory
         for node_output in step_output.values():
             if "memory" in node_output:
                 assert isinstance(node_output["memory"], dict)
+                assert "research" in node_output["memory"]
                 break
 
 

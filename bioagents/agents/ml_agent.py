@@ -5,6 +5,7 @@ import re
 from collections.abc import Callable
 from typing import Any
 
+from langchain_core.messages import AIMessage
 from smolagents import CodeAgent
 
 from bioagents.llms.adapters import LangChainModelAdapter
@@ -148,6 +149,7 @@ def create_ml_node(agent: CodeAgent) -> Callable:
                 "raw_output": content,
                 "tool_calls": [],
                 "error": None,
+                "messages": [AIMessage(content=content, name="ML")],
             }
 
         except Exception as e:
@@ -155,6 +157,12 @@ def create_ml_node(agent: CodeAgent) -> Callable:
 
             error_msg = f"Error executing ML code: {e}\n\nTraceback:\n{traceback.format_exc()}"
             logger.error("ML agent error: %s", error_msg)
-            return {"data": {}, "raw_output": "", "tool_calls": [], "error": error_msg}
+            return {
+                "data": {},
+                "raw_output": "",
+                "tool_calls": [],
+                "error": error_msg,
+                "messages": [AIMessage(content=error_msg, name="ML")],
+            }
 
     return ml_node

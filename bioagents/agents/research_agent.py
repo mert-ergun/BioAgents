@@ -13,6 +13,7 @@ from bioagents.agents.helpers import (
     create_retry_response,
     extract_task_from_messages,
     get_content_text,
+    resolve_tool_name,
 )
 from bioagents.llms.llm_provider import get_llm
 from bioagents.prompts.prompt_loader import load_prompt
@@ -47,6 +48,11 @@ After gathering data, respond with ONLY valid JSON (no markdown, no explanations
 If you cannot fetch data, return the JSON with completeness="failed" and status="error".
 ALWAYS end with valid JSON output.
 """
+
+RESEARCH_AGENT_MEMORY_PROMPT = (
+    "CRITICAL: You MUST NOT read other agents' outputs from messages. "
+    "Use only shared memory and your tools.\n\n" + RESEARCH_AGENT_SYSTEM_PROMPT
+)
 
 
 def parse_sub_tasks(content: str) -> list[str]:
@@ -92,22 +98,15 @@ def create_research_agent(tools: list):
     llm = get_llm(prompt_name="research")
     llm_with_tools = llm.bind_tools(tools)
 
-    tool_names: list[str] = [
-        getattr(t, "name", None) or getattr(t, "__name__", None) or str(t) for t in tools
-    ]
+    tool_names: list[str] = [resolve_tool_name(t) for t in tools]
 
     # Build tools_dict for execute_agent_with_tools (shared memory path)
     tools_dict = {}
     for tool in tools:
         if isinstance(tool, BaseTool):
             tools_dict[tool.name] = tool.func if hasattr(tool, "func") else tool
-        elif callable(tool):
-            tool_name = str(
-                getattr(tool, "name", None) or getattr(tool, "__name__", None) or "unknown"
-            )
-            tools_dict[tool_name] = tool
         else:
-            tools_dict[str(tool)] = tool
+            tools_dict[resolve_tool_name(tool)] = tool
 
     logger.info(f"Research agent tools: {list(tools_dict.keys())}")
 
@@ -124,6 +123,23 @@ def create_research_agent(tools: list):
         """
         try:
             messages = state.get("messages", [])
+
+            if not messages:
+                return {
+                    "data": {
+                        "fetched_sequences": [],
+                        "literature_findings": "",
+                        "data_sources": [],
+                        "completeness": "partial",
+                        "next_steps": "",
+                        "status": "success",
+                        "error": None,
+                    },
+                    "raw_output": "",
+                    "tool_calls": [],
+                    "error": None,
+                    "messages": [AIMessage(content="No messages to process")],
+                }
 
             # ── Parallel sub-agent path (from develop) ──────────────────────
             # If the last message is a ToolMessage we are mid-execution;
@@ -239,12 +255,13 @@ def create_research_agent(tools: list):
         if user_message is None:
             user_message = HumanMessage(content="Fetch biological data.")
 
-        raw_output, tool_calls_used = execute_agent_with_tools(
+        raw_output, tool_calls_used, last_ai, exec_err = execute_agent_with_tools(
             llm_with_tools=llm_with_tools,
             system_prompt=system_prompt,
             user_message=user_message,
             tools_dict=tools_dict,
             max_iterations=5,
+            full_message_history=messages,
         )
 
         default_json: dict[str, Any] = {
@@ -257,12 +274,15 @@ def create_research_agent(tools: list):
             "error": None,
         }
         structured_data = safe_json_output(raw_output, default_json)
-        return {
+        out: dict[str, Any] = {
             "data": structured_data,
             "raw_output": raw_output,
             "tool_calls": tool_calls_used,
-            "error": None,
+            "error": exec_err,
         }
+        if last_ai is not None:
+            out["messages"] = [last_ai]
+        return out
 
     def _wrap_parallel_result(parallel_result: dict) -> dict:
         """
@@ -277,7 +297,11 @@ def create_research_agent(tools: list):
             if hasattr(msg, "content"):
                 raw_text += get_content_text(msg.content) + "\n"
             if hasattr(msg, "tool_calls") and msg.tool_calls:
-                tool_calls_used.extend(msg.tool_calls)
+                for tc in msg.tool_calls:
+                    if isinstance(tc, dict):
+                        tool_calls_used.append(tc.get("name", "unknown"))
+                    else:
+                        tool_calls_used.append(str(tc))
 
         raw_text = raw_text.strip()
 

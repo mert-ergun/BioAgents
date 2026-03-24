@@ -467,8 +467,15 @@ class TestAgentIntegration:
             ],
         )
 
+        final_ai = AIMessage(
+            content=(
+                '{"fetched_sequences":[],"literature_findings":"done","data_sources":[],'
+                '"completeness":"full","next_steps":"","status":"success","error":null}'
+            )
+        )
+
         mock_llm.bind_tools = Mock(return_value=mock_bound_llm)
-        mock_bound_llm.invoke = Mock(return_value=mock_response)
+        mock_bound_llm.invoke = Mock(side_effect=[mock_response, final_ai])
         mock_get_llm.return_value = mock_llm
 
         tools = [Mock(name="fetch_uniprot_fasta")]
@@ -479,8 +486,8 @@ class TestAgentIntegration:
 
         assert "messages" in result
         assert len(result["messages"]) == 1
-        assert hasattr(result["messages"][0], "tool_calls")
-        assert len(result["messages"][0].tool_calls) == 1
+        assert result["messages"][0] is final_ai
+        assert "fetch_uniprot_fasta" in result["tool_calls"]
 
     @patch("bioagents.agents.supervisor_agent.get_llm")
     def test_supervisor_sequential_routing(self, mock_get_llm):

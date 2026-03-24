@@ -5,6 +5,7 @@ import re
 from collections.abc import Callable
 from typing import Any
 
+from langchain_core.messages import AIMessage
 from smolagents import CodeAgent
 
 from bioagents.llms.adapters import LangChainModelAdapter
@@ -133,13 +134,25 @@ def create_dl_node(agent: CodeAgent) -> Callable:
 
             structured = {"model_result": {"summary": content, "code_steps": execution_steps}}
 
-            return {"data": structured, "raw_output": content, "tool_calls": [], "error": None}
+            return {
+                "data": structured,
+                "raw_output": content,
+                "tool_calls": [],
+                "error": None,
+                "messages": [AIMessage(content=content, name="DL")],
+            }
 
         except Exception as e:
             import traceback
 
             error_msg = f"Error executing DL code: {e}\n\nTraceback:\n{traceback.format_exc()}"
             logger.error("DL agent error: %s", error_msg)
-            return {"data": {}, "raw_output": "", "tool_calls": [], "error": error_msg}
+            return {
+                "data": {},
+                "raw_output": "",
+                "tool_calls": [],
+                "error": error_msg,
+                "messages": [AIMessage(content=error_msg, name="DL")],
+            }
 
     return dl_node

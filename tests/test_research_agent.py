@@ -7,6 +7,11 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, Tool
 
 from bioagents.agents.research_agent import create_research_agent
 
+_FINAL_RESEARCH_JSON = (
+    '{"fetched_sequences":[],"literature_findings":"done","data_sources":[],'
+    '"completeness":"full","next_steps":"","status":"success","error":null}'
+)
+
 
 class TestResearchAgentCreation:
     """Tests for research agent creation and initialization."""
@@ -135,9 +140,10 @@ class TestResearchAgentToolCalls:
                 }
             ],
         )
+        final_ai = AIMessage(content=_FINAL_RESEARCH_JSON)
 
         mock_llm.bind_tools = Mock(return_value=mock_bound_llm)
-        mock_bound_llm.invoke = Mock(return_value=mock_response)
+        mock_bound_llm.invoke = Mock(side_effect=[mock_response, final_ai])
         mock_get_llm.return_value = mock_llm
 
         tools = [Mock(name="tool_universe_find_tools")]
@@ -148,9 +154,8 @@ class TestResearchAgentToolCalls:
 
         assert "messages" in result
         assert len(result["messages"]) == 1
-        assert hasattr(result["messages"][0], "tool_calls")
-        assert len(result["messages"][0].tool_calls) == 1
-        assert result["messages"][0].tool_calls[0]["name"] == "tool_universe_find_tools"
+        assert result["messages"][0] is final_ai
+        assert "tool_universe_find_tools" in result["tool_calls"]
 
     @patch("bioagents.agents.research_agent.get_llm")
     def test_research_agent_multiple_tool_calls(self, mock_get_llm):
@@ -179,8 +184,10 @@ class TestResearchAgentToolCalls:
             ],
         )
 
+        final_ai = AIMessage(content=_FINAL_RESEARCH_JSON)
+
         mock_llm.bind_tools = Mock(return_value=mock_bound_llm)
-        mock_bound_llm.invoke = Mock(return_value=mock_response)
+        mock_bound_llm.invoke = Mock(side_effect=[mock_response, final_ai])
         mock_get_llm.return_value = mock_llm
 
         tools = [
@@ -192,7 +199,9 @@ class TestResearchAgentToolCalls:
         state = {"messages": [HumanMessage(content="Search p53 in PubMed")]}
         result = agent(state)
 
-        assert len(result["messages"][0].tool_calls) == 2
+        assert result["messages"][0] is final_ai
+        assert result["tool_calls"].count("tool_universe_find_tools") >= 1
+        assert result["tool_calls"].count("tool_universe_call_tool") >= 1
 
     @patch("bioagents.agents.research_agent.get_llm")
     def test_research_agent_uniprot_fetch(self, mock_get_llm):
@@ -212,8 +221,10 @@ class TestResearchAgentToolCalls:
             ],
         )
 
+        final_ai = AIMessage(content=_FINAL_RESEARCH_JSON)
+
         mock_llm.bind_tools = Mock(return_value=mock_bound_llm)
-        mock_bound_llm.invoke = Mock(return_value=mock_response)
+        mock_bound_llm.invoke = Mock(side_effect=[mock_response, final_ai])
         mock_get_llm.return_value = mock_llm
 
         tools = [Mock(name="fetch_uniprot_fasta")]
@@ -222,8 +233,8 @@ class TestResearchAgentToolCalls:
         state = {"messages": [HumanMessage(content="Fetch protein P04637")]}
         result = agent(state)
 
-        assert result["messages"][0].tool_calls[0]["name"] == "fetch_uniprot_fasta"
-        assert result["messages"][0].tool_calls[0]["args"]["protein_id"] == "P04637"
+        assert result["messages"][0] is final_ai
+        assert "fetch_uniprot_fasta" in result["tool_calls"]
 
 
 class TestResearchAgentLiteratureSearch:
@@ -266,8 +277,9 @@ class TestResearchAgentLiteratureSearch:
             ),
         ]
 
+        final_after_first = AIMessage(content=_FINAL_RESEARCH_JSON)
         mock_llm.bind_tools = Mock(return_value=mock_bound_llm)
-        mock_bound_llm.invoke = Mock(side_effect=responses)
+        mock_bound_llm.invoke = Mock(side_effect=[*responses, final_after_first])
         mock_get_llm.return_value = mock_llm
 
         tools = [
@@ -279,9 +291,15 @@ class TestResearchAgentLiteratureSearch:
         # First call
         state1 = {"messages": [HumanMessage(content="Search PubMed for CRISPR")]}
         result1 = agent(state1)
-        assert result1["messages"][0].tool_calls[0]["name"] == "tool_universe_find_tools"
+        assert "tool_universe_find_tools" in result1["tool_calls"]
 
-        # Second call (after tool result)
+        # Second call (after tool result) — continues single-agent tool loop; mock one more pair
+        mock_bound_llm.invoke = Mock(
+            side_effect=[
+                responses[1],
+                AIMessage(content=_FINAL_RESEARCH_JSON),
+            ]
+        )
         state2 = {
             "messages": [
                 HumanMessage(content="Search PubMed for CRISPR"),
@@ -290,7 +308,7 @@ class TestResearchAgentLiteratureSearch:
             ]
         }
         result2 = agent(state2)
-        assert result2["messages"][0].tool_calls[0]["name"] == "tool_universe_call_tool"
+        assert "tool_universe_call_tool" in result2["tool_calls"]
 
     @patch("bioagents.agents.research_agent.get_llm")
     def test_multi_source_literature_search(self, mock_get_llm):
@@ -322,8 +340,10 @@ class TestResearchAgentLiteratureSearch:
             ],
         )
 
+        final_ai = AIMessage(content=_FINAL_RESEARCH_JSON)
+
         mock_llm.bind_tools = Mock(return_value=mock_bound_llm)
-        mock_bound_llm.invoke = Mock(return_value=mock_response)
+        mock_bound_llm.invoke = Mock(side_effect=[mock_response, final_ai])
         mock_get_llm.return_value = mock_llm
 
         tools = [Mock(name="tool_universe_call_tool")]
@@ -332,9 +352,8 @@ class TestResearchAgentLiteratureSearch:
         state = {"messages": [HumanMessage(content="Search PubMed and ArXiv for protein folding")]}
         result = agent(state)
 
-        assert len(result["messages"][0].tool_calls) == 2
-        tool_names = [tc["name"] for tc in result["messages"][0].tool_calls]
-        assert all(name == "tool_universe_call_tool" for name in tool_names)
+        assert result["messages"][0] is final_ai
+        assert result["tool_calls"].count("tool_universe_call_tool") >= 2
 
 
 class TestResearchAgentErrorHandling:
@@ -373,10 +392,8 @@ class TestResearchAgentErrorHandling:
         agent = create_research_agent(tools)
 
         state = {"messages": [HumanMessage(content="Test")]}
-
-        with pytest.raises(Exception) as exc_info:
-            agent(state)
-        assert "LLM Error" in str(exc_info.value)
+        result = agent(state)
+        assert result["error"] == "LLM Error"
 
 
 class TestResearchAgentIntegration:
@@ -401,8 +418,15 @@ class TestResearchAgentIntegration:
             ],
         )
 
+        final = AIMessage(
+            content=(
+                '{"fetched_sequences":[],"literature_findings":"CRISPR gene editing papers",'
+                '"data_sources":[],"completeness":"full","next_steps":"","status":"success","error":null}'
+            )
+        )
+
         mock_llm.bind_tools = Mock(return_value=mock_bound_llm)
-        mock_bound_llm.invoke = Mock(return_value=mock_response)
+        mock_bound_llm.invoke = Mock(side_effect=[mock_response, final])
         mock_get_llm.return_value = mock_llm
 
         tools = [
@@ -418,7 +442,7 @@ class TestResearchAgentIntegration:
         assert len(result["messages"]) == 1
         message = result["messages"][0]
         assert isinstance(message, AIMessage)
-        assert "CRISPR" in message.content or len(message.tool_calls) > 0
+        assert "CRISPR" in message.content or "tool_universe_find_tools" in result["tool_calls"]
 
     @patch("bioagents.agents.research_agent.get_llm")
     def test_combined_literature_and_data_retrieval(self, mock_get_llm):
@@ -447,8 +471,10 @@ class TestResearchAgentIntegration:
             ],
         )
 
+        final_ai = AIMessage(content=_FINAL_RESEARCH_JSON)
+
         mock_llm.bind_tools = Mock(return_value=mock_bound_llm)
-        mock_bound_llm.invoke = Mock(return_value=mock_response)
+        mock_bound_llm.invoke = Mock(side_effect=[mock_response, final_ai])
         mock_get_llm.return_value = mock_llm
 
         tools = [
@@ -464,10 +490,10 @@ class TestResearchAgentIntegration:
         }
         result = agent(state)
 
-        assert len(result["messages"][0].tool_calls) == 2
-        tool_names = {tc["name"] for tc in result["messages"][0].tool_calls}
-        assert "fetch_uniprot_fasta" in tool_names
-        assert "tool_universe_call_tool" in tool_names
+        assert result["messages"][0] is final_ai
+        tool_names_used = set(result["tool_calls"])
+        assert "fetch_uniprot_fasta" in tool_names_used
+        assert "tool_universe_call_tool" in tool_names_used
 
 
 if __name__ == "__main__":

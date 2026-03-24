@@ -7,7 +7,7 @@ import uuid
 from collections.abc import Callable
 from typing import Any
 
-from langchain_core.messages import HumanMessage, SystemMessage, ToolMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 
 logger = logging.getLogger(__name__)
 
@@ -18,21 +18,30 @@ def execute_agent_with_tools(
     user_message: HumanMessage,
     tools_dict: dict[str, Callable],
     max_iterations: int = 5,
-) -> tuple[str, list[str]]:
+    full_message_history: list[Any] | None = None,
+) -> tuple[str, list[str], AIMessage | None, str | None]:
     """
     Execute an agent with tool-calling loop until it produces final output.
 
     Args:
         llm_with_tools: LLM with tools bound via .bind_tools()
         system_prompt: System instruction for the agent
-        user_message: The user's request as HumanMessage
+        user_message: The user's request as HumanMessage (used only if
+            ``full_message_history`` is None)
         tools_dict: Dict mapping tool names to callable functions
         max_iterations: Max iterations to prevent infinite loops
+        full_message_history: If set, messages after the system prompt (e.g. full
+            LangGraph conversation including prior HumanMessage / AIMessage turns).
 
     Returns:
-        Tuple of (final_text_output, list_of_tool_names_used)
+        Tuple of (final_text_output, list_of_tool_names_used, closing_ai_message, iteration_error).
+        ``closing_ai_message`` is the last AIMessage when the loop ends without tool calls.
+        ``iteration_error`` is set when the LLM call raised before a normal completion.
     """
-    messages: list[Any] = [SystemMessage(content=system_prompt), user_message]
+    if full_message_history is not None:
+        messages = [SystemMessage(content=system_prompt), *full_message_history]
+    else:
+        messages = [SystemMessage(content=system_prompt), user_message]
     tool_calls_used: list[str] = []
     iteration = 0
 
@@ -55,7 +64,7 @@ def execute_agent_with_tools(
                     if hasattr(response, "content") and isinstance(response.content, str)
                     else str(response)
                 )
-                return (final_content, tool_calls_used)
+                return (final_content, tool_calls_used, response, None)
 
             # Add AI response to messages
             messages.append(response)
@@ -110,16 +119,18 @@ def execute_agent_with_tools(
                         and isinstance(msg.content, str)
                         and msg.content.strip()
                     ):
-                        return (msg.content, tool_calls_used)
-            return ("", tool_calls_used)
+                        closing = msg if isinstance(msg, AIMessage) else None
+                        return (msg.content, tool_calls_used, closing, None)
+            return ("", tool_calls_used, None, str(e))
 
     # If we hit max iterations, try to get the last response
     logger.warning(f"Agent reached max iterations ({max_iterations})")
     for msg in reversed(messages):
         if hasattr(msg, "content") and isinstance(msg.content, str) and msg.content.strip():
-            return (msg.content, tool_calls_used)
+            closing = msg if isinstance(msg, AIMessage) else None
+            return (msg.content, tool_calls_used, closing, None)
 
-    return ("", tool_calls_used)
+    return ("", tool_calls_used, None, None)
 
 
 def safe_json_output(

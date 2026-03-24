@@ -2,7 +2,7 @@
 
 import logging
 
-from langchain_core.messages import SystemMessage
+from langchain_core.messages import AIMessage, SystemMessage
 
 from bioagents.agents.agent_executor import safe_json_output
 from bioagents.llms.llm_provider import get_llm
@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 CRITIC_AGENT_PROMPT = load_prompt("critic")
 
 CRITIC_AGENT_MEMORY_PROMPT = """
-You are the Critic Agent in a shared-memory multi-agent system.
+You are a specialized Critic Agent in a shared-memory multi-agent system.
 
 CRITICAL: You MUST NOT read other agents' outputs from messages. Read only the shared memory passed to you.
 
@@ -68,11 +68,17 @@ def create_critic_agent():
 
             structured_data = safe_json_output(raw_text, default_json)
 
+            out_msg = (
+                response
+                if isinstance(response, AIMessage)
+                else AIMessage(content=raw_text, name="Critic")
+            )
             return {
                 "data": structured_data,
                 "raw_output": raw_text,
                 "tool_calls": [],
                 "error": None,
+                "messages": [out_msg],
             }
 
         except Exception as e:
