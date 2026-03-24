@@ -4,10 +4,8 @@ import json
 import logging
 import re
 
-from langchain_core.messages import SystemMessage, HumanMessage
-from langchain_core.tools import BaseTool
+from langchain_core.messages import HumanMessage, SystemMessage
 
-from bioagents.agents.agent_executor import execute_agent_with_tools, safe_json_output
 from bioagents.llms.llm_provider import get_llm
 from bioagents.prompts.prompt_loader import load_prompt
 
@@ -115,10 +113,12 @@ SHARED MEMORY STATE:
 
             # Invoke LLM directly (no tool execution needed)
             logger.info("Report agent generating report from shared memory...")
-            response = llm.invoke([
-                SystemMessage(content=full_prompt),
-                user_message,
-            ])
+            response = llm.invoke(
+                [
+                    SystemMessage(content=full_prompt),
+                    user_message,
+                ]
+            )
 
             raw_output = response.content if hasattr(response, "content") else str(response)
 
@@ -183,7 +183,7 @@ def format_memory_for_report(memory: dict) -> str:
                 for line in data_str.split("\n"):
                     lines.append(f"  {line}")
             except (TypeError, ValueError):
-                lines.append(f"  {str(agent_data['data'])}")
+                lines.append(f"  {agent_data['data']!s}")
 
         # Include raw output as fallback
         if agent_data.get("raw_output") and not agent_data.get("data"):
@@ -219,7 +219,7 @@ def parse_report_json(text: str, memory: dict) -> dict:
         pass
 
     # Strategy 2: Extract JSON from markdown or text
-    json_match = re.search(r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}', text, re.DOTALL)
+    json_match = re.search(r"\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}", text, re.DOTALL)
     if json_match:
         try:
             parsed = json.loads(json_match.group())
@@ -232,8 +232,8 @@ def parse_report_json(text: str, memory: dict) -> dict:
     # Strategy 3: Try to fix common JSON issues
     try:
         # Remove markdown code blocks
-        fixed_text = re.sub(r'```json\n?', '', text)
-        fixed_text = re.sub(r'```\n?', '', fixed_text)
+        fixed_text = re.sub(r"```json\n?", "", text)
+        fixed_text = re.sub(r"```\n?", "", fixed_text)
         fixed_text = fixed_text.strip()
 
         parsed = json.loads(fixed_text)
@@ -262,10 +262,7 @@ def create_fallback_report(raw_text: str, memory: dict) -> dict:
     from datetime import datetime
 
     # Extract which agents completed
-    completed_agents = [
-        k for k, v in memory.items()
-        if v.get("status") == "success"
-    ]
+    completed_agents = [k for k, v in memory.items() if v.get("status") == "success"]
 
     # Build sections from memory
     sections = []
@@ -278,10 +275,12 @@ def create_fallback_report(raw_text: str, memory: dict) -> dict:
 
         # Add section for this agent's findings
         if agent_mem.get("data"):
-            sections.append({
-                "name": f"{agent_name.title()} Results",
-                "content": json.dumps(agent_mem["data"], indent=2)[:500]
-            })
+            sections.append(
+                {
+                    "name": f"{agent_name.title()} Results",
+                    "content": json.dumps(agent_mem["data"], indent=2)[:500],
+                }
+            )
 
             # Extract findings from data
             if isinstance(agent_mem["data"], dict):
@@ -292,10 +291,7 @@ def create_fallback_report(raw_text: str, memory: dict) -> dict:
 
     # If no sections from memory, use raw text
     if not sections and raw_text:
-        sections.append({
-            "name": "Analysis Results",
-            "content": raw_text[:500]
-        })
+        sections.append({"name": "Analysis Results", "content": raw_text[:500]})
 
     return {
         "title": "Comprehensive Analysis Report",
@@ -303,10 +299,11 @@ def create_fallback_report(raw_text: str, memory: dict) -> dict:
             f"This report synthesizes findings from {len(completed_agents)} agents: "
             f"{', '.join(completed_agents)}. Data retrieval and analysis completed successfully."
         ),
-        "sections": sections or [
+        "sections": sections
+        or [
             {
                 "name": "Summary",
-                "content": "Analysis completed. Results available from completed agents."
+                "content": "Analysis completed. Results available from completed agents.",
             }
         ],
         "key_findings": key_findings or ["Analysis completed successfully"],
@@ -317,6 +314,6 @@ def create_fallback_report(raw_text: str, memory: dict) -> dict:
         "metadata": {
             "agents_involved": completed_agents,
             "timestamp": datetime.now().isoformat(),
-            "completeness": "full" if completed_agents else "partial"
-        }
+            "completeness": "full" if completed_agents else "partial",
+        },
     }

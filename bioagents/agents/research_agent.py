@@ -3,7 +3,7 @@
 import logging
 import re
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime
+from typing import Any
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from langchain_core.tools import BaseTool
@@ -102,7 +102,9 @@ def create_research_agent(tools: list):
         if isinstance(tool, BaseTool):
             tools_dict[tool.name] = tool.func if hasattr(tool, "func") else tool
         elif callable(tool):
-            tool_name = getattr(tool, "name", None) or getattr(tool, "__name__", "unknown")
+            tool_name = str(
+                getattr(tool, "name", None) or getattr(tool, "__name__", None) or "unknown"
+            )
             tools_dict[tool_name] = tool
         else:
             tools_dict[str(tool)] = tool
@@ -129,9 +131,7 @@ def create_research_agent(tools: list):
             last_message = messages[-1] if messages else None
 
             if isinstance(last_message, ToolMessage):
-                result = _handle_tool_message(
-                    messages, llm_with_tools, tool_names, llm
-                )
+                result = _handle_tool_message(messages, llm_with_tools, tool_names)
                 # Wrap parallel-path AIMessage result into shared-memory format
                 return _wrap_parallel_result(result)
 
@@ -160,9 +160,7 @@ def create_research_agent(tools: list):
 
             decomposer_messages = [
                 SystemMessage(content=decomposer_prompt),
-                HumanMessage(
-                    content=f"Please decompose this research task: {original_request}"
-                ),
+                HumanMessage(content=f"Please decompose this research task: {original_request}"),
             ]
             decomposition_response = decomposer_llm.invoke(decomposer_messages)
             sub_tasks = parse_sub_tasks(decomposition_response.content)
@@ -172,8 +170,7 @@ def create_research_agent(tools: list):
                     "Research Agent: Decomposition failed. Falling back to direct tool-loop."
                 )
                 return _direct_tool_loop(
-                    messages, tools_dict, llm_with_tools,
-                    RESEARCH_AGENT_SYSTEM_PROMPT
+                    messages, tools_dict, llm_with_tools, RESEARCH_AGENT_SYSTEM_PROMPT
                 )
 
             logger.info(f"Research Agent: Running {len(sub_tasks)} sub-tasks in parallel")
@@ -200,9 +197,7 @@ def create_research_agent(tools: list):
             with ThreadPoolExecutor(max_workers=len(sub_tasks)) as executor:
                 results = list(executor.map(run_sub_agent_initial, sub_tasks))
 
-            parallel_result = _aggregate_and_return(
-                results, messages, original_request, llm
-            )
+            parallel_result = _aggregate_and_return(results, messages, original_request)
             return _wrap_parallel_result(parallel_result)
 
         except Exception as e:
@@ -228,12 +223,10 @@ def create_research_agent(tools: list):
         """Pull the first non-supervisor HumanMessage as the original request."""
         for msg in messages:
             if isinstance(msg, HumanMessage) and "[SUPERVISOR TASK]" not in str(msg.content):
-                return msg.content
+                return get_content_text(msg.content)
         return "the requested research topic"
 
-    def _direct_tool_loop(
-        messages, tools_dict, llm_with_tools, system_prompt
-    ) -> dict:
+    def _direct_tool_loop(messages, tools_dict, llm_with_tools, system_prompt) -> dict:
         """
         Fallback: run a single-agent tool-execution loop and return
         a shared-memory-compatible dict.
@@ -254,7 +247,7 @@ def create_research_agent(tools: list):
             max_iterations=5,
         )
 
-        default_json = {
+        default_json: dict[str, Any] = {
             "fetched_sequences": [],
             "literature_findings": raw_output[:500] if raw_output else "",
             "data_sources": [],
@@ -288,7 +281,7 @@ def create_research_agent(tools: list):
 
         raw_text = raw_text.strip()
 
-        default_json = {
+        default_json: dict[str, Any] = {
             "fetched_sequences": [],
             "literature_findings": raw_text[:1000] if raw_text else "",
             "data_sources": [],
@@ -307,7 +300,7 @@ def create_research_agent(tools: list):
             "messages": msgs,
         }
 
-    def _handle_tool_message(messages, llm_with_tools, tool_names, llm):
+    def _handle_tool_message(messages, llm_with_tools, tool_names):
         """Handle mid-execution ToolMessage — continue parallel sub-agents."""
         initiator = None
         initiator_idx = -1
@@ -323,24 +316,26 @@ def create_research_agent(tools: list):
 
         if initiator and "Research Phase - Sub-agent findings" in str(initiator.content):
             logger.info("Research Agent: Continuing parallel sub-agents")
-            sub_tasks_raw = re.findall(
-                r"--- Sub-task \d+: (.*?) ---", initiator.content
-            )
+            initiator_content_str = get_content_text(initiator.content)
+            sub_tasks_raw = re.findall(r"--- Sub-task \d+: (.*?) ---", initiator_content_str)
             if not sub_tasks_raw:
-                logger.warning(
-                    "Research Agent: Could not parse sub-tasks. Falling back to merger."
+                logger.warning("Research Agent: Could not parse sub-tasks. Falling back to merger.")
+                return _handle_merge(
+                    messages, initiator_content_str, _extract_original_request(messages)
                 )
-                return _handle_merge(messages, initiator.content, _extract_original_request(messages))
 
             tool_results_per_sub_agent: dict[int, list[ToolMessage]] = {
                 i: [] for i in range(len(sub_tasks_raw))
             }
             for i in range(len(sub_tasks_raw)):
                 suffix = f"_{i}"
-                for msg in messages[initiator_idx + 1:]:
-                    if isinstance(msg, ToolMessage) and msg.tool_call_id.endswith(suffix):
+                for msg in messages[initiator_idx + 1 :]:
+                    if not isinstance(msg, ToolMessage):
+                        continue
+                    tcid = msg.tool_call_id
+                    if tcid and tcid.endswith(suffix):
                         msg_copy = msg.model_copy()
-                        msg_copy.tool_call_id = msg.tool_call_id[: -len(suffix)]
+                        msg_copy.tool_call_id = tcid[: -len(suffix)]
                         tool_results_per_sub_agent[i].append(msg_copy)
 
             original_request = _extract_original_request(messages)
@@ -350,19 +345,21 @@ def create_research_agent(tools: list):
                 my_tool_calls = [
                     tc.copy()
                     for tc in initiator.tool_calls
-                    if tc["id"].endswith(suffix)
+                    if (tid := tc.get("id")) and isinstance(tid, str) and tid.endswith(suffix)
                 ]
                 if not my_tool_calls:
                     finding_pattern = (
                         rf"--- Sub-task {i + 1}: {re.escape(sub_task)} ---\n"
                         r"(.*?)(?=\n--- Sub-task|\n\(Sub-agent|\n\Z)"
                     )
-                    match = re.search(finding_pattern, initiator.content, re.DOTALL)
+                    match = re.search(finding_pattern, initiator_content_str, re.DOTALL)
                     finding = match.group(1).strip() if match else "Task completed."
                     return AIMessage(content=finding), sub_task
 
                 for tc in my_tool_calls:
-                    tc["id"] = tc["id"][: -len(suffix)]
+                    oid = tc.get("id")
+                    if isinstance(oid, str):
+                        tc["id"] = oid[: -len(suffix)]
 
                 sub_agent_messages = [
                     SystemMessage(content=RESEARCH_AGENT_PROMPT),
@@ -392,13 +389,9 @@ def create_research_agent(tools: list):
                     )
                 )
 
-            return _aggregate_and_return(
-                results, messages, original_request, llm
-            )
+            return _aggregate_and_return(results, messages, original_request)
         else:
-            logger.info(
-                "Research Agent: ToolMessage received for single-agent mode. Continuing."
-            )
+            logger.info("Research Agent: ToolMessage received for single-agent mode. Continuing.")
             msgs_with_system = [
                 SystemMessage(content=RESEARCH_AGENT_PROMPT),
                 *messages,
@@ -411,7 +404,7 @@ def create_research_agent(tools: list):
                 task_extractor=extract_task_from_messages,
             )
 
-    def _aggregate_and_return(results, messages, original_request, llm):
+    def _aggregate_and_return(results, messages, original_request):
         all_tool_calls = []
         combined_content = "Research Phase - Sub-agent findings:\n"
         needs_more_tools = False
@@ -424,8 +417,7 @@ def create_research_agent(tools: list):
             if sub_agent_tools:
                 needs_more_tools = True
                 combined_content += (
-                    f"(Sub-agent {i + 1} is fetching data using "
-                    f"{len(sub_agent_tools)} tools...)\n"
+                    f"(Sub-agent {i + 1} is fetching data using {len(sub_agent_tools)} tools...)\n"
                 )
                 if content_text and len(content_text) > 150:
                     combined_content += f"{content_text}\n"

@@ -1,11 +1,9 @@
 """Coder Agent for generating and executing code via Jupyter notebooks."""
 
 import logging
-import re
 from collections.abc import Callable
 from typing import Any
 
-from langchain_core.messages import AIMessage
 from smolagents import CodeAgent, Tool
 
 from bioagents.llms.adapters import LangChainModelAdapter

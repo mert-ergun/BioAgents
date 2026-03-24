@@ -2,12 +2,11 @@
 
 from unittest.mock import Mock, patch
 
-import pytest
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
 from bioagents.agents.summary_agent import (
-    create_summary_agent,
     assess_execution_complexity,
+    create_summary_agent,
     format_memory_for_summary,
 )
 
@@ -31,9 +30,7 @@ class TestSummaryAgentCreation:
 
     @patch("bioagents.agents.summary_agent.get_llm")
     @patch("bioagents.agents.summary_agent.load_prompt")
-    def test_create_summary_agent_returns_callable_node(
-        self, mock_load_prompt, mock_get_llm
-    ):
+    def test_create_summary_agent_returns_callable_node(self, mock_load_prompt, mock_get_llm):
         """Test that create_summary_agent returns a callable node function."""
         mock_llm = Mock()
         mock_get_llm.return_value = mock_llm
@@ -99,9 +96,7 @@ class TestSummaryAgentWithMemory:
 
     @patch("bioagents.agents.summary_agent.get_llm")
     @patch("bioagents.agents.summary_agent.load_prompt")
-    def test_summary_agent_complex_execution_path(
-        self, mock_load_prompt, mock_get_llm
-    ):
+    def test_summary_agent_complex_execution_path(self, mock_load_prompt, mock_get_llm):
         """Test summary agent with complex multi-agent memory."""
         mock_llm = Mock()
         mock_response = AIMessage(
@@ -143,13 +138,14 @@ class TestSummaryAgentWithMemory:
         # Verify system message includes complexity assessment
         call_args = mock_llm.invoke.call_args[0][0]
         system_message_content = call_args[0].content
-        assert "EXECUTION COMPLEXITY" in system_message_content or "complex" in system_message_content.lower()
+        assert (
+            "EXECUTION COMPLEXITY" in system_message_content
+            or "complex" in system_message_content.lower()
+        )
 
     @patch("bioagents.agents.summary_agent.get_llm")
     @patch("bioagents.agents.summary_agent.load_prompt")
-    def test_summary_agent_query_what_is_protein(
-        self, mock_load_prompt, mock_get_llm
-    ):
+    def test_summary_agent_query_what_is_protein(self, mock_load_prompt, mock_get_llm):
         """Test summary agent with the specific query: 'What is protein?'."""
         mock_llm = Mock()
         expected_response = (
@@ -197,14 +193,10 @@ class TestSummaryAgentEmptyMemory:
 
     @patch("bioagents.agents.summary_agent.get_llm")
     @patch("bioagents.agents.summary_agent.load_prompt")
-    def test_summary_agent_empty_memory_direct_answer(
-        self, mock_load_prompt, mock_get_llm
-    ):
+    def test_summary_agent_empty_memory_direct_answer(self, mock_load_prompt, mock_get_llm):
         """Test summary agent with empty memory falls back to direct answer."""
         mock_llm = Mock()
-        mock_response = AIMessage(
-            content="Proteins are biological macromolecules", name="Summary"
-        )
+        mock_response = AIMessage(content="Proteins are biological macromolecules", name="Summary")
         mock_llm.invoke = Mock(return_value=mock_response)
         mock_get_llm.return_value = mock_llm
         mock_load_prompt.return_value = "Summary prompt"
@@ -233,9 +225,7 @@ class TestSummaryAgentEmptyMemory:
     def test_summary_agent_no_memory_key(self, mock_load_prompt, mock_get_llm):
         """Test summary agent when state has no memory key."""
         mock_llm = Mock()
-        mock_response = AIMessage(
-            content="Direct answer to protein question", name="Summary"
-        )
+        mock_response = AIMessage(content="Direct answer to protein question", name="Summary")
         mock_llm.invoke = Mock(return_value=mock_response)
         mock_get_llm.return_value = mock_llm
         mock_load_prompt.return_value = "Summary prompt"
@@ -252,9 +242,7 @@ class TestSummaryAgentEmptyMemory:
 
     @patch("bioagents.agents.summary_agent.get_llm")
     @patch("bioagents.agents.summary_agent.load_prompt")
-    def test_summary_agent_memory_with_no_success_status(
-        self, mock_load_prompt, mock_get_llm
-    ):
+    def test_summary_agent_memory_with_no_success_status(self, mock_load_prompt, mock_get_llm):
         """Test summary agent with memory entries that have no successful status."""
         mock_llm = Mock()
         mock_response = AIMessage(content="Direct answer", name="Summary")
@@ -292,9 +280,7 @@ class TestSummaryAgentErrorHandling:
 
     @patch("bioagents.agents.summary_agent.get_llm")
     @patch("bioagents.agents.summary_agent.load_prompt")
-    def test_summary_agent_llm_invocation_error(
-        self, mock_load_prompt, mock_get_llm
-    ):
+    def test_summary_agent_llm_invocation_error(self, mock_load_prompt, mock_get_llm):
         """Test summary agent gracefully handles LLM invocation errors."""
         mock_llm = Mock()
         mock_llm.invoke = Mock(side_effect=Exception("LLM Service unavailable"))
@@ -318,9 +304,7 @@ class TestSummaryAgentErrorHandling:
 
     @patch("bioagents.agents.summary_agent.get_llm")
     @patch("bioagents.agents.summary_agent.load_prompt")
-    def test_summary_agent_missing_messages_key(
-        self, mock_load_prompt, mock_get_llm
-    ):
+    def test_summary_agent_missing_messages_key(self, mock_load_prompt, mock_get_llm):
         """Test summary agent handles state without messages key."""
         mock_llm = Mock()
         mock_response = AIMessage(content="Response", name="Summary")
@@ -344,9 +328,7 @@ class TestSummaryAgentSystemMessage:
 
     @patch("bioagents.agents.summary_agent.get_llm")
     @patch("bioagents.agents.summary_agent.load_prompt")
-    def test_summary_agent_includes_system_message(
-        self, mock_load_prompt, mock_get_llm
-    ):
+    def test_summary_agent_includes_system_message(self, mock_load_prompt, mock_get_llm):
         """Test that summary agent includes system message."""
         mock_llm = Mock()
         mock_response = AIMessage(content="Response")
@@ -370,9 +352,7 @@ class TestSummaryAgentSystemMessage:
 
     @patch("bioagents.agents.summary_agent.get_llm")
     @patch("bioagents.agents.summary_agent.load_prompt")
-    def test_summary_agent_system_message_with_memory_context(
-        self, mock_load_prompt, mock_get_llm
-    ):
+    def test_summary_agent_system_message_with_memory_context(self, mock_load_prompt, mock_get_llm):
         """Test system message includes memory context when available."""
         mock_llm = Mock()
         mock_response = AIMessage(content="Summary with context")
@@ -400,7 +380,9 @@ class TestSummaryAgentSystemMessage:
         call_args = mock_llm.invoke.call_args[0][0]
         system_message_content = call_args[0].content
         # Should include memory context
-        assert "SHARED MEMORY" in system_message_content or "memory" in system_message_content.lower()
+        assert (
+            "SHARED MEMORY" in system_message_content or "memory" in system_message_content.lower()
+        )
 
 
 class TestSummaryAgentComplexityAssessment:

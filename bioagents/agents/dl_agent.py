@@ -131,9 +131,7 @@ def create_dl_node(agent: CodeAgent) -> Callable:
 
             logger.info("Extracted %d execution steps", len(execution_steps))
 
-            structured = {
-                "model_result": {"summary": content, "code_steps": execution_steps}
-            }
+            structured = {"model_result": {"summary": content, "code_steps": execution_steps}}
 
             return {"data": structured, "raw_output": content, "tool_calls": [], "error": None}
 

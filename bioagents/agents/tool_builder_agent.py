@@ -65,7 +65,7 @@ def create_tool_builder_agent():
                 "validation_results": [],
                 "completeness": "partial",
             }
-            
+
             structured_data = safe_json_output(raw_text, default_json)
 
             return {

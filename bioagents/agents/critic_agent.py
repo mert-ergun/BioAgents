@@ -65,7 +65,7 @@ def create_critic_agent():
                 "critical_issues": [],
                 "completeness": "partial",
             }
-            
+
             structured_data = safe_json_output(raw_text, default_json)
 
             return {

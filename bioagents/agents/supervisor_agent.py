@@ -133,8 +133,7 @@ def create_supervisor_agent(members: list[str]):
             return {
                 "next": "FINISH",
                 "reasoning": (
-                    "Report agent completed successfully (confirmed via shared memory). "
-                    "Finishing."
+                    "Report agent completed successfully (confirmed via shared memory). Finishing."
                 ),
                 "messages": [],
                 "memory": memory,
@@ -206,9 +205,7 @@ def create_supervisor_agent(members: list[str]):
                 # Check execution success first
                 exec_ok, exec_tool_name = check_tool_builder_execution_success(messages)
                 if exec_ok:
-                    logger.info(
-                        f"ToolBuilder executed tool '{exec_tool_name}'. Routing to report."
-                    )
+                    logger.info(f"ToolBuilder executed tool '{exec_tool_name}'. Routing to report.")
                     success_marker = SystemMessage(
                         content=(
                             f"[EXECUTION_SUCCESS] ToolBuilder successfully executed "
@@ -279,9 +276,7 @@ def create_supervisor_agent(members: list[str]):
                 }
 
             if looping_agent == "protein_design":
-                logger.info(
-                    "Supervisor: Protein design appears to be looping. Finishing workflow."
-                )
+                logger.info("Supervisor: Protein design appears to be looping. Finishing workflow.")
                 return {
                     "next": "FINISH",
                     "reasoning": (
@@ -362,9 +357,7 @@ def create_supervisor_agent(members: list[str]):
                 name="Supervisor",
             )
             handoff_messages.append(handoff_msg)
-            logger.info(
-                f"Supervisor handoff to {result.next_agent}: {result.task_for_agent}"
-            )
+            logger.info(f"Supervisor handoff to {result.next_agent}: {result.task_for_agent}")
 
         return {
             "next": result.next_agent,

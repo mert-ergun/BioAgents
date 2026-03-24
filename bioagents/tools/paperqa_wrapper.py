@@ -1,6 +1,6 @@
 """PaperQA wrapper tool for searching local PDF papers."""
 
-import subprocess
+import subprocess  # nosec B404
 import sys
 from pathlib import Path
 
@@ -25,8 +25,7 @@ def search_local_papers_with_paperqa(pdf_folder_path: str, query: str) -> str:
         pdf_folder_path = pdf_folder_path.replace("bioagents\\", "").replace("bioagents/", "")
 
     print(
-        f"\n[Research Agent triggered PaperQA Tool: "
-        f"Folder='{pdf_folder_path}', Query='{query}']\n"
+        f"\n[Research Agent triggered PaperQA Tool: Folder='{pdf_folder_path}', Query='{query}']\n"
     )
 
     env = os.environ.copy()
@@ -64,11 +63,10 @@ def search_local_papers_with_paperqa(pdf_folder_path: str, query: str) -> str:
                 return clean_output
             else:
                 return (
-                    f"Tool executed but did not produce the expected format. "
-                    f"Raw output:\n{output}"
+                    f"Tool executed but did not produce the expected format. Raw output:\n{output}"
                 )
         else:
             return f"PaperQA Tool Error:\n{stderr}\nConsole Output:\n{output}"
 
     except Exception as e:
-        return f"Subprocess execution error: {str(e)}"
+        return f"Subprocess execution error: {e!s}"

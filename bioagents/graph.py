@@ -172,7 +172,7 @@ def agent_node(state: AgentState, agent, name: str) -> dict:
         }
 
         error_msg = SystemMessage(
-            content=f"[ERROR] {name} agent failed: {str(e)}",
+            content=f"[ERROR] {name} agent failed: {e!s}",
             name=memory_key,
         )
         logger.exception(f"agent_node caught unhandled error in '{name}': {e}")
@@ -250,7 +250,7 @@ def create_graph(_initialize_references: bool = True):
         fetch_alphafold_structure,
         fetch_pdb_structure,
         download_structure_file,
-        search_local_papers_with_paperqa,   # ← added in shared-memory-paperqa branch
+        search_local_papers_with_paperqa,  # ← added in shared-memory-paperqa branch
     ]
     analysis_tools = [
         calculate_molecular_weight,
@@ -299,12 +299,12 @@ def create_graph(_initialize_references: bool = True):
 
     # Nodes — all wrapped with agent_node for uniform memory writes + ACE tracking
     workflow.add_node("supervisor", partial(agent_node, agent=supervisor_agent, name="Supervisor"))
-    workflow.add_node("research",   partial(agent_node, agent=research_agent,   name="Research"))
-    workflow.add_node("analysis",   partial(agent_node, agent=analysis_agent,   name="Analysis"))
-    workflow.add_node("coder",      partial(agent_node, agent=coder_node_func,  name="Coder"))
-    workflow.add_node("ml",         partial(agent_node, agent=ml_node_func,     name="ML"))
-    workflow.add_node("dl",         partial(agent_node, agent=dl_node_func,     name="DL"))
-    workflow.add_node("report",     partial(agent_node, agent=report_agent,     name="Report"))
+    workflow.add_node("research", partial(agent_node, agent=research_agent, name="Research"))
+    workflow.add_node("analysis", partial(agent_node, agent=analysis_agent, name="Analysis"))
+    workflow.add_node("coder", partial(agent_node, agent=coder_node_func, name="Coder"))
+    workflow.add_node("ml", partial(agent_node, agent=ml_node_func, name="ML"))
+    workflow.add_node("dl", partial(agent_node, agent=dl_node_func, name="DL"))
+    workflow.add_node("report", partial(agent_node, agent=report_agent, name="Report"))
     workflow.add_node(
         "tool_builder",
         partial(agent_node, agent=tool_builder_agent, name="tool_builder"),
@@ -313,13 +313,13 @@ def create_graph(_initialize_references: bool = True):
         "protein_design",
         partial(agent_node, agent=protein_design_agent, name="protein_design"),
     )
-    workflow.add_node("critic",  partial(agent_node, agent=critic_agent,  name="Critic"))
+    workflow.add_node("critic", partial(agent_node, agent=critic_agent, name="Critic"))
     workflow.add_node("summary", partial(agent_node, agent=summary_agent, name="Summary"))
 
     # Tool-executor nodes (LangGraph ToolNode, not agent_node)
-    workflow.add_node("research_tools",       research_tool_node)
-    workflow.add_node("analysis_tools",       analysis_tool_node)
-    workflow.add_node("tool_builder_tools",   tool_builder_tool_node)
+    workflow.add_node("research_tools", research_tool_node)
+    workflow.add_node("analysis_tools", analysis_tool_node)
+    workflow.add_node("tool_builder_tools", tool_builder_tool_node)
     workflow.add_node("protein_design_tools", protein_design_tool_node)
 
     # Entry point
@@ -330,16 +330,16 @@ def create_graph(_initialize_references: bool = True):
         "supervisor",
         route_supervisor,
         {
-            "research":       "research",
-            "analysis":       "analysis",
-            "coder":          "coder",
-            "ml":             "ml",
-            "dl":             "dl",
-            "report":         "report",
-            "tool_builder":   "tool_builder",
+            "research": "research",
+            "analysis": "analysis",
+            "coder": "coder",
+            "ml": "ml",
+            "dl": "dl",
+            "report": "report",
+            "tool_builder": "tool_builder",
             "protein_design": "protein_design",
-            "critic":         "critic",
-            "summary":        "summary",
+            "critic": "critic",
+            "summary": "summary",
         },
     )
 
@@ -383,18 +383,18 @@ def create_graph(_initialize_references: bool = True):
     )
 
     # ── Direct edges ──────────────────────────────────────────────────────────
-    workflow.add_edge("coder",    "supervisor")
-    workflow.add_edge("ml",       "supervisor")
-    workflow.add_edge("dl",       "supervisor")
-    workflow.add_edge("critic",   "supervisor")
+    workflow.add_edge("coder", "supervisor")
+    workflow.add_edge("ml", "supervisor")
+    workflow.add_edge("dl", "supervisor")
+    workflow.add_edge("critic", "supervisor")
 
-    workflow.add_edge("research_tools",       "research")
-    workflow.add_edge("analysis_tools",       "analysis")
-    workflow.add_edge("tool_builder_tools",   "tool_builder")
+    workflow.add_edge("research_tools", "research")
+    workflow.add_edge("analysis_tools", "analysis")
+    workflow.add_edge("tool_builder_tools", "tool_builder")
     workflow.add_edge("protein_design_tools", "protein_design")
 
     # ── report → summary → END  (hard-wired; prevents supervisor re-routing) ──
-    workflow.add_edge("report",  "summary")
+    workflow.add_edge("report", "summary")
     workflow.add_edge("summary", END)
 
     return workflow.compile()

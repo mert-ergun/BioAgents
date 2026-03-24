@@ -2,7 +2,7 @@
 
 import logging
 
-from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.messages import HumanMessage
 from langchain_core.tools import BaseTool
 
 from bioagents.agents.agent_executor import execute_agent_with_tools, safe_json_output

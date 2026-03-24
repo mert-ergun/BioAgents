@@ -4,9 +4,10 @@ import json
 import logging
 import re
 import uuid
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
+from langchain_core.messages import HumanMessage, SystemMessage, ToolMessage
 
 logger = logging.getLogger(__name__)
 
@@ -66,9 +67,7 @@ def execute_agent_with_tools(
 
                 # Get tool_call_id with multiple fallback strategies
                 tool_call_id: str = (
-                    tool_call.get("id")
-                    or tool_call.get("tool_call_id")
-                    or str(uuid.uuid4())
+                    tool_call.get("id") or tool_call.get("tool_call_id") or str(uuid.uuid4())
                 )
 
                 # Find and execute the tool
@@ -84,7 +83,7 @@ def execute_agent_with_tools(
                         logger.info(f"Tool {tool_name} result: {tool_output[:100]}")
                     except Exception as e:
                         logger.warning(f"Tool {tool_name} failed: {e}", exc_info=True)
-                        tool_output = f"Error executing {tool_name}: {str(e)}"
+                        tool_output = f"Error executing {tool_name}: {e!s}"
                 else:
                     tool_output = f"Tool '{tool_name}' not found in available tools"
                     logger.warning(f"Tool not found: {tool_name}")
@@ -117,11 +116,7 @@ def execute_agent_with_tools(
     # If we hit max iterations, try to get the last response
     logger.warning(f"Agent reached max iterations ({max_iterations})")
     for msg in reversed(messages):
-        if (
-            hasattr(msg, "content")
-            and isinstance(msg.content, str)
-            and msg.content.strip()
-        ):
+        if hasattr(msg, "content") and isinstance(msg.content, str) and msg.content.strip():
             return (msg.content, tool_calls_used)
 
     return ("", tool_calls_used)

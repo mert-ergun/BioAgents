@@ -1,6 +1,5 @@
 """Utilities for working with shared memory in multi-agent system."""
 
-import json
 from datetime import datetime
 from typing import Any
 
