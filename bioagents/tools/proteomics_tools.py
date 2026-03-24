@@ -4,22 +4,21 @@ import requests
 from langchain_core.tools import tool
 
 
-@tool
-def fetch_uniprot_fasta(protein_id: str) -> str:
+def fetch_uniprot_fasta_impl(protein_id: str, timeout: int = 10) -> str:
     """
-    Fetch the FASTA sequence for a protein from UniProt.
+    Fetch the FASTA sequence for a protein from UniProt (plain function for reuse).
 
     Args:
         protein_id: The UniProt protein identifier (e.g., 'P53_HUMAN' or 'P04637')
+        timeout: HTTP timeout in seconds.
 
     Returns:
         The FASTA sequence as a string, or an error message if the fetch fails.
     """
     try:
-        # UniProt REST API endpoint for FASTA format
         url = f"https://rest.uniprot.org/uniprotkb/{protein_id}.fasta"
 
-        response = requests.get(url, timeout=10)
+        response = requests.get(url, timeout=timeout)
         response.raise_for_status()
 
         return response.text.strip()
@@ -31,3 +30,17 @@ def fetch_uniprot_fasta(protein_id: str) -> str:
 
     except Exception as e:
         return f"Error: {e!s}"
+
+
+@tool
+def fetch_uniprot_fasta(protein_id: str) -> str:
+    """
+    Fetch the FASTA sequence for a protein from UniProt.
+
+    Args:
+        protein_id: The UniProt protein identifier (e.g., 'P53_HUMAN' or 'P04637')
+
+    Returns:
+        The FASTA sequence as a string, or an error message if the fetch fails.
+    """
+    return fetch_uniprot_fasta_impl(protein_id)

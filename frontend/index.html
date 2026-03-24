@@ -203,6 +203,14 @@
                     <span class="material-symbols-outlined text-[20px]">experiment</span>
                     <span class="font-medium text-sm">Experiments</span>
                 </a>
+                <a href="#" id="nav-workflows" class="nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-text-subtle hover:text-white hover:bg-white/5 transition-all">
+                    <span class="material-symbols-outlined text-[20px]">account_tree</span>
+                    <span class="font-medium text-sm">Pipelines</span>
+                </a>
+                <a href="#" id="nav-workflow-builder" class="nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-text-subtle hover:text-white hover:bg-white/5 transition-all">
+                    <span class="material-symbols-outlined text-[20px]">schema</span>
+                    <span class="font-medium text-sm">Workflow builder</span>
+                </a>
                 <a href="#" class="nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-text-subtle hover:text-white hover:bg-white/5 transition-all">
                     <span class="material-symbols-outlined text-[20px]">folder_open</span>
                     <span class="font-medium text-sm">Project Index</span>
@@ -545,6 +553,8 @@
     </div>
 
     <!-- Scripts -->
+    <script src="static/js/workflows.js"></script>
+    <script src="static/js/workflow_builder.js"></script>
     <script src="static/js/experiments.js"></script>
     <script src="static/js/app.js"></script>
     <script>
@@ -649,14 +659,191 @@
             // Insert after the research grid
             researchView.parentNode.insertBefore(expView, researchView.nextSibling);
 
+            const workflowsView = document.createElement('div');
+            workflowsView.id = 'workflows-view';
+            workflowsView.className = 'hidden flex-1 flex flex-col h-full min-h-0 overflow-hidden bg-background-dark';
+            workflowsView.innerHTML = `
+                <div class="flex items-center justify-between px-6 py-4 border-b border-white/5 flex-shrink-0">
+                    <div class="flex items-center gap-3">
+                        <span class="material-symbols-outlined text-primary text-2xl">account_tree</span>
+                        <div>
+                            <h1 class="text-base font-bold text-white">Scientific pipelines</h1>
+                            <p class="text-[11px] text-text-subtle">Run DAG workflows (fetch → preprocess → model → export)</p>
+                        </div>
+                    </div>
+                    <span id="wf-status" class="text-xs font-mono px-2 py-1 rounded bg-white/5 text-text-subtle border border-white/10">Idle</span>
+                </div>
+                <div class="flex-1 overflow-y-auto custom-scrollbar p-6 max-w-3xl w-full mx-auto flex flex-col gap-6">
+                    <div class="rounded-xl border border-white/10 bg-surface-card/40 p-5">
+                        <h2 class="text-xs font-bold text-white uppercase tracking-wide mb-1">Protein embedding</h2>
+                        <p id="wf-preset-description" class="text-[11px] text-text-subtle mb-4 leading-relaxed"></p>
+                        <div class="flex flex-col gap-3 mb-3">
+                            <div class="w-full">
+                                <label class="text-[10px] text-text-subtle uppercase tracking-wider block mb-1">Preset (<span id="wf-preset-count">…</span>)</label>
+                                <select id="wf-preset-select"
+                                    class="w-full rounded-lg bg-surface-dark border border-white/10 text-sm text-white px-3 py-2 focus:border-primary/50 focus:ring-1 focus:ring-primary/30">
+                                </select>
+                            </div>
+                            <div id="wf-kmer-k-row" class="w-full hidden">
+                                <label class="text-[10px] text-text-subtle uppercase tracking-wider block mb-1">K-mer size (uniprot_kmer_profile)</label>
+                                <input type="number" id="wf-kmer-k" value="3" min="1" max="12"
+                                    class="w-full max-w-xs rounded-lg bg-surface-dark border border-white/10 text-sm text-white px-3 py-2 focus:border-primary/50 focus:ring-1 focus:ring-primary/30" />
+                            </div>
+                            <div id="wf-esm-model-row" class="w-full">
+                                <label class="text-[10px] text-text-subtle uppercase tracking-wider block mb-1">ESM-2 checkpoint</label>
+                                <select id="wf-esm-model"
+                                    class="w-full rounded-lg bg-surface-dark border border-white/10 text-sm text-white px-3 py-2 focus:border-primary/50 focus:ring-1 focus:ring-primary/30">
+                                    <option value="esm2_t6_8M_UR50D">esm2_t6_8M_UR50D (fast, 320-d)</option>
+                                    <option value="esm2_t12_35M_UR50D">esm2_t12_35M_UR50D</option>
+                                    <option value="esm2_t33_650M_UR50D">esm2_t33_650M_UR50D (large)</option>
+                                </select>
+                            </div>
+                            <div id="wf-dummy-dim-row" class="w-full hidden">
+                                <label class="text-[10px] text-text-subtle uppercase tracking-wider block mb-1">Placeholder vector length</label>
+                                <input type="number" id="wf-embedding-dim" value="8" min="1" max="1280"
+                                    class="w-full max-w-xs rounded-lg bg-surface-dark border border-white/10 text-sm text-white px-3 py-2 focus:border-primary/50 focus:ring-1 focus:ring-primary/30" />
+                            </div>
+                        </div>
+                        <div class="flex flex-col sm:flex-row gap-3 items-end">
+                            <div class="flex-1 w-full">
+                                <label class="text-[10px] text-text-subtle uppercase tracking-wider block mb-1">Primary ID</label>
+                                <input type="text" id="wf-protein-id" value="P04637" placeholder="UniProt (P04637) or PDB (1YCR)"
+                                    class="w-full rounded-lg bg-surface-dark border border-white/10 text-sm text-white px-3 py-2 focus:border-primary/50 focus:ring-1 focus:ring-primary/30" />
+                            </div>
+                            <button id="wf-run-btn" type="button"
+                                class="w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-2.5 bg-primary hover:bg-primary/90 text-background-dark font-bold text-sm rounded-lg transition-all shadow-[0_0_15px_rgba(7,182,213,0.2)]">
+                                <span class="material-symbols-outlined text-[18px]">play_arrow</span>
+                                Run pipeline
+                            </button>
+                        </div>
+                    </div>
+                    <div>
+                        <h3 class="text-[10px] font-bold text-text-subtle uppercase tracking-wider mb-2">Sink outputs</h3>
+                        <pre id="wf-sink-json" class="text-[11px] font-mono text-cyan-200/90 bg-black/50 border border-white/10 rounded-lg p-4 overflow-x-auto min-h-[4rem] whitespace-pre-wrap">{}</pre>
+                    </div>
+                    <div>
+                        <h3 class="text-[10px] font-bold text-text-subtle uppercase tracking-wider mb-2">All node outputs</h3>
+                        <pre id="wf-nodes-json" class="text-[11px] font-mono text-slate-300 bg-black/50 border border-white/10 rounded-lg p-4 overflow-x-auto max-h-[40vh] whitespace-pre-wrap">// Run a pipeline to see per-node results</pre>
+                    </div>
+                </div>
+            `;
+            researchView.parentNode.insertBefore(workflowsView, expView.nextSibling);
+
+            const workflowBuilderView = document.createElement('div');
+            workflowBuilderView.id = 'workflow-builder-view';
+            workflowBuilderView.className = 'hidden flex-1 flex flex-col h-full min-h-0 overflow-hidden bg-background-dark';
+            workflowBuilderView.innerHTML = `
+                <div class="flex items-center justify-between px-6 py-4 border-b border-white/5 flex-shrink-0">
+                    <div class="flex items-center gap-3">
+                        <span class="material-symbols-outlined text-primary text-2xl">schema</span>
+                        <div>
+                            <h1 class="text-base font-bold text-white">Workflow builder</h1>
+                            <p class="text-[11px] text-text-subtle">Compose nodes and edges, then run on the server (<span id="wb-node-type-count">…</span> node types)</p>
+                        </div>
+                    </div>
+                    <span id="wb-status" class="text-xs font-mono px-2 py-1 rounded bg-white/5 text-text-subtle border border-white/10">Idle</span>
+                </div>
+                <div class="flex-1 overflow-y-auto custom-scrollbar p-6 min-h-0">
+                    <div class="max-w-6xl mx-auto flex flex-col gap-6">
+                        <div class="rounded-xl border border-white/10 bg-surface-card/40 p-5">
+                            <div class="flex flex-col sm:flex-row sm:items-end gap-4 mb-4">
+                                <div class="flex-1 min-w-0">
+                                    <label class="text-[10px] text-text-subtle uppercase tracking-wider block mb-1">Start from template</label>
+                                    <select id="wb-template-select" class="w-full max-w-md rounded-lg bg-surface-dark border border-white/10 text-sm text-white px-3 py-2 focus:border-primary/50 focus:ring-1 focus:ring-primary/30"></select>
+                                </div>
+                                <p class="text-[11px] text-text-subtle max-w-xl leading-relaxed">Source nodes need values in <strong class="text-white/80">Initial inputs</strong> (JSON). Edges with empty port maps use matching port names automatically.</p>
+                            </div>
+                            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                                <div>
+                                    <div class="flex items-center justify-between mb-2">
+                                        <h2 class="text-xs font-bold text-white uppercase tracking-wide">Nodes</h2>
+                                        <div class="flex items-center gap-2 flex-wrap justify-end">
+                                            <select id="wb-palette-type" class="rounded-lg bg-surface-dark border border-white/10 text-xs text-white px-2 py-1.5 max-w-[200px]"></select>
+                                            <button type="button" id="wb-add-node-btn" class="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/15 border border-white/10 text-xs text-white transition-all">
+                                                <span class="material-symbols-outlined text-[16px]">add</span> Add node
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div class="overflow-x-auto rounded-lg border border-white/10">
+                                        <table class="w-full text-left text-xs">
+                                            <thead class="bg-black/30 text-text-subtle uppercase tracking-wider">
+                                                <tr>
+                                                    <th class="px-3 py-2 font-medium">Id</th>
+                                                    <th class="px-3 py-2 font-medium">Type</th>
+                                                    <th class="px-3 py-2 font-medium">Params (JSON)</th>
+                                                    <th class="px-3 py-2 w-10"></th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="wb-nodes-tbody"></tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                                <div>
+                                    <div class="flex items-center justify-between mb-2">
+                                        <h2 class="text-xs font-bold text-white uppercase tracking-wide">Edges</h2>
+                                        <button type="button" id="wb-add-edge-btn" class="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/15 border border-white/10 text-xs text-white transition-all">
+                                            <span class="material-symbols-outlined text-[16px]">add</span> Add edge
+                                        </button>
+                                    </div>
+                                    <div class="overflow-x-auto rounded-lg border border-white/10 mb-4">
+                                        <table class="w-full text-left text-xs">
+                                            <thead class="bg-black/30 text-text-subtle uppercase tracking-wider">
+                                                <tr>
+                                                    <th class="px-3 py-2 font-medium">Source</th>
+                                                    <th class="px-3 py-2 font-medium">Target</th>
+                                                    <th class="px-3 py-2 font-medium">Port map (optional JSON)</th>
+                                                    <th class="px-3 py-2 w-10"></th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="wb-edges-tbody"></tbody>
+                                        </table>
+                                    </div>
+                                    <label class="text-[10px] text-text-subtle uppercase tracking-wider block mb-1">Initial inputs (JSON object: node id → port values)</label>
+                                    <textarea id="wb-initial-inputs" rows="6" class="w-full rounded-lg bg-black/50 border border-white/10 text-[11px] font-mono text-cyan-100/90 px-3 py-2 focus:border-primary/50 focus:ring-1 focus:ring-primary/30 resize-y min-h-[7rem]" spellcheck="false">{}</textarea>
+                                    <div class="mt-4 flex flex-wrap gap-3">
+                                        <button type="button" id="wb-run-btn" class="flex items-center gap-2 px-5 py-2.5 bg-primary hover:bg-primary/90 text-background-dark font-bold text-sm rounded-lg transition-all shadow-[0_0_15px_rgba(7,182,213,0.2)]">
+                                            <span class="material-symbols-outlined text-[18px]">play_arrow</span>
+                                            Run workflow
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div>
+                            <h3 class="text-[10px] font-bold text-text-subtle uppercase tracking-wider mb-2">Sink outputs</h3>
+                            <pre id="wb-sink-json" class="text-[11px] font-mono text-cyan-200/90 bg-black/50 border border-white/10 rounded-lg p-4 overflow-x-auto min-h-[4rem] whitespace-pre-wrap">{}</pre>
+                        </div>
+                        <div>
+                            <h3 class="text-[10px] font-bold text-text-subtle uppercase tracking-wider mb-2">All node outputs</h3>
+                            <pre id="wb-builder-nodes-json" class="text-[11px] font-mono text-slate-300 bg-black/50 border border-white/10 rounded-lg p-4 overflow-x-auto max-h-[38vh] whitespace-pre-wrap">// Run a workflow to see results</pre>
+                        </div>
+                    </div>
+                </div>
+            `;
+            researchView.parentNode.insertBefore(workflowBuilderView, workflowsView.nextSibling);
+
+            function navInactive(el) {
+                if (!el) return;
+                el.classList.remove('bg-primary/20','border','border-primary/20','text-primary');
+                el.classList.add('text-text-subtle','hover:text-white','hover:bg-white/5');
+            }
+
+            function navActive(el) {
+                if (!el) return;
+                el.classList.add('bg-primary/20','border','border-primary/20','text-primary');
+                el.classList.remove('text-text-subtle','hover:text-white','hover:bg-white/5');
+            }
+
             function showResearch() {
                 researchView.classList.remove('hidden');
                 if (terminalLog) terminalLog.classList.remove('hidden');
                 expView.classList.add('hidden');
-                document.getElementById('nav-research').classList.add('bg-primary/20','border','border-primary/20','text-primary');
-                document.getElementById('nav-research').classList.remove('text-text-subtle','hover:text-white','hover:bg-white/5');
-                document.getElementById('nav-experiments').classList.remove('bg-primary/20','border','border-primary/20','text-primary');
-                document.getElementById('nav-experiments').classList.add('text-text-subtle','hover:text-white','hover:bg-white/5');
+                workflowsView.classList.add('hidden');
+                workflowBuilderView.classList.add('hidden');
+                navActive(document.getElementById('nav-research'));
+                navInactive(document.getElementById('nav-experiments'));
+                navInactive(document.getElementById('nav-workflows'));
+                navInactive(document.getElementById('nav-workflow-builder'));
                 document.getElementById('projectTitle').textContent = 'BioAgents Research Session';
             }
 
@@ -664,16 +851,48 @@
                 researchView.classList.add('hidden');
                 if (terminalLog) terminalLog.classList.add('hidden');
                 expView.classList.remove('hidden');
-                document.getElementById('nav-experiments').classList.add('bg-primary/20','border','border-primary/20','text-primary');
-                document.getElementById('nav-experiments').classList.remove('text-text-subtle','hover:text-white','hover:bg-white/5');
-                document.getElementById('nav-research').classList.remove('bg-primary/20','border','border-primary/20','text-primary');
-                document.getElementById('nav-research').classList.add('text-text-subtle','hover:text-white','hover:bg-white/5');
+                workflowsView.classList.add('hidden');
+                workflowBuilderView.classList.add('hidden');
+                navInactive(document.getElementById('nav-research'));
+                navActive(document.getElementById('nav-experiments'));
+                navInactive(document.getElementById('nav-workflows'));
+                navInactive(document.getElementById('nav-workflow-builder'));
                 document.getElementById('projectTitle').textContent = 'Experiments';
                 await initExperiments();
             }
 
+            async function showWorkflows() {
+                researchView.classList.add('hidden');
+                if (terminalLog) terminalLog.classList.add('hidden');
+                expView.classList.add('hidden');
+                workflowsView.classList.remove('hidden');
+                workflowBuilderView.classList.add('hidden');
+                navInactive(document.getElementById('nav-research'));
+                navInactive(document.getElementById('nav-experiments'));
+                navActive(document.getElementById('nav-workflows'));
+                navInactive(document.getElementById('nav-workflow-builder'));
+                document.getElementById('projectTitle').textContent = 'Pipelines';
+                await initWorkflows();
+            }
+
+            async function showWorkflowBuilder() {
+                researchView.classList.add('hidden');
+                if (terminalLog) terminalLog.classList.add('hidden');
+                expView.classList.add('hidden');
+                workflowsView.classList.add('hidden');
+                workflowBuilderView.classList.remove('hidden');
+                navInactive(document.getElementById('nav-research'));
+                navInactive(document.getElementById('nav-experiments'));
+                navInactive(document.getElementById('nav-workflows'));
+                navActive(document.getElementById('nav-workflow-builder'));
+                document.getElementById('projectTitle').textContent = 'Workflow builder';
+                await initWorkflowBuilder();
+            }
+
             document.getElementById('nav-research')?.addEventListener('click', e => { e.preventDefault(); showResearch(); });
             document.getElementById('nav-experiments')?.addEventListener('click', e => { e.preventDefault(); showExperiments(); });
+            document.getElementById('nav-workflows')?.addEventListener('click', e => { e.preventDefault(); showWorkflows(); });
+            document.getElementById('nav-workflow-builder')?.addEventListener('click', e => { e.preventDefault(); showWorkflowBuilder(); });
         })();
     </script>
 </body>
