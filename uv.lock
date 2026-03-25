@@ -343,6 +343,7 @@ dependencies = [
     { name = "langchain-openai" },
     { name = "langgraph" },
     { name = "litellm" },
+    { name = "networkx" },
     { name = "notebook" },
     { name = "pandas" },
     { name = "pytest" },
@@ -353,6 +354,12 @@ dependencies = [
     { name = "tooluniverse" },
     { name = "uvicorn", extra = ["standard"] },
     { name = "websockets" },
+]
+
+[package.optional-dependencies]
+esm = [
+    { name = "fair-esm" },
+    { name = "torch" },
 ]
 
 [package.dev-dependencies]
@@ -367,6 +374,7 @@ dev = [
 requires-dist = [
     { name = "biopython", specifier = ">=1.86" },
     { name = "docker", specifier = ">=7.1.0" },
+    { name = "fair-esm", marker = "extra == 'esm'", specifier = ">=2.0.0" },
     { name = "fastapi", specifier = ">=0.115.0" },
     { name = "ipykernel", specifier = ">=7.1.0" },
     { name = "langchain", specifier = ">=1.0.5" },
@@ -374,6 +382,7 @@ requires-dist = [
     { name = "langchain-openai", specifier = ">=1.0.2" },
     { name = "langgraph", specifier = ">=1.0.3" },
     { name = "litellm", specifier = ">=1.79.3" },
+    { name = "networkx", specifier = ">=3.5" },
     { name = "notebook", specifier = ">=7.4.7" },
     { name = "pandas", specifier = ">=2.3.3" },
     { name = "pytest", specifier = ">=9.0.1" },
@@ -382,9 +391,11 @@ requires-dist = [
     { name = "pyyaml", specifier = ">=6.0.3" },
     { name = "smolagents", extras = ["docker"], specifier = ">=1.23.0" },
     { name = "tooluniverse", specifier = ">=1.0.3" },
+    { name = "torch", marker = "extra == 'esm'", specifier = ">=2.2.0" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.32.0" },
     { name = "websockets", specifier = ">=14.0" },
 ]
+provides-extras = ["esm"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -1110,6 +1121,15 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/cc/28/c14e053b6762b1044f34a13aab6859bbf40456d37d23aa286ac24cfd9a5d/executing-2.2.1.tar.gz", hash = "sha256:3632cc370565f6648cc328b32435bd120a1e4ebb20c77e3fdde9a13cd1e533c4", size = 1129488, upload-time = "2025-09-01T09:48:10.866Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/c1/ea/53f2148663b321f21b5a606bd5f191517cf40b7072c0497d3c92c4a13b1e/executing-2.2.1-py2.py3-none-any.whl", hash = "sha256:760643d3452b4d777d295bb167ccc74c64a81df23fb5e08eff250c425a4b2017", size = 28317, upload-time = "2025-09-01T09:48:08.5Z" },
+]
+
+[[package]]
+name = "fair-esm"
+version = "2.0.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/fc/fb/61ddfd2f058c298491d500b606808aab6729944da844fbe63cb7be405a9a/fair-esm-2.0.0.tar.gz", hash = "sha256:4ed34d4598ec75ed6550a4e581d023bf8d4a8375317ecba6269bb68135f80c85", size = 84217, upload-time = "2022-11-01T03:06:29.285Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/79/26/1cc82571f507b9dae3b36d4242764edc6e4ae9f3f81f44a6382c15fad565/fair_esm-2.0.0-py3-none-any.whl", hash = "sha256:7dcb58828a401155d1457d071a03800bd1a50331ddf24ac79ad1dd0f2ea682a2", size = 93125, upload-time = "2022-11-01T03:06:26.845Z" },
 ]
 
 [[package]]

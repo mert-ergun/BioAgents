@@ -23,6 +23,7 @@ from pydantic import BaseModel
 
 from bioagents.graph import create_graph
 from bioagents.llms.llm_provider import set_api_keys_override
+from frontend.workflow_routes import include_workflow_routes
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -50,6 +51,7 @@ app.add_middleware(
 # Static files
 FRONTEND_DIR = Path(__file__).parent
 app.mount("/static", StaticFiles(directory=FRONTEND_DIR / "static"), name="static")
+include_workflow_routes(app)
 
 # =====================================================
 # MODELS
