@@ -1,10 +1,11 @@
 """LangGraph multi-agent workflow definition."""
 
 import logging
+from datetime import datetime
 from functools import partial
-from typing import Annotated, Literal
+from typing import Annotated, Any, ClassVar, Literal
 
-from langchain_core.messages import BaseMessage
+from langchain_core.messages import AIMessage, BaseMessage, SystemMessage
 from langgraph.graph import END, StateGraph
 from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode
@@ -20,9 +21,7 @@ from bioagents.agents.research_agent import create_research_agent
 from bioagents.agents.summary_agent import create_summary_agent
 from bioagents.agents.supervisor_agent import create_supervisor_agent
 from bioagents.agents.tool_builder_agent import create_tool_builder_agent
-from bioagents.learning.ace_integration import (
-    track_agent_execution,
-)
+from bioagents.learning.ace_integration import track_agent_execution
 from bioagents.references.reference_extractor import extract_references_from_messages
 from bioagents.references.reference_manager import ReferenceManager
 from bioagents.tools.analysis_tools import (
@@ -30,6 +29,7 @@ from bioagents.tools.analysis_tools import (
     calculate_isoelectric_point,
     calculate_molecular_weight,
 )
+from bioagents.tools.paperqa_wrapper import search_local_papers_with_paperqa
 from bioagents.tools.pdf_tools import (
     extract_pdf_text_spacy_layout,
     fetch_webpage_as_pdf_text,
@@ -52,68 +52,151 @@ class AgentState(dict):
     The state object passed between nodes in the graph.
 
     Attributes:
-        messages: List of messages in the conversation
-        next: The next agent to route to (set by supervisor)
-        reasoning: The reasoning behind supervisor's decision
-        output_dir: Directory path for saving output files (optional)
-        references: Reference manager for tracking citations (optional)
+        messages:   Orchestration messages (NOT for data passing between agents).
+        next:       The next agent to route to (set by supervisor).
+        reasoning:  The reasoning behind the supervisor's routing decision.
+        output_dir: Optional directory path for saving output files.
+        memory:     Shared workspace for agent outputs.
+                    Structure::
+
+                        {
+                            "agent_name": {
+                                "status":     "success" | "error" | "pending",
+                                "timestamp":  ISO-8601 string,
+                                "data":       {...},   # agent-specific structured output
+                                "raw_output": str,     # full text response
+                                "errors":     [...],   # errors encountered
+                                "tool_calls": [...],   # audit trail of tool usage
+                            }
+                        }
+
+        references: Optional ReferenceManager for tracking citations across agents.
     """
 
     messages: Annotated[list[BaseMessage], add_messages]
     next: str
     reasoning: str
     output_dir: str | None = None
+    memory: ClassVar[dict[str, dict[str, Any]]] = {}
     references: ReferenceManager | None = None
 
 
-def agent_node(state, agent, name):
+def agent_node(state: AgentState, agent, name: str) -> dict:
     """
-    Wrapper for agent nodes that adds agent identification and ACE tracking.
+    Wrapper for agent nodes that:
+    - Writes agent output to ``state["memory"][name.lower()]``
+    - Extracts and stores citations via ReferenceManager (if enabled)
+    - Records execution telemetry via ACE tracking (zero overhead if disabled)
+    - Forwards ``messages`` returned by the agent (needed for tool routing)
+
+    Agent callables must return a dict with at least::
+
+        {
+            "data":       {...},   # structured output
+            "raw_output": str,
+            "tool_calls": [...],
+            "error":      str | None,
+        }
+
+    They may additionally include a ``"messages"`` key whose value is forwarded
+    to the graph so that conditional tool edges can fire correctly.
 
     Args:
-        state: The current state
-        agent: The agent function to call
-        name: Name of the agent for tracking
+        state: The current AgentState.
+        agent: The agent callable.
+        name:  Human-readable agent name used as the memory key.
 
     Returns:
-        Updated state with agent's response
+        Updated graph state slice.
     """
-    result = agent(state)
+    try:
+        result = agent(state)
 
-    # Add agent name to the message metadata for tracking
-    if result.get("messages"):
-        for msg in result["messages"]:
-            msg.name = name
+        agent_data = result.get("data", {})
+        agent_raw_output = result.get("raw_output", "")
+        agent_tool_calls = result.get("tool_calls", [])
+        agent_error = result.get("error", None)
 
-    # Extract references from messages if reference manager exists
-    if state.get("references") is not None and result.get("messages"):
-        refs = extract_references_from_messages(result["messages"])
-        if refs:
-            state["references"].add_references(refs)
-            logger.info(f"Extracted {len(refs)} references from {name} agent")
+        memory_key = name.lower()
+        memory = state.setdefault("memory", {})
 
-    # ACE tracking (only if enabled - zero overhead if disabled)
-    track_agent_execution(state, result, name)
+        # Write structured output to shared memory
+        memory[memory_key] = {
+            "status": "error" if agent_error else "success",
+            "timestamp": datetime.now().isoformat(),
+            "data": agent_data,
+            "raw_output": agent_raw_output,
+            "errors": [agent_error] if agent_error else [],
+            "tool_calls": agent_tool_calls,
+        }
 
-    return result
+        # Extract citations if a ReferenceManager is available
+        outgoing_messages = result.get("messages", [])
+        if state.get("references") is not None and outgoing_messages:
+            refs = extract_references_from_messages(outgoing_messages)
+            if refs:
+                state["references"].add_references(refs)
+                logger.info(f"Extracted {len(refs)} references from {name} agent")
+
+        # ACE tracking (no-op if ACE is disabled)
+        track_agent_execution(state, result, name)
+
+        # Tag messages with the agent name for supervisor visibility
+        for msg in outgoing_messages:
+            msg.name = memory_key
+
+        if outgoing_messages:
+            # Emit a lightweight completion signal alongside any real messages
+            completion_msg = AIMessage(
+                content=f"[COMPLETED] {name} agent has finished. Results written to shared memory.",
+                name=memory_key,
+            )
+            return {
+                "messages": [*outgoing_messages, completion_msg],
+                "memory": memory,
+            }
+
+        return {
+            "messages": [],
+            "memory": memory,
+        }
+
+    except Exception as e:
+        memory_key = name.lower()
+        memory = state.setdefault("memory", {})
+        memory[memory_key] = {
+            "status": "error",
+            "timestamp": datetime.now().isoformat(),
+            "data": {},
+            "raw_output": "",
+            "errors": [str(e)],
+            "tool_calls": [],
+        }
+
+        error_msg = SystemMessage(
+            content=f"[ERROR] {name} agent failed: {e!s}",
+            name=memory_key,
+        )
+        logger.exception(f"agent_node caught unhandled error in '{name}': {e}")
+        return {
+            "messages": [error_msg],
+            "memory": memory,
+        }
 
 
 def should_continue_to_tools(state: AgentState) -> Literal["tools", "supervisor"]:
     """
-    Conditional edge that checks if tools need to be called.
-
-    Args:
-        state: The current agent state
+    Conditional edge: checks whether the last message contains tool calls.
 
     Returns:
-        'tools' if last message has tool calls, 'supervisor' otherwise
+        ``"tools"`` if the last message has pending tool calls, else ``"supervisor"``.
     """
     messages = state["messages"]
+    if not messages:
+        return "supervisor"
     last_message = messages[-1]
-
     if hasattr(last_message, "tool_calls") and last_message.tool_calls:
         return "tools"
-
     return "supervisor"
 
 
@@ -132,26 +215,12 @@ def route_supervisor(
     "summary",
 ]:
     """
-    Route based on supervisor's decision.
+    Translate the supervisor's ``next`` decision into a graph edge.
 
-    Args:
-        state: The current agent state
-
-    Returns:
-        The next agent to route to, or 'summary' if finished
+    ``"FINISH"`` is remapped to ``"summary"`` so the workflow always
+    produces a final summary before reaching ``END``.
     """
-    next_agent: Literal[
-        "research",
-        "analysis",
-        "coder",
-        "ml",
-        "dl",
-        "report",
-        "tool_builder",
-        "protein_design",
-        "critic",
-        "FINISH",
-    ] = state.get("next", "FINISH")
+    next_agent = state.get("next", "FINISH")
     return "summary" if next_agent == "FINISH" else next_agent
 
 
@@ -159,18 +228,21 @@ def create_graph(_initialize_references: bool = True):
     """
     Create and compile the multi-agent LangGraph workflow.
 
-    The workflow uses a supervisor pattern where:
-    1. Supervisor routes tasks to specialized agents
-    2. Each agent can use tools and return to supervisor
-    3. Workflow continues until supervisor says FINISH
-    4. Tool Builder can create new tools when existing ones are insufficient
+    Architecture
+    ------------
+    - A **supervisor** routes tasks to specialised agents.
+    - Each agent writes its output to ``state["memory"]`` (shared memory).
+    - The supervisor reads memory to decide next steps.
+    - A **tool_builder** agent can create new tools on the fly.
+    - ``report → summary → END`` is a hard-wired path that cannot loop.
 
     Args:
-        _initialize_references: Whether to initialize the reference manager (reserved for future use)
+        _initialize_references: Reserved for future use; no-op currently.
 
     Returns:
-        A compiled StateGraph ready for execution
+        A compiled ``StateGraph`` ready for execution.
     """
+    # ── Tool lists ────────────────────────────────────────────────────────────
     research_tools = [
         fetch_uniprot_fasta,
         tool_universe_find_tools,
@@ -180,6 +252,7 @@ def create_graph(_initialize_references: bool = True):
         fetch_alphafold_structure,
         fetch_pdb_structure,
         download_structure_file,
+        search_local_papers_with_paperqa,  # ← added in shared-memory-paperqa branch
     ]
     analysis_tools = [
         calculate_molecular_weight,
@@ -189,6 +262,7 @@ def create_graph(_initialize_references: bool = True):
     tool_builder_tools = get_tool_builder_tools()
     protein_design_tools = get_all_protein_design_tools()
 
+    # ── Agent creation ────────────────────────────────────────────────────────
     research_agent = create_research_agent(research_tools)
     analysis_agent = create_analysis_agent(analysis_tools)
     report_agent = create_report_agent()
@@ -199,7 +273,7 @@ def create_graph(_initialize_references: bool = True):
     dl_agent = create_dl_agent()
     dl_node_func = create_dl_node(dl_agent)
     tool_builder_agent = create_tool_builder_agent()
-    protein_design_agent = create_protein_design_agent()
+    protein_design_agent = create_protein_design_agent(protein_design_tools)
     critic_agent = create_critic_agent()
 
     members = [
@@ -216,14 +290,16 @@ def create_graph(_initialize_references: bool = True):
     supervisor_agent = create_supervisor_agent(members)
     summary_agent = create_summary_agent()
 
+    # ── Tool nodes ────────────────────────────────────────────────────────────
     research_tool_node = ToolNode(research_tools)
     analysis_tool_node = ToolNode(analysis_tools)
     tool_builder_tool_node = ToolNode(tool_builder_tools)
     protein_design_tool_node = ToolNode(protein_design_tools)
 
+    # ── Graph construction ────────────────────────────────────────────────────
     workflow = StateGraph(AgentState)
 
-    # Wrap supervisor with agent_node for consistent ACE tracking
+    # Nodes — all wrapped with agent_node for uniform memory writes + ACE tracking
     workflow.add_node("supervisor", partial(agent_node, agent=supervisor_agent, name="Supervisor"))
     workflow.add_node("research", partial(agent_node, agent=research_agent, name="Research"))
     workflow.add_node("analysis", partial(agent_node, agent=analysis_agent, name="Analysis"))
@@ -232,22 +308,26 @@ def create_graph(_initialize_references: bool = True):
     workflow.add_node("dl", partial(agent_node, agent=dl_node_func, name="DL"))
     workflow.add_node("report", partial(agent_node, agent=report_agent, name="Report"))
     workflow.add_node(
-        "tool_builder", partial(agent_node, agent=tool_builder_agent, name="ToolBuilder")
+        "tool_builder",
+        partial(agent_node, agent=tool_builder_agent, name="tool_builder"),
     )
     workflow.add_node(
-        "protein_design", partial(agent_node, agent=protein_design_agent, name="ProteinDesign")
+        "protein_design",
+        partial(agent_node, agent=protein_design_agent, name="protein_design"),
     )
     workflow.add_node("critic", partial(agent_node, agent=critic_agent, name="Critic"))
     workflow.add_node("summary", partial(agent_node, agent=summary_agent, name="Summary"))
 
+    # Tool-executor nodes (LangGraph ToolNode, not agent_node)
     workflow.add_node("research_tools", research_tool_node)
     workflow.add_node("analysis_tools", analysis_tool_node)
     workflow.add_node("tool_builder_tools", tool_builder_tool_node)
     workflow.add_node("protein_design_tools", protein_design_tool_node)
 
+    # Entry point
     workflow.set_entry_point("supervisor")
 
-    # Add edges from supervisor to agents
+    # ── Supervisor → agents ───────────────────────────────────────────────────
     workflow.add_conditional_edges(
         "supervisor",
         route_supervisor,
@@ -265,77 +345,58 @@ def create_graph(_initialize_references: bool = True):
         },
     )
 
-    # Research agent can use tools or go back to supervisor
+    # ── Agents with tool edges ────────────────────────────────────────────────
     workflow.add_conditional_edges(
         "research",
         should_continue_to_tools,
-        {
-            "tools": "research_tools",
-            "supervisor": "supervisor",
-        },
+        {"tools": "research_tools", "supervisor": "supervisor"},
     )
 
-    # Analysis agent can use tools or go back to supervisor
     workflow.add_conditional_edges(
         "analysis",
         should_continue_to_tools,
-        {
-            "tools": "analysis_tools",
-            "supervisor": "supervisor",
-        },
+        {"tools": "analysis_tools", "supervisor": "supervisor"},
     )
 
-    # Tool Builder agent can use tools or go back to supervisor
-    def should_continue_to_tool_builder_tools(
-        state: AgentState,
-    ) -> Literal["tools", "supervisor"]:
-        """Check if tool builder needs to use its tools."""
+    def _should_use_tool_builder_tools(state: AgentState) -> Literal["tools", "supervisor"]:
         messages = state["messages"]
-        last_message = messages[-1]
-        if hasattr(last_message, "tool_calls") and last_message.tool_calls:
+        last = messages[-1] if messages else None
+        if last and hasattr(last, "tool_calls") and last.tool_calls:
             return "tools"
         return "supervisor"
 
     workflow.add_conditional_edges(
         "tool_builder",
-        should_continue_to_tool_builder_tools,
-        {
-            "tools": "tool_builder_tools",
-            "supervisor": "supervisor",
-        },
+        _should_use_tool_builder_tools,
+        {"tools": "tool_builder_tools", "supervisor": "supervisor"},
     )
 
-    workflow.add_edge("coder", "supervisor")
-    workflow.add_edge("ml", "supervisor")
-    workflow.add_edge("dl", "supervisor")
-
-    # Protein Design agent can use tools or go back to supervisor
-    def should_continue_to_protein_design_tools(
-        state: AgentState,
-    ) -> Literal["tools", "supervisor"]:
-        """Check if protein design agent needs to use its tools."""
+    def _should_use_protein_design_tools(state: AgentState) -> Literal["tools", "supervisor"]:
         messages = state["messages"]
-        last_message = messages[-1]
-        if hasattr(last_message, "tool_calls") and last_message.tool_calls:
+        last = messages[-1] if messages else None
+        if last and hasattr(last, "tool_calls") and last.tool_calls:
             return "tools"
         return "supervisor"
 
     workflow.add_conditional_edges(
         "protein_design",
-        should_continue_to_protein_design_tools,
-        {
-            "tools": "protein_design_tools",
-            "supervisor": "supervisor",
-        },
+        _should_use_protein_design_tools,
+        {"tools": "protein_design_tools", "supervisor": "supervisor"},
     )
+
+    # ── Direct edges ──────────────────────────────────────────────────────────
+    workflow.add_edge("coder", "supervisor")
+    workflow.add_edge("ml", "supervisor")
+    workflow.add_edge("dl", "supervisor")
+    workflow.add_edge("critic", "supervisor")
 
     workflow.add_edge("research_tools", "research")
     workflow.add_edge("analysis_tools", "analysis")
     workflow.add_edge("tool_builder_tools", "tool_builder")
     workflow.add_edge("protein_design_tools", "protein_design")
-    workflow.add_edge("critic", "supervisor")
 
-    workflow.add_edge("report", "supervisor")
+    # ── report → summary → END  (hard-wired; prevents supervisor re-routing) ──
+    workflow.add_edge("report", "summary")
     workflow.add_edge("summary", END)
 
     return workflow.compile()

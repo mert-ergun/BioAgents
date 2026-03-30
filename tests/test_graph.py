@@ -47,12 +47,13 @@ class TestAgentNode:
         mock_response = AIMessage(content="Response")
         mock_agent.return_value = {"messages": [mock_response]}
 
-        state = {"messages": [HumanMessage(content="Test")]}
+        state = {"messages": [HumanMessage(content="Test")], "memory": {}}
         result = agent_node(state, mock_agent, "TestAgent")
 
         assert "messages" in result
-        assert len(result["messages"]) == 1
-        assert result["messages"][0].name == "TestAgent"
+        assert len(result["messages"]) == 2
+        assert result["messages"][0].name == "testagent"
+        assert "[COMPLETED]" in result["messages"][1].content
         mock_agent.assert_called_once_with(state)
 
     def test_agent_node_multiple_messages(self):
@@ -64,19 +65,19 @@ class TestAgentNode:
         ]
         mock_agent.return_value = {"messages": messages}
 
-        state = {"messages": [HumanMessage(content="Test")]}
+        state = {"messages": [HumanMessage(content="Test")], "memory": {}}
         result = agent_node(state, mock_agent, "TestAgent")
 
-        assert len(result["messages"]) == 2
+        assert len(result["messages"]) == 3
         for msg in result["messages"]:
-            assert msg.name == "TestAgent"
+            assert msg.name == "testagent"
 
     def test_agent_node_empty_messages(self):
         """Test agent_node with empty messages."""
         mock_agent = Mock()
         mock_agent.return_value = {"messages": []}
 
-        state = {"messages": [HumanMessage(content="Test")]}
+        state = {"messages": [HumanMessage(content="Test")], "memory": {}}
         result = agent_node(state, mock_agent, "TestAgent")
 
         assert result["messages"] == []

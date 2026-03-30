@@ -1,11 +1,9 @@
 """Coder Agent for generating and executing code via Jupyter notebooks."""
 
 import logging
-import re
 from collections.abc import Callable
 from typing import Any
 
-from langchain_core.messages import AIMessage
 from smolagents import CodeAgent, Tool
 
 from bioagents.llms.adapters import LangChainModelAdapter
@@ -73,6 +71,12 @@ def create_coder_node(agent: CodeAgent) -> Callable:
     """
     Create the Coder Agent node function.
 
+    Wraps the smolagents CodeAgent so it:
+    - Extracts task context from graph state
+    - Executes code in the Jupyter sandbox
+    - Returns a shared-memory-compatible dict
+      {"data": {...}, "raw_output": str, "tool_calls": [...], "error": str|None}
+
     Args:
         agent: The CodeAgent instance to wrap
 
@@ -94,52 +98,55 @@ def create_coder_node(agent: CodeAgent) -> Callable:
             result = agent.run(task)
             content = format_coder_result(result)
 
+            # Collect execution steps for the audit trail
             execution_steps: list[dict[str, Any]] = []
             for step in agent.memory.steps:
                 if hasattr(step, "task"):
+                    # TaskStep — skip, it's just the prompt
                     continue
-
-                step_data: dict[str, Any] = {
-                    "step": len(execution_steps) + 1,
-                }
-
-                if hasattr(step, "thought") and step.thought:
-                    step_data["thought"] = step.thought
-                elif hasattr(step, "model_output") and step.model_output:
-                    thought = step.model_output
-
-                    thought = re.sub(r"```python\n[\s\S]*?```", "", thought).strip()
-                    if thought:
-                        step_data["thought"] = thought
-
-                if hasattr(step, "code") and step.code:
-                    step_data["code"] = step.code
-                elif hasattr(step, "model_output") and step.model_output:
-                    code_match = re.search(r"```python\n([\s\S]*?)```", step.model_output)
-                    if code_match:
-                        step_data["code"] = code_match.group(1)
-
+                step_info: dict[str, Any] = {}
+                if hasattr(step, "tool_calls") and step.tool_calls:
+                    step_info["tool_calls"] = [
+                        {
+                            "tool": tc.name,
+                            "args": tc.arguments,
+                            "result": getattr(tc, "result", None),
+                        }
+                        for tc in step.tool_calls
+                    ]
                 if hasattr(step, "observations") and step.observations:
-                    step_data["output"] = str(step.observations)
+                    step_info["observations"] = str(step.observations)
+                if step_info:
+                    execution_steps.append(step_info)
 
-                if hasattr(step, "logs") and step.logs:
-                    step_data["logs"] = step.logs
-
-                if any(k in step_data for k in ["thought", "code", "output", "logs"]):
-                    execution_steps.append(step_data)
-
-            logger.info(f"Extracted {len(execution_steps)} execution steps")
+            structured_data = {
+                "code": content,
+                "language": "python",
+                "description": f"Code execution result for: {original_query}",
+                "execution_steps": execution_steps,
+                "execution_ready": True,
+            }
 
             return {
-                "messages": [AIMessage(content=content)],
-                "next": "supervisor",
-                "code_steps": execution_steps,
+                "data": structured_data,
+                "raw_output": content,
+                "tool_calls": execution_steps,
+                "error": None,
             }
-        except Exception as e:
-            import traceback
 
-            error_msg = f"Error executing code: {e}\n\nTraceback:\n{traceback.format_exc()}"
-            logger.error(f"Coder agent error: {error_msg}")
-            return {"messages": [AIMessage(content=error_msg)], "next": "supervisor"}
+        except Exception as e:
+            logger.error(f"Coder agent error: {e}", exc_info=True)
+            return {
+                "data": {
+                    "code": "",
+                    "language": "python",
+                    "description": "Execution failed",
+                    "execution_steps": [],
+                    "execution_ready": False,
+                },
+                "raw_output": str(e),
+                "tool_calls": [],
+                "error": str(e),
+            }
 
     return coder_node
