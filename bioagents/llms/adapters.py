@@ -4,6 +4,42 @@ from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
 from smolagents import ChatMessage, MessageRole, Model
 
+# smolagents CodeAgent passes the markdown closing fence as a stop sequence. That halts
+# generation at the *first* "```" in the stream — including inside Python docstrings or
+# strings — truncating code and causing parse/retry loops and huge malformed outputs.
+_CODE_AGENT_FENCE_STOPS = frozenset({"```", "\n```", "```\n"})
+
+
+def _sanitize_codeagent_stop_sequences(stop_sequences: list[str] | None) -> list[str] | None:
+    if not stop_sequences:
+        return stop_sequences
+    filtered = [s for s in stop_sequences if s not in _CODE_AGENT_FENCE_STOPS]
+    return filtered if filtered else None
+
+
+_MAX_NONPRODUCTIVE = 3
+
+
+def _is_nonproductive(content: str | None) -> bool:
+    """Detect empty or essentially-empty LLM responses.
+
+    Catches truly empty content, whitespace-only, and responses that are just
+    echoed fallback text without a valid python code block.
+    """
+    if content is None:
+        return True
+    if not isinstance(content, str):
+        return False
+    stripped = content.strip()
+    if not stripped:
+        return True
+    if "```python" in stripped:
+        return False
+    # Short responses without a code block are non-productive
+    if len(stripped) < 200:
+        return True
+    return False
+
 
 class LangChainModelAdapter(Model):
     """Adapter to use LangChain models with smolagents."""
@@ -11,6 +47,7 @@ class LangChainModelAdapter(Model):
     def __init__(self, langchain_model: BaseChatModel, **kwargs):
         super().__init__(**kwargs)
         self.langchain_model = langchain_model
+        self._nonproductive_count = 0
 
     def generate(
         self,
@@ -19,6 +56,8 @@ class LangChainModelAdapter(Model):
         **kwargs,
     ) -> ChatMessage:
         langchain_messages = self._convert_messages(messages)
+
+        stop_sequences = _sanitize_codeagent_stop_sequences(stop_sequences)
 
         if stop_sequences:
             try:
@@ -39,12 +78,27 @@ class LangChainModelAdapter(Model):
                     text_content += part
             content = text_content
 
-        # WORKAROUND for smolagents bug #1896: Handle None/empty content caused by stop_sequences
-        # This prevents empty steps that cause parsing errors
-        if content is None or (isinstance(content, str) and not content.strip()):
-            # CRITICAL: Don't return None or empty string - these cause parse_code_blobs to fail
-            # Return a message that will trigger a proper error that CodeAgent can handle gracefully
-            content = "Error: Model returned empty content. This may be caused by stop_sequences cutting the response. Please retry with a different approach."
+        if _is_nonproductive(content):
+            self._nonproductive_count += 1
+            if self._nonproductive_count >= _MAX_NONPRODUCTIVE:
+                content = (
+                    "Thoughts: The model returned empty/non-productive content "
+                    f"{self._nonproductive_count} times. Finishing with available results.\n"
+                    "```python\n"
+                    'final_answer("Task could not be completed: '
+                    'the model returned empty responses repeatedly.")\n'
+                    "```"
+                )
+            else:
+                content = (
+                    "Thoughts: The previous model call returned empty content. "
+                    "I will retry with a simpler approach.\n"
+                    "```python\n"
+                    'print("Previous LLM call returned empty. Reassessing the task.")\n'
+                    "```"
+                )
+        else:
+            self._nonproductive_count = 0
 
         return ChatMessage(role=MessageRole.ASSISTANT, content=content, raw=response)
 

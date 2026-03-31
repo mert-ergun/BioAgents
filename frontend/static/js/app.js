@@ -7,9 +7,10 @@
 // CONFIGURATION
 // =====================================================
 
+const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
 const CONFIG = {
     apiBaseUrl: window.location.origin,
-    wsUrl: `ws://${window.location.host}/ws`,
+    wsUrl: `${wsProtocol}//${window.location.host}/ws`,
     reconnectDelay: 3000,
     maxReconnectAttempts: 5,
     storageKey: 'bioagents_sessions',
@@ -17,16 +18,35 @@ const CONFIG = {
 
 // Agent configuration
 const AGENTS = {
-    supervisor: { label: 'Orchestrator', icon: 'alt_route', color: 'slate', description: 'Routing tasks...' },
-    research: { label: 'LitSearcher', icon: 'menu_book', color: 'blue', description: 'Searching literature...' },
-    analysis: { label: 'Analyzer', icon: 'analytics', color: 'emerald', description: 'Analyzing data...' },
-    coder: { label: 'CodeGen', icon: 'code', color: 'amber', description: 'Generating code...' },
-    report: { label: 'Reporter', icon: 'description', color: 'pink', description: 'Writing report...' },
-    tool_builder: { label: 'ToolBuilder', icon: 'build', color: 'indigo', description: 'Building tools...' },
-    protein_design: { label: 'ProteinFolder', icon: 'polymer', color: 'primary', description: 'Folding protein...' },
-    critic: { label: 'Validator', icon: 'fact_check', color: 'rose', description: 'Validating results...' },
-    ml: { label: 'ML-Expert', icon: 'psychology', color: 'purple', description: 'Training ML model...', isTraining: true },
-    dl: { label: 'DL-Specialist', icon: 'memory', color: 'cyan', description: 'Designing neural network...', isTraining: true },
+    supervisor: { label: 'Orchestrator', icon: 'alt_route', color: 'slate', description: 'Routing tasks...', category: 'Core' },
+    research: { label: 'LitSearcher', icon: 'menu_book', color: 'blue', description: 'Searching literature...', category: 'Research' },
+    analysis: { label: 'Analyzer', icon: 'analytics', color: 'emerald', description: 'Analyzing data...', category: 'Computation' },
+    coder: { label: 'CodeGen', icon: 'code', color: 'amber', description: 'Generating code...', category: 'Computation' },
+    report: { label: 'Reporter', icon: 'description', color: 'pink', description: 'Writing report...', category: 'Quality' },
+    tool_builder: { label: 'ToolBuilder', icon: 'build', color: 'indigo', description: 'Building tools...', category: 'Meta' },
+    protein_design: { label: 'ProteinFolder', icon: 'polymer', color: 'primary', description: 'Folding protein...', category: 'Domain' },
+    critic: { label: 'Validator', icon: 'fact_check', color: 'rose', description: 'Validating results...', category: 'Quality' },
+    ml: { label: 'ML-Expert', icon: 'psychology', color: 'purple', description: 'Training ML model...', isTraining: true, category: 'Computation' },
+    dl: { label: 'DL-Specialist', icon: 'memory', color: 'cyan', description: 'Designing neural network...', isTraining: true, category: 'Computation' },
+    summary: { label: 'Summarizer', icon: 'summarize', color: 'pink', description: 'Summarizing results...', category: 'Quality' },
+    literature: { label: 'Literature', icon: 'library_books', color: 'blue', description: 'Searching papers...', category: 'Research' },
+    web_browser: { label: 'WebBrowser', icon: 'travel_explore', color: 'sky', description: 'Browsing web...', category: 'Research' },
+    paper_replication: { label: 'PaperReplicator', icon: 'content_copy', color: 'teal', description: 'Replicating paper...', category: 'Research' },
+    data_acquisition: { label: 'DataAcquirer', icon: 'download', color: 'green', description: 'Downloading data...', category: 'Research' },
+    genomics: { label: 'Genomics', icon: 'genetics', color: 'lime', description: 'Analyzing sequences...', category: 'Domain' },
+    transcriptomics: { label: 'Transcriptomics', icon: 'biotech', color: 'yellow', description: 'Analyzing expression...', category: 'Domain' },
+    structural_biology: { label: 'StructBio', icon: 'view_in_ar', color: 'orange', description: 'Analyzing structures...', category: 'Domain' },
+    phylogenetics: { label: 'Phylogenetics', icon: 'park', color: 'green', description: 'Building trees...', category: 'Domain' },
+    docking: { label: 'Docking', icon: 'hub', color: 'red', description: 'Docking molecules...', category: 'Domain' },
+    planner: { label: 'Planner', icon: 'checklist', color: 'violet', description: 'Planning tasks...', category: 'Meta' },
+    tool_validator: { label: 'ToolValidator', icon: 'verified', color: 'emerald', description: 'Validating tools...', category: 'Meta' },
+    tool_discovery: { label: 'ToolDiscovery', icon: 'search', color: 'blue', description: 'Discovering tools...', category: 'Meta' },
+    prompt_optimizer: { label: 'PromptOptimizer', icon: 'tune', color: 'amber', description: 'Optimizing prompts...', category: 'Meta' },
+    result_checker: { label: 'ResultChecker', icon: 'rule', color: 'rose', description: 'Checking results...', category: 'Meta' },
+    shell: { label: 'Shell', icon: 'terminal', color: 'slate', description: 'Running commands...', category: 'Infrastructure' },
+    git: { label: 'Git', icon: 'commit', color: 'orange', description: 'Managing repos...', category: 'Infrastructure' },
+    environment: { label: 'Environment', icon: 'settings_applications', color: 'teal', description: 'Setting up environment...', category: 'Infrastructure' },
+    visualization: { label: 'Visualizer', icon: 'bar_chart', color: 'fuchsia', description: 'Creating plots...', category: 'Infrastructure' },
 };
 
 // =====================================================
@@ -1008,7 +1028,7 @@ async function handleSubmit() {
     try {
         const apiKeys = getApiKeysPayload();
         if (state.isConnected && state.ws?.readyState === WebSocket.OPEN) {
-            state.ws.send(JSON.stringify({ type: 'query', content: query, api_keys: apiKeys }));
+            state.ws.send(JSON.stringify({ type: 'query', content: query, api_keys: apiKeys, session_id: state.currentSessionId }));
         } else {
             await sendQueryViaRest(query, apiKeys);
         }
@@ -2005,7 +2025,6 @@ function initSidebarNavigation() {
             link.classList.add('bg-primary/20', 'border', 'border-primary/20', 'text-primary');
             link.classList.remove('text-text-subtle');
 
-            // Handle navigation
             const text = link.textContent.trim();
             if (text.includes('History')) {
                 showHistoryPanel();
@@ -2013,6 +2032,10 @@ function initSidebarNavigation() {
                 showAgentLibrary();
             } else if (text.includes('Project Index')) {
                 showProjectIndex();
+            } else if (text.includes('Tool Registry')) {
+                showToolRegistry();
+            } else if (text.includes('Sandbox Terminal')) {
+                showSandboxTerminal();
             }
         });
     });
@@ -2145,33 +2168,46 @@ function showAgentLibrary() {
     const modal = document.createElement('div');
     modal.className = 'fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm';
 
-    const agentsHtml = Object.entries(AGENTS).map(([id, agent]) => {
-        const colorClass = getColorClass(agent.color);
-        return `
-            <div class="flex items-center gap-3 p-3 rounded-lg border border-white/5 bg-surface-card/50 hover:border-primary/30 transition-all">
-                <div class="h-10 w-10 rounded-lg ${colorClass.bg} flex items-center justify-center border ${colorClass.border}">
-                    <span class="material-symbols-outlined ${colorClass.text}">${agent.icon}</span>
+    const categories = {};
+    Object.entries(AGENTS).forEach(([id, agent]) => {
+        const cat = agent.category || 'Other';
+        if (!categories[cat]) categories[cat] = [];
+        categories[cat].push({ id, ...agent });
+    });
+
+    let agentsHtml = '';
+    for (const [category, agents] of Object.entries(categories)) {
+        agentsHtml += `<h4 class="text-xs font-bold text-slate-400 uppercase tracking-wider mt-3 mb-2">${category} (${agents.length})</h4>`;
+        agentsHtml += agents.map(agent => {
+            const colorClass = getColorClass(agent.color);
+            return `
+                <div class="flex items-center gap-3 p-3 rounded-lg border border-white/5 bg-surface-card/50 hover:border-primary/30 transition-all">
+                    <div class="h-10 w-10 rounded-lg ${colorClass.bg} flex items-center justify-center border ${colorClass.border}">
+                        <span class="material-symbols-outlined ${colorClass.text}">${agent.icon}</span>
+                    </div>
+                    <div class="flex-1">
+                        <p class="text-sm font-bold text-white">${agent.label}</p>
+                        <p class="text-xs text-slate-400">${agent.description}</p>
+                    </div>
+                    <span class="text-[10px] px-2 py-0.5 rounded-full bg-white/5 text-slate-400">${agent.id}</span>
                 </div>
-                <div class="flex-1">
-                    <p class="text-sm font-bold text-white">${agent.label}</p>
-                    <p class="text-xs text-slate-400">${agent.description}</p>
-                </div>
-            </div>
-        `;
-    }).join('');
+            `;
+        }).join('');
+    }
 
     modal.innerHTML = `
-        <div class="bg-surface-dark border border-white/10 rounded-xl shadow-2xl w-full max-w-lg mx-4 overflow-hidden animate-fadeIn">
+        <div class="bg-surface-dark border border-white/10 rounded-xl shadow-2xl w-full max-w-2xl mx-4 overflow-hidden animate-fadeIn">
             <div class="flex items-center justify-between p-4 border-b border-white/5">
                 <h3 class="text-lg font-bold text-white flex items-center gap-2">
                     <span class="material-symbols-outlined text-primary">smart_toy</span>
                     Agent Library
+                    <span class="text-xs font-normal text-slate-400 ml-2">${Object.keys(AGENTS).length} agents</span>
                 </h3>
                 <button class="modal-close p-1.5 text-slate-400 hover:text-white hover:bg-white/10 rounded-lg transition-all">
                     <span class="material-symbols-outlined">close</span>
                 </button>
             </div>
-            <div class="max-h-96 overflow-y-auto custom-scrollbar p-4 grid gap-3">
+            <div class="max-h-[70vh] overflow-y-auto custom-scrollbar p-4 grid gap-2">
                 ${agentsHtml}
             </div>
         </div>
@@ -2216,6 +2252,121 @@ function showProjectIndex() {
             </div>
             <div class="max-h-96 overflow-y-auto custom-scrollbar p-4 grid gap-2">
                 ${artifactsHtml}
+            </div>
+        </div>
+    `;
+
+    document.body.appendChild(modal);
+    modal.querySelector('.modal-close')?.addEventListener('click', () => modal.remove());
+    modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
+}
+
+async function showToolRegistry() {
+    const modal = document.createElement('div');
+    modal.className = 'fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm';
+
+    let toolsHtml = '<p class="text-center py-8 text-slate-400">Loading tools...</p>';
+
+    try {
+        const res = await fetch(`${CONFIG.apiBaseUrl}/api/tools/registry`);
+        const data = await res.json();
+        if (data.tools && data.tools.length > 0) {
+            toolsHtml = data.tools.map(t => `
+                <div class="flex items-center gap-3 p-3 rounded-lg border border-white/5 bg-surface-card/50">
+                    <div class="h-10 w-10 rounded-lg bg-indigo-500/10 flex items-center justify-center border border-indigo-500/20">
+                        <span class="material-symbols-outlined text-indigo-400">extension</span>
+                    </div>
+                    <div class="flex-1">
+                        <p class="text-sm font-bold text-white">${escapeHtml(t.name || t)}</p>
+                        <p class="text-xs text-slate-400">${escapeHtml(t.description || 'Custom tool')}</p>
+                    </div>
+                </div>
+            `).join('');
+        } else {
+            toolsHtml = '<p class="text-center py-8 text-slate-400">No custom tools registered yet</p>';
+        }
+    } catch (e) {
+        toolsHtml = '<p class="text-center py-8 text-slate-400">Could not load tool registry</p>';
+    }
+
+    const builtInHtml = Object.entries(AGENTS)
+        .filter(([, a]) => a.category !== 'Core')
+        .map(([id, agent]) => {
+            const colorClass = getColorClass(agent.color);
+            return `
+                <div class="flex items-center gap-3 p-2 rounded-lg border border-white/5 bg-surface-card/30">
+                    <span class="material-symbols-outlined text-sm ${colorClass.text}">${agent.icon}</span>
+                    <span class="text-xs text-white font-medium">${agent.label}</span>
+                    <span class="text-[10px] text-slate-500 ml-auto">${agent.category}</span>
+                </div>
+            `;
+        }).join('');
+
+    modal.innerHTML = `
+        <div class="bg-surface-dark border border-white/10 rounded-xl shadow-2xl w-full max-w-2xl mx-4 overflow-hidden animate-fadeIn">
+            <div class="flex items-center justify-between p-4 border-b border-white/5">
+                <h3 class="text-lg font-bold text-white flex items-center gap-2">
+                    <span class="material-symbols-outlined text-primary">extension</span>
+                    Tool Registry
+                </h3>
+                <button class="modal-close p-1.5 text-slate-400 hover:text-white hover:bg-white/10 rounded-lg transition-all">
+                    <span class="material-symbols-outlined">close</span>
+                </button>
+            </div>
+            <div class="max-h-[70vh] overflow-y-auto custom-scrollbar p-4">
+                <h4 class="text-sm font-bold text-slate-300 mb-3">Custom Tools</h4>
+                <div class="grid gap-3 mb-6">${toolsHtml}</div>
+                <h4 class="text-sm font-bold text-slate-300 mb-3">Built-in Agent Tools</h4>
+                <div class="grid grid-cols-2 gap-2">${builtInHtml}</div>
+            </div>
+        </div>
+    `;
+
+    document.body.appendChild(modal);
+    modal.querySelector('.modal-close')?.addEventListener('click', () => modal.remove());
+    modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
+}
+
+async function showSandboxTerminal() {
+    const modal = document.createElement('div');
+    modal.className = 'fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm';
+
+    let statusHtml = '<p class="text-slate-400">Loading sandbox status...</p>';
+    try {
+        const res = await fetch(`${CONFIG.apiBaseUrl}/api/sandbox/status`);
+        const data = await res.json();
+        statusHtml = `
+            <div class="grid gap-2 text-sm">
+                <div class="flex justify-between"><span class="text-slate-400">Status:</span><span class="text-emerald-400 font-bold">${data.status}</span></div>
+                <div class="flex justify-between"><span class="text-slate-400">Workspace:</span><span class="text-white font-mono text-xs">${escapeHtml(data.workspace_dir || 'N/A')}</span></div>
+                <div class="flex justify-between"><span class="text-slate-400">Commands Run:</span><span class="text-white">${data.command_history_count || 0}</span></div>
+            </div>
+        `;
+    } catch (e) {
+        statusHtml = '<p class="text-slate-400">Sandbox is not running</p>';
+    }
+
+    modal.innerHTML = `
+        <div class="bg-surface-dark border border-white/10 rounded-xl shadow-2xl w-full max-w-2xl mx-4 overflow-hidden animate-fadeIn">
+            <div class="flex items-center justify-between p-4 border-b border-white/5">
+                <h3 class="text-lg font-bold text-white flex items-center gap-2">
+                    <span class="material-symbols-outlined text-primary">terminal</span>
+                    Sandbox Terminal
+                </h3>
+                <button class="modal-close p-1.5 text-slate-400 hover:text-white hover:bg-white/10 rounded-lg transition-all">
+                    <span class="material-symbols-outlined">close</span>
+                </button>
+            </div>
+            <div class="p-4">
+                <div class="bg-black/50 rounded-lg p-4 border border-white/5 mb-4">
+                    ${statusHtml}
+                </div>
+                <div class="bg-black rounded-lg p-4 font-mono text-sm text-green-400 min-h-[200px] border border-white/10">
+                    <div id="sandbox-output" class="space-y-1">
+                        <p class="text-slate-500">$ # Sandbox terminal - commands run by agents will appear here</p>
+                        <p class="text-slate-500">$ # Use the Shell agent to execute commands</p>
+                    </div>
+                </div>
             </div>
         </div>
     `;

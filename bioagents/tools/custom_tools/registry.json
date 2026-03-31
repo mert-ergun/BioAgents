@@ -1,0 +1,63 @@
+{
+  "version": "1.0",
+  "updated_at": "2026-03-31T20:14:19.373809",
+  "tools": {
+    "analyze_pdb_chain": {
+      "name": "analyze_pdb_chain",
+      "description": "Parses a PDB file, extracts a specified chain, counts VAL and TRP residues (alpha carbons), and calculates the distance between alpha carbons of two specified residues.",
+      "category": "structural",
+      "parameters": [
+        {
+          "name": "pdb_id",
+          "type": "str",
+          "description": "The PDB ID (e.g., '1PC2').",
+          "required": true,
+          "default": null,
+          "enum": null
+        },
+        {
+          "name": "chain_id",
+          "type": "str",
+          "description": "The chain ID to analyze (e.g., 'A').",
+          "required": true,
+          "default": null,
+          "enum": null
+        },
+        {
+          "name": "residue1_spec",
+          "type": "str",
+          "description": "Optional: Specification for the first residue for distance calculation (e.g., 'ASP72'). Format: RESIDUE_NAME_3_LETTER_CODE + RESIDUE_NUMBER.",
+          "required": true,
+          "default": null,
+          "enum": null
+        },
+        {
+          "name": "residue2_spec",
+          "type": "str",
+          "description": "Optional: Specification for the second residue for distance calculation (e.g., 'GLY144'). Format: RESIDUE_NAME_3_LETTER_CODE + RESIDUE_NUMBER.",
+          "required": true,
+          "default": null,
+          "enum": null
+        }
+      ],
+      "return_type": "dict",
+      "return_description": "A dictionary containing the counts of VAL and TRP residues, and the calculated distance if residue specifications are provided.",
+      "source_paper": null,
+      "source_url": null,
+      "source_software": null,
+      "code": "import os\nimport re\nfrom typing import Dict, Any, Optional, Tuple\n\n# Biopython imports\nfrom Bio.PDB import PDBList, PDBParser\nfrom Bio.PDB.MMCIFParser import MMCIFParser\nfrom Bio.PDB.PDBExceptions import PDBConstructionException\n\n# NumPy for distance calculation\nimport numpy as np\n\ndef _parse_residue_spec(spec: str) -> Tuple[str, int]:\n    \"\"\"\n    Parses a residue specification string (e.g., 'ASP72') into its name and number.\n\n    Args:\n        spec (str): The residue specification string.\n\n    Returns:\n        Tuple[str, int]: A tuple containing the 3-letter residue name and its number.\n\n    Raises:\n        ValueError: If the specification format is invalid.\n    \"\"\"\n    match = re.match(r'([A-Z]{3})(\\d+)', spec)\n    if not match:\n        raise ValueError(f\"Invalid residue specification format: '{spec}'. Expected format like 'ASP72'.\")\n    res_name = match.group(1).upper()\n    res_num = int(match.group(2))\n    return res_name, res_num\n\ndef analyze_pdb_chain(\n    pdb_id: str,\n    chain_id: str,\n    residue1_spec: Optional[str] = None,\n    residue2_spec: Optional[str] = None\n) -> Dict[str, Any]:\n    \"\"\"\n    Parses a PDB file, extracts a specified chain, counts VAL and TRP residues (alpha carbons),\n    and calculates the distance between alpha carbons of two specified residues.\n\n    Args:\n        pdb_id (str): The PDB ID (e.g., '1PC2').\n        chain_id (str): The chain ID to analyze (e.g., 'A').\n        residue1_spec (Optional[str]): Specification for the first residue for distance calculation\n                                        (e.g., 'ASP72'). Format: RESIDUE_NAME_3_LETTER_CODE + RESIDUE_NUMBER.\n                                        Required if residue2_spec is provided.\n        residue2_spec (Optional[str]): Specification for the second residue for distance calculation\n                                        (e.g., 'GLY144'). Format: RESIDUE_NAME_3_LETTER_CODE + RESIDUE_NUMBER.\n\n    Returns:\n        Dict[str, Any]: A dictionary containing the counts of VAL and TRP residues, and the calculated distance\n                        if residue specifications are provided.\n\n    Raises:\n        ValueError: If input parameters are invalid or required residues are not found.\n        RuntimeError: If PDB file cannot be downloaded or parsed, or if Biopython is not installed.\n\n    Example:\n        >>> # To count VAL and TRP residues in chain A of 1PC2\n        >>> analyze_pdb_chain(pdb_id='1PC2', chain_id='A')\n        {'val_count': 10, 'trp_count': 2, 'distance_angstroms': None}\n\n        >>> # To count VAL and TRP and calculate distance between ASP72 and GLY144 in chain A of 1PC2\n        >>> analyze_pdb_chain(pdb_id='1PC2', chain_id='A', residue1_spec='ASP72', residue2_spec='GLY144')\n        {'val_count': 10, 'trp_count': 2, 'distance_angstroms': 15.78}\n    \"\"\"\n    if (residue1_spec and not residue2_spec) or (not residue1_spec and residue2_spec):\n        raise ValueError(\"Both 'residue1_spec' and 'residue2_spec' must be provided for distance calculation.\")\n\n    # Initialize PDBList to download PDB files\n    pdbl = PDBList()\n    pdb_file = None\n    try:\n        # Attempt to download PDB file. By default, it downloads to current directory.\n        # We'll try to find it in the current directory or a 'pdb' subdirectory.\n        pdb_file_path = pdbl.retrieve_pdb_file(pdb_id, pdir='.', file_format='pdb')\n        if not os.path.exists(pdb_file_path):\n            # Try .cif format if .pdb fails\n            pdb_file_path = pdbl.retrieve_pdb_file(pdb_id, pdir='.', file_format='cif')\n            if not os.path.exists(pdb_file_path):\n                raise RuntimeError(f\"Could not download PDB or CIF file for {pdb_id}.\")\n\n        # Determine parser based on file extension\n        if pdb_file_path.endswith('.pdb'):\n            parser = PDBParser(QUIET=True)\n        elif pdb_file_path.endswith('.cif'):\n            parser = MMCIFParser(QUIET=True)\n        else:\n            raise RuntimeError(f\"Unsupported file format for {pdb_id}: {pdb_file_path}\")\n\n        structure = parser.get_structure(pdb_id, pdb_file_path)\n    except PDBConstructionException as e:\n        raise RuntimeError(f\"Error parsing PDB file {pdb_id}: {e}\")\n    except Exception as e:\n        raise RuntimeError(f\"Failed to retrieve or parse PDB file {pdb_id}: {e}\")\n\n    val_count = 0\n    trp_count = 0\n    ca_atom_res1 = None\n    ca_atom_res2 = None\n\n    target_res1_name, target_res1_num = (None, None)\n    target_res2_name, target_res2_num = (None, None)\n\n    if residue1_spec and residue2_spec:\n        target_res1_name, target_res1_num = _parse_residue_spec(residue1_spec)\n        target_res2_name, target_res2_num = _parse_residue_spec(residue2_spec)\n\n    found_chain = False\n    for model in structure:\n        for chain in model:\n            if chain.id == chain_id:\n                found_chain = True\n                for residue in chain:\n                    # Biopython residue ID is a tuple: (hetero_flag, residue_number, insertion_code)\n                    res_id = residue.get_id()\n                    res_name = residue.get_resname()\n                    res_num = res_id[1]\n\n                    # Count VAL and TRP alpha carbons\n                    if res_name == 'VAL' and 'CA' in residue:\n                        val_count += 1\n                    elif res_name == 'TRP' and 'CA' in residue:\n                        trp_count += 1\n\n                    # Find alpha carbons for specified residues for distance calculation\n                    if target_res1_name and target_res1_num and res_name == target_res1_name and res_num == target_res1_num:\n                        if 'CA' in residue:\n                            ca_atom_res1 = residue['CA']\n                        else:\n                            raise ValueError(f\"Alpha carbon not found for {residue1_spec} in chain {chain_id}.\")\n                    if target_res2_name and target_res2_num and res_name == target_res2_name and res_num == target_res2_num:\n                        if 'CA' in residue:\n                            ca_atom_res2 = residue['CA']\n                        else:\n                            raise ValueError(f\"Alpha carbon not found for {residue2_spec} in chain {chain_id}.\")\n                break # Chain found, no need to iterate further in this model\n        if found_chain:\n            break # Chain found, no need to iterate further in other models\n\n    if not found_chain:\n        raise ValueError(f\"Chain '{chain_id}' not found in PDB ID '{pdb_id}'.\")\n\n    distance_angstroms = None\n    if ca_atom_res1 is not None and ca_atom_res2 is not None:\n        distance_angstroms = np.linalg.norm(ca_atom_res1.get_coord() - ca_atom_res2.get_coord())\n    elif (residue1_spec and residue2_spec) and (ca_atom_res1 is None or ca_atom_res2 is None):\n        raise ValueError(f\"Could not find both specified residues ({residue1_spec}, {residue2_spec}) in chain {chain_id}.\")\n\n    # Clean up downloaded PDB file\n    if pdb_file_path and os.path.exists(pdb_file_path):\n        os.remove(pdb_file_path)\n        # Also remove the directory if it's empty and was created by PDBList\n        pdb_dir = os.path.dirname(pdb_file_path)\n        if pdb_dir and pdb_dir != '.' and not os.listdir(pdb_dir):\n            os.rmdir(pdb_dir)\n\n    return {\n        'val_count': val_count,\n        'trp_count': trp_count,\n        'distance_angstroms': distance_angstroms\n    }\n",
+      "dependencies": [
+        "biopython",
+        "numpy"
+      ],
+      "system_dependencies": [],
+      "created_at": "2026-03-31T20:14:19.373618",
+      "updated_at": "2026-03-31T20:14:19.373806",
+      "version": "1.0.0",
+      "validated": false,
+      "validation_error": null,
+      "usage_count": 0,
+      "last_used": null
+    }
+  }
+}

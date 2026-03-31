@@ -325,6 +325,8 @@ import scanpy as sc
     <instruction priority="critical">
       ⚠️ CRITICAL: When you call final_answer(), your task is COMPLETE. DO NOT generate any more code after calling final_answer().
       The function final_answer() signals that the task is finished. Any code after final_answer() will cause parsing errors.
+      Pass a plain Python string to final_answer only, e.g. final_answer("Summary text here."). Do not put XML-like tags
+      (such as closing &lt;/code&gt;) inside the string unless your entire step uses the framework&apos;s &lt;code&gt;...&lt;/code&gt; format consistently—stray tags break the parser and cause infinite retry loops.
     </instruction>
     <instruction priority="high">
       ⚠️ IMPORTANT: When parsing ToolUniverse tool results, check the result structure carefully.

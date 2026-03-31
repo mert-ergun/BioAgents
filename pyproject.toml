@@ -2,6 +2,16 @@
 requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
+# Use CPU-only PyTorch (no CUDA shared-lib dependencies).
+# Switch to "https://download.pytorch.org/whl/cu126" for GPU support.
+[[tool.uv.index]]
+url = "https://download.pytorch.org/whl/cpu"
+name = "pytorch-cpu"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cpu" }
+
 [project]
 name = "bioagents"
 version = "0.1.0"

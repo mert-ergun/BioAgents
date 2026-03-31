@@ -21,13 +21,30 @@ from fastapi.staticfiles import StaticFiles
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from pydantic import BaseModel
 
-from bioagents.graph import create_graph
+from bioagents.graph import ALL_MEMBERS, create_graph
+from bioagents.graph_streaming import iter_graph_stream
+
+# Graph agent nodes whose assistant output is streamed to the chat (excludes supervisor + *_tools).
+STREAM_UI_AGENTS = frozenset([*ALL_MEMBERS, "summary"])
 from bioagents.llms.llm_provider import set_api_keys_override
 from frontend.workflow_routes import include_workflow_routes
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+
+class _PollFilter(logging.Filter):
+    """Suppress repetitive polling access-log entries."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        msg = record.getMessage()
+        if "GET /api/experiments/runs?limit=" in msg and "200" in msg:
+            return False
+        return True
+
+
+logging.getLogger("uvicorn.access").addFilter(_PollFilter())
 
 # =====================================================
 # APP CONFIGURATION
@@ -100,6 +117,9 @@ class ConnectionManager:
 
 
 manager = ConnectionManager()
+
+# Session-based reference storage: {session_id: ReferenceManager}
+_session_references: dict[str, Any] = {}
 
 # =====================================================
 # ARTIFACT GENERATION
@@ -298,236 +318,6 @@ def extract_metrics_from_content(content: str) -> dict | None:
     return None
 
 
-async def run_bioagents_query(query: str, websocket: WebSocket | None = None):
-    """
-    Execute a BioAgents query and stream results.
-    """
-    from bioagents.references.reference_manager import ReferenceManager
-
-    graph = create_graph()
-
-    # Initialize with reference manager
-    reference_manager = ReferenceManager()
-    initial_state = {
-        "messages": [HumanMessage(content=query)],
-        "references": reference_manager,
-    }
-
-    full_audit = []
-    generated_files = []
-
-    async def send_update(data: dict):
-        if websocket:
-            try:
-                await websocket.send_json(data)
-            except Exception as e:
-                logger.error(f"WebSocket send error: {e}")
-        yield data
-
-    try:
-        # Stream through the graph execution
-        for step in graph.stream(initial_state, {"recursion_limit": 100}):
-            node_name = next(iter(step))
-            node_output = step[node_name]
-
-            # Send agent update
-            await send_update({"type": "agent_update", "agent": node_name}).__anext__()
-
-            # Send a notification that the agent is starting if it's ML or DL
-            if node_name in ["ml", "dl"]:
-                msg = (
-                    "Initializing training environment and loading data..."
-                    if node_name == "ml"
-                    else "Designing neural network architecture and preparing data loaders..."
-                )
-                await send_update(
-                    {"type": "message", "agent": node_name, "content": f"_System: {msg}_"}
-                ).__anext__()
-
-            # Process messages
-            step_messages = []
-            if "messages" in node_output:
-                for m in node_output["messages"]:
-                    msg_info = {
-                        "type": m.__class__.__name__,
-                        "content": m.content if hasattr(m, "content") else str(m),
-                    }
-                    if getattr(m, "additional_kwargs", {}).get("show_ui", True) is False:
-                        continue
-
-                    if hasattr(m, "tool_calls") and m.tool_calls:
-                        msg_info["tool_calls"] = m.tool_calls
-                    step_messages.append(msg_info)
-
-                    # Check for artifacts in content
-                    content = msg_info["content"]
-                    if isinstance(content, str):
-                        # Find PDB files
-                        if ".pdb" in content.lower():
-                            matches = re.findall(
-                                r'(/[^\s\'"]+\.pdb|(?:\.\/)?[^\s\'"]+\.pdb)', content
-                            )
-                            for path_str in matches:
-                                path = Path(path_str)
-                                if path.exists():
-                                    generated_files.append(
-                                        {
-                                            "name": path.name,
-                                            "path": str(path),
-                                            "type": "pdb",
-                                            "size": path.stat().st_size,
-                                        }
-                                    )
-                                    # Send structure update
-                                    try:
-                                        with path.open() as f:
-                                            pdb_content = f.read()
-                                        await send_update(
-                                            {"type": "structure", "pdbContent": pdb_content}
-                                        ).__anext__()
-                                    except Exception as e:
-                                        logger.error(f"Failed to load PDB: {e}")
-
-                        # Find other file types
-                        for ext in [".csv", ".png", ".jpg", ".json", ".txt", ".pdf"]:
-                            if ext in content.lower():
-                                matches = re.findall(
-                                    rf'(/[^\s\'"]+{ext}|(?:\.\/)?[^\s\'"]+{ext}|(?:[a-zA-Z0-9_\-]+/)+[^\s\'"]+{ext})',
-                                    content,
-                                    re.IGNORECASE,
-                                )
-                                for path_str in matches:
-                                    path = Path(path_str)
-                                    if path.exists():
-                                        generated_files.append(
-                                            {
-                                                "name": path.name,
-                                                "path": str(path),
-                                                "type": ext[1:],
-                                                "size": path.stat().st_size,
-                                            }
-                                        )
-                                        await send_update(
-                                            {"type": "artifact", "artifact": generated_files[-1]}
-                                        ).__anext__()
-
-            # Build audit entry
-            audit_entry = {
-                "agent": node_name,
-                "decision": node_output.get("next", "Continue"),
-                "reasoning": node_output.get("reasoning", ""),
-                "messages": step_messages,
-            }
-            full_audit.append(audit_entry)
-
-            # Send audit update
-            await send_update({"type": "audit", "entries": full_audit}).__anext__()
-
-            # Send messages from user-facing agents
-            if (
-                node_name
-                in [
-                    "report",
-                    "critic",
-                    "analysis",
-                    "research",
-                    "protein_design",
-                    "coder",
-                    "tool_builder",
-                    "ml",
-                    "dl",
-                ]
-                and "messages" in node_output
-            ):
-                for m in node_output["messages"]:
-                    # Skip HumanMessages (usually handoffs) and ToolMessages
-                    if (
-                        hasattr(m, "content")
-                        and m.content
-                        and not isinstance(m, (HumanMessage, ToolMessage))
-                        and getattr(m, "additional_kwargs", {}).get("show_ui", True) is not False
-                    ):
-                        content = m.content
-                        if isinstance(content, list):
-                            text_parts = []
-                            for item in content:
-                                if isinstance(item, str):
-                                    text_parts.append(item)
-                                elif isinstance(item, dict) and item.get("type") == "text":
-                                    text_parts.append(item.get("text", ""))
-                            content = "\n\n".join(text_parts)
-                        if content:
-                            # Get references for this message if available
-                            message_refs = []
-                            if reference_manager:
-                                # Get ALL references accumulated so far
-                                all_refs = reference_manager.get_all_references()
-                                if len(all_refs) > 0:
-                                    message_refs = [ref.to_dict() for ref in all_refs]
-                                else:
-                                    # If no references but this looks like a research report, create a synthetic one
-                                    if node_name in ["report", "research"] and len(content) > 500:
-                                        # Extract year mentions to make it more relevant
-                                        import uuid
-
-                                        from bioagents.references.reference_types import (
-                                            PaperReference,
-                                        )
-
-                                        years = re.findall(r"\b(20\d{2})\b", content)
-                                        year_str = (
-                                            f" ({min(years)}-{max(years)})"
-                                            if len(years) > 1
-                                            else f" ({years[0]})"
-                                            if years
-                                            else ""
-                                        )
-
-                                        synth_ref = PaperReference(
-                                            id=f"ref_{uuid.uuid4().hex[:8]}",
-                                            title=f"Scientific Literature Review{year_str}",
-                                            abstract="This response synthesizes information from peer-reviewed literature and scientific databases.",
-                                            url=None,
-                                        )
-                                        reference_manager.add_reference(synth_ref)
-                                        message_refs = [synth_ref.to_dict()]
-
-                            await send_update(
-                                {
-                                    "type": "message",
-                                    "agent": node_name,
-                                    "content": content,
-                                    "references": message_refs,
-                                }
-                            ).__anext__()
-
-                            # Extract metrics
-                            metrics = extract_metrics_from_content(content)
-                            if metrics:
-                                await send_update(
-                                    {"type": "metrics", "metrics": metrics}
-                                ).__anext__()
-
-            # Small delay to prevent overwhelming the client
-            await asyncio.sleep(0.1)
-
-        # Send completion with all references
-        completion_data = {
-            "type": "complete",
-            "artifacts": generated_files,
-            "audit_log": full_audit,
-        }
-        if reference_manager:
-            completion_data["all_references"] = reference_manager.to_dict()
-
-        await send_update(completion_data).__anext__()
-
-    except Exception as e:
-        logger.error(f"BioAgents execution error: {e}")
-        await send_update({"type": "error", "message": str(e)}).__anext__()
-        raise
-
-
 # =====================================================
 # ROUTES
 # =====================================================
@@ -565,7 +355,7 @@ async def query_bioagents(request: QueryRequest):
         full_audit = []
 
         try:
-            for step in graph.stream(initial_state, {"recursion_limit": 100}):
+            for step in iter_graph_stream(graph, initial_state):
                 node_name = next(iter(step))
                 node_output = step[node_name]
 
@@ -628,21 +418,7 @@ async def query_bioagents(request: QueryRequest):
                     yield f"data: {json.dumps({'type': 'code_execution', 'agent': node_name, 'steps': node_output['code_steps']})}\n\n"
 
                 # Send messages
-                if (
-                    node_name
-                    in [
-                        "report",
-                        "critic",
-                        "analysis",
-                        "research",
-                        "protein_design",
-                        "coder",
-                        "tool_builder",
-                        "ml",
-                        "dl",
-                    ]
-                    and "messages" in node_output
-                ):
+                if node_name in STREAM_UI_AGENTS and "messages" in node_output:
                     for m in node_output["messages"]:
                         if (
                             isinstance(m, AIMessage)
@@ -800,9 +576,12 @@ async def websocket_endpoint(websocket: WebSocket):
             if data.get("type") == "query":
                 query = data.get("content", "")
                 api_keys = data.get("api_keys")
+                session_id = data.get("session_id")
                 if query:
                     try:
-                        await run_bioagents_streaming(query, websocket, api_keys=api_keys)
+                        await run_bioagents_streaming(
+                            query, websocket, api_keys=api_keys, session_id=session_id
+                        )
                     except Exception as e:
                         logger.error(f"Query execution error: {e}")
                         await websocket.send_json({"type": "error", "message": str(e)})
@@ -818,7 +597,10 @@ async def websocket_endpoint(websocket: WebSocket):
 
 
 async def run_bioagents_streaming(
-    query: str, websocket: WebSocket, api_keys: dict[str, str] | None = None
+    query: str,
+    websocket: WebSocket,
+    api_keys: dict[str, str] | None = None,
+    session_id: str | None = None,
 ):
     """Execute BioAgents query with WebSocket streaming."""
     from bioagents.references.reference_manager import ReferenceManager
@@ -844,7 +626,7 @@ async def run_bioagents_streaming(
         return match.group(1).upper() if match else None
 
     try:
-        for step in graph.stream(initial_state, {"recursion_limit": 100}):
+        for step in iter_graph_stream(graph, initial_state):
             node_name = next(iter(step))
             node_output = step[node_name]
 
@@ -989,21 +771,7 @@ async def run_bioagents_streaming(
                 )
 
             # Send messages from user-facing agents
-            if (
-                node_name
-                in [
-                    "report",
-                    "critic",
-                    "analysis",
-                    "research",
-                    "protein_design",
-                    "coder",
-                    "tool_builder",
-                    "ml",
-                    "dl",
-                ]
-                and "messages" in node_output
-            ):
+            if node_name in STREAM_UI_AGENTS and "messages" in node_output:
                 for m in node_output["messages"]:
                     # Skip HumanMessages (usually handoffs) and ToolMessages
                     if (
@@ -1082,6 +850,10 @@ async def run_bioagents_streaming(
                                     )
 
             await asyncio.sleep(0.05)
+
+        # Persist references for this session
+        if session_id and reference_manager:
+            _session_references[session_id] = reference_manager
 
         # Send completion with all references
         completion_data = {"type": "complete", "artifacts": [], "audit_log": full_audit}
@@ -1207,6 +979,7 @@ async def start_experiment_run(request: ExperimentRunRequest):
                 judge_llm=judge_llm,
                 show_trace=False,
                 save_results=True,
+                run_id=pending_run_id,
             ),
         )
 
@@ -1335,12 +1108,11 @@ async def get_pdb_content(filename: str):
 
 # References endpoint
 @app.get("/api/references")
-async def get_references():
-    """
-    Get all references (placeholder - in production, this would be session-specific).
-    """
-    # In a real implementation, this would be stored per session
-    # For now, return empty structure
+async def get_references(session_id: str | None = None):
+    """Return references accumulated during a session."""
+    if session_id and session_id in _session_references:
+        ref_mgr = _session_references[session_id]
+        return ref_mgr.to_dict()
     return {
         "references": [],
         "by_type": {
@@ -1353,6 +1125,399 @@ async def get_references():
         "display_numbers": {},
         "count": 0,
     }
+
+
+# =====================================================
+# AGENT & TOOL REGISTRY API
+# =====================================================
+
+AGENT_REGISTRY = {
+    "research": {
+        "name": "Research Agent",
+        "category": "Research & Knowledge",
+        "description": "Fetches biological data from databases (UniProt, PDB, ToolUniverse)",
+        "tools": [
+            "fetch_uniprot_fasta",
+            "tool_universe_find_tools",
+            "tool_universe_call_tool",
+            "fetch_webpage_as_pdf_text",
+            "extract_pdf_text_spacy_layout",
+            "fetch_alphafold_structure",
+            "fetch_pdb_structure",
+            "download_structure_file",
+        ],
+        "status": "active",
+    },
+    "analysis": {
+        "name": "Analysis Agent",
+        "category": "Computation",
+        "description": "Analyzes protein sequences and calculates biochemical properties",
+        "tools": [
+            "calculate_molecular_weight",
+            "analyze_amino_acid_composition",
+            "calculate_isoelectric_point",
+        ],
+        "status": "active",
+    },
+    "coder": {
+        "name": "Coder Agent",
+        "category": "Computation",
+        "description": "Writes and executes Python code, creates visualizations",
+        "tools": ["python_executor"],
+        "status": "active",
+    },
+    "ml": {
+        "name": "ML Agent",
+        "category": "Computation",
+        "description": "Traditional machine learning on tabular data",
+        "tools": ["python_executor"],
+        "status": "active",
+    },
+    "dl": {
+        "name": "Deep Learning Agent",
+        "category": "Computation",
+        "description": "Neural networks, transformers, GNNs for biological data",
+        "tools": ["python_executor"],
+        "status": "active",
+    },
+    "report": {
+        "name": "Report Agent",
+        "category": "Quality",
+        "description": "Synthesizes findings into comprehensive reports",
+        "tools": [],
+        "status": "active",
+    },
+    "critic": {
+        "name": "Critic Agent",
+        "category": "Quality",
+        "description": "Validates scientific accuracy and biological plausibility",
+        "tools": [],
+        "status": "active",
+    },
+    "summary": {
+        "name": "Summary Agent",
+        "category": "Quality",
+        "description": "Final user-facing output with workflow summaries",
+        "tools": [],
+        "status": "active",
+    },
+    "tool_builder": {
+        "name": "Tool Builder Agent",
+        "category": "Meta",
+        "description": "Creates custom tools when existing tools are insufficient",
+        "tools": [
+            "create_tool",
+            "search_custom_tools",
+            "execute_custom_tool",
+            "research_tool_documentation",
+        ],
+        "status": "active",
+    },
+    "protein_design": {
+        "name": "Protein Design Agent",
+        "category": "Domain",
+        "description": "Computational protein design and structure analysis",
+        "tools": [
+            "fetch_target_structure",
+            "analyze_interface",
+            "run_rfdiffusion",
+            "run_proteinmpnn",
+            "predict_structure",
+            "evaluate_binders",
+        ],
+        "status": "active",
+    },
+    "literature": {
+        "name": "Literature Agent",
+        "category": "Research & Knowledge",
+        "description": "Searches and summarizes scientific literature",
+        "tools": ["search_pubmed", "search_arxiv", "search_biorxiv", "fetch_paper_metadata"],
+        "status": "active",
+    },
+    "web_browser": {
+        "name": "Web Browser Agent",
+        "category": "Research & Knowledge",
+        "description": "Navigates web, fetches documentation, extracts data",
+        "tools": ["fetch_url_content", "search_google_scholar", "download_file_from_url"],
+        "status": "active",
+    },
+    "paper_replication": {
+        "name": "Paper Replication Agent",
+        "category": "Research & Knowledge",
+        "description": "Orchestrates full paper replication workflows",
+        "tools": [
+            "fetch_url_content",
+            "search_google_scholar",
+            "download_file_from_url",
+            "git_clone_repo",
+            "list_repo_files",
+            "read_repo_file",
+        ],
+        "status": "active",
+    },
+    "data_acquisition": {
+        "name": "Data Acquisition Agent",
+        "category": "Research & Knowledge",
+        "description": "Downloads and manages datasets from biological databases",
+        "tools": [
+            "fetch_url_content",
+            "download_file_from_url",
+            "read_local_file",
+            "write_local_file",
+            "list_local_directory",
+        ],
+        "status": "active",
+    },
+    "genomics": {
+        "name": "Genomics Agent",
+        "category": "Domain",
+        "description": "Sequence alignment, variant calling, genome annotation",
+        "tools": [
+            "run_blast_search",
+            "parse_fasta_file",
+            "reverse_complement",
+            "translate_dna",
+            "calculate_gc_content",
+        ],
+        "status": "active",
+    },
+    "transcriptomics": {
+        "name": "Transcriptomics Agent",
+        "category": "Domain",
+        "description": "RNA-seq, differential expression, gene set enrichment",
+        "tools": [
+            "run_differential_expression",
+            "run_gene_set_enrichment",
+            "normalize_expression_data",
+        ],
+        "status": "active",
+    },
+    "structural_biology": {
+        "name": "Structural Biology Agent",
+        "category": "Domain",
+        "description": "Protein structure prediction and structural analysis",
+        "tools": ["fetch_pdb_structure", "fetch_alphafold_structure", "download_structure_file"],
+        "status": "active",
+    },
+    "phylogenetics": {
+        "name": "Phylogenetics Agent",
+        "category": "Domain",
+        "description": "Phylogenetic tree construction and evolutionary analysis",
+        "tools": ["run_blast_search", "parse_fasta_file", "reverse_complement", "translate_dna"],
+        "status": "active",
+    },
+    "docking": {
+        "name": "Docking Agent",
+        "category": "Domain",
+        "description": "Molecular docking and virtual screening guidance",
+        "tools": [],
+        "status": "active",
+    },
+    "planner": {
+        "name": "Planner Agent",
+        "category": "Meta",
+        "description": "Breaks complex tasks into step-by-step execution plans",
+        "tools": [],
+        "status": "active",
+    },
+    "tool_validator": {
+        "name": "Tool Validator Agent",
+        "category": "Meta",
+        "description": "Validates tool calls and detects wrong tool usage",
+        "tools": [],
+        "status": "active",
+    },
+    "tool_discovery": {
+        "name": "Tool Discovery Agent",
+        "category": "Meta",
+        "description": "Searches for available tools and assigns them to agents",
+        "tools": ["create_tool", "search_custom_tools", "execute_custom_tool"],
+        "status": "active",
+    },
+    "prompt_optimizer": {
+        "name": "Prompt Optimizer Agent",
+        "category": "Meta",
+        "description": "Analyzes agent failures and suggests prompt improvements",
+        "tools": [],
+        "status": "active",
+    },
+    "result_checker": {
+        "name": "Result Checker Agent",
+        "category": "Meta",
+        "description": "Validates outputs for scientific accuracy and reproducibility",
+        "tools": [],
+        "status": "active",
+    },
+    "shell": {
+        "name": "Shell Agent",
+        "category": "Infrastructure",
+        "description": "Executes shell commands in the sandbox",
+        "tools": ["run_shell_command", "install_python_package", "check_installed_packages"],
+        "status": "active",
+    },
+    "git": {
+        "name": "Git Agent",
+        "category": "Infrastructure",
+        "description": "Manages git repositories",
+        "tools": ["git_clone_repo", "list_repo_files", "read_repo_file", "git_checkout_branch"],
+        "status": "active",
+    },
+    "environment": {
+        "name": "Environment Agent",
+        "category": "Infrastructure",
+        "description": "Sets up execution environments",
+        "tools": [
+            "create_virtual_environment",
+            "install_requirements",
+            "check_gpu_available",
+            "get_system_info",
+        ],
+        "status": "active",
+    },
+    "visualization": {
+        "name": "Visualization Agent",
+        "category": "Infrastructure",
+        "description": "Creates publication-quality plots and visualizations",
+        "tools": [
+            "create_bar_chart",
+            "create_heatmap",
+            "create_scatter_plot",
+            "create_volcano_plot",
+        ],
+        "status": "active",
+    },
+}
+
+
+@app.get("/api/agents")
+async def list_agents():
+    """List all agents with their capabilities."""
+    return {"agents": AGENT_REGISTRY, "total": len(AGENT_REGISTRY)}
+
+
+@app.get("/api/agents/{agent_name}")
+async def get_agent(agent_name: str):
+    """Get details for a specific agent."""
+    if agent_name not in AGENT_REGISTRY:
+        raise HTTPException(status_code=404, detail=f"Agent '{agent_name}' not found")
+    return AGENT_REGISTRY[agent_name]
+
+
+@app.get("/api/agents/{agent_name}/tools")
+async def get_agent_tools(agent_name: str):
+    """Get tools available to a specific agent."""
+    if agent_name not in AGENT_REGISTRY:
+        raise HTTPException(status_code=404, detail=f"Agent '{agent_name}' not found")
+    return {"agent": agent_name, "tools": AGENT_REGISTRY[agent_name]["tools"]}
+
+
+# =====================================================
+# SESSION MANAGEMENT
+# =====================================================
+
+_sessions: dict[str, dict] = {}
+
+
+@app.get("/api/sessions")
+async def list_sessions():
+    """List all sessions."""
+    return {"sessions": list(_sessions.values()), "total": len(_sessions)}
+
+
+class CreateSessionRequest(BaseModel):
+    name: str = ""
+
+
+@app.post("/api/sessions")
+async def create_session(req: CreateSessionRequest):
+    """Create a new session."""
+    import uuid
+
+    session_id = str(uuid.uuid4())
+    session = {
+        "id": session_id,
+        "name": req.name or f"Session {len(_sessions) + 1}",
+        "created_at": datetime.now().isoformat(),
+        "messages": [],
+    }
+    _sessions[session_id] = session
+    return session
+
+
+@app.get("/api/sessions/{session_id}")
+async def get_session(session_id: str):
+    """Get a specific session."""
+    if session_id not in _sessions:
+        raise HTTPException(status_code=404, detail="Session not found")
+    return _sessions[session_id]
+
+
+@app.get("/api/sessions/{session_id}/history")
+async def get_session_history(session_id: str):
+    """Get full execution history for a session."""
+    if session_id not in _sessions:
+        raise HTTPException(status_code=404, detail="Session not found")
+    return {"session_id": session_id, "messages": _sessions[session_id].get("messages", [])}
+
+
+# =====================================================
+# TOOL REGISTRY API
+# =====================================================
+
+
+@app.get("/api/tools/registry")
+async def browse_tool_registry():
+    """Browse the custom tool registry."""
+    try:
+        from bioagents.tools.tool_registry import ToolRegistry
+
+        registry = ToolRegistry()
+        tools = registry.list_tools() if hasattr(registry, "list_tools") else []
+        return {"tools": tools, "total": len(tools)}
+    except Exception as e:
+        return {"tools": [], "total": 0, "error": str(e)}
+
+
+class ValidateToolRequest(BaseModel):
+    tool_name: str
+    arguments: dict = {}
+
+
+@app.post("/api/tools/validate")
+async def validate_tool(req: ValidateToolRequest):
+    """Validate a tool call."""
+    try:
+        from bioagents.tools.tool_registry import ToolRegistry
+
+        registry = ToolRegistry()
+        tool = registry.get_tool(req.tool_name) if hasattr(registry, "get_tool") else None
+        if tool is None:
+            return {"valid": False, "error": f"Tool '{req.tool_name}' not found"}
+        return {"valid": True, "tool_name": req.tool_name}
+    except Exception as e:
+        return {"valid": False, "error": str(e)}
+
+
+# =====================================================
+# SANDBOX STATUS API
+# =====================================================
+
+
+@app.get("/api/sandbox/status")
+async def sandbox_status():
+    """Get sandbox health and resource usage."""
+    try:
+        from bioagents.sandbox.sandbox_manager import get_sandbox
+
+        sandbox = get_sandbox()
+        return {
+            "status": "running",
+            "workspace_dir": str(sandbox.workdir),
+            "workspace_exists": sandbox.workdir.exists(),
+            "command_history_count": len(sandbox.get_command_history()),
+        }
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
 
 
 # =====================================================
@@ -1371,7 +1536,7 @@ def main():
     print("   http://localhost:8000")
     print("\n" + "=" * 60 + "\n")
 
-    uvicorn.run("frontend.server:app", host="127.0.0.1", port=8000, reload=True, log_level="info")
+    uvicorn.run("frontend.server:app", host="127.0.0.1", port=8000, reload=False, log_level="info")
 
 
 if __name__ == "__main__":

@@ -46,7 +46,8 @@
     <instruction>Visualize results using matplotlib and seaborn.</instruction>
     <instruction>IMPORTANT: During training, print periodic progress updates like "METRIC: loss=0.5, accuracy=0.8" so the system can monitor your progress.</instruction>
     <instruction>IMPORTANT: When writing code, use standard Python libraries. If using `os.path`, note that `posixpath` is authorized.</instruction>
-    <instruction>IMPORTANT: Always wrap your code blocks in triple backticks with the 'python' language tag.</instruction>
+    <instruction>IMPORTANT: Each action must use markdown fenced Python (```python ... ```). Do not use XML &lt;code&gt; tags—smolagents expects markdown fences.</instruction>
+    <instruction>Each step must be self-contained (include imports in that step).</instruction>
     <instruction>If the task requires Deep Learning (Neural Networks, Transformers, GNNs), mention that the DL Agent might be more suitable, but proceed if requested.</instruction>
     <instruction>Save all generated plots and models to the provided output directory.</instruction>
   </instructions>

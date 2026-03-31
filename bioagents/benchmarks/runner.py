@@ -586,18 +586,25 @@ def run_use_case(
         ):
             workflow_completed = True
 
-        # Extract final text messages
+        # Extract final text messages (deduplicated, preserving order)
+        seen_content: set[str] = set()
         for msg in all_messages[-15:]:
             content = getattr(msg, "content", "")
             if content and not isinstance(msg, (HumanMessage, ToolMessage)):
+                texts: list[str] = []
                 if isinstance(content, str):
-                    final_messages.append(content)
+                    texts.append(content)
                 elif isinstance(content, list):
                     for item in content:
                         if isinstance(item, dict) and "text" in item:
-                            final_messages.append(item["text"])
+                            texts.append(item["text"])
                         elif isinstance(item, str):
-                            final_messages.append(item)
+                            texts.append(item)
+                for text in texts:
+                    sig = text[:500]
+                    if sig not in seen_content:
+                        seen_content.add(sig)
+                        final_messages.append(text)
 
         if all_messages:
             last_msg = all_messages[-1]

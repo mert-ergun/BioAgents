@@ -10,7 +10,7 @@ from bioagents.agents.helpers import get_message_content
 
 logger = logging.getLogger(__name__)
 
-MAX_EMPTY_RESPONSES = 2
+MAX_EMPTY_RESPONSES = 1
 
 TOOL_MISSING_PATTERNS = [
     r"no suitable tool found",
@@ -27,6 +27,121 @@ TOOL_MISSING_PATTERNS = [
     r"no.*capability",
     r"lacks.*capability",
 ]
+
+
+_CODE_AGENT_NAMES = frozenset({"Coder", "ML", "DL"})
+
+_TASK_COMPLETION_MARKERS = re.compile(
+    r"(METRIC:|Accuracy[:\s]+\d|Loss[:\s]+\d|Epoch\s+\d+/\d+"
+    r"|training complete|evaluation accuracy|successfully trained"
+    r"|model trained|F1[:\s]+\d|AUC[:\s]+\d|precision[:\s]+\d|recall[:\s]+\d)",
+    re.IGNORECASE,
+)
+
+
+def _is_substantive_code_agent_output(content: str) -> bool:
+    """True if a code agent response looks like a real implementation, not a one-line stub."""
+    c = content.strip()
+    if len(c) < 400:
+        return False
+    if "```" in c or "nn.Module" in c or "torch.nn" in c or "sklearn" in c:
+        return True
+    return len(c) >= 1200
+
+
+def check_code_agent_task_completed(messages) -> tuple[bool, str]:
+    """Finish if the last code agent message contains execution metrics indicating the task is done."""
+    if not messages:
+        return False, ""
+    last = messages[-1]
+    if not isinstance(last, AIMessage) and not (
+        hasattr(last, "__class__") and last.__class__.__name__ == "AIMessage"
+    ):
+        return False, ""
+    name = getattr(last, "name", None)
+    if name not in _CODE_AGENT_NAMES:
+        return False, ""
+    content = get_message_content(last)
+    if len(content.strip()) < 200:
+        return False, ""
+    if _TASK_COMPLETION_MARKERS.search(content):
+        return True, (
+            f"Code agent '{name}' produced output with execution metrics "
+            "(accuracy/loss/training results), indicating the task is complete."
+        )
+    return False, ""
+
+
+def check_finish_if_code_agent_substantive_repeat(messages) -> tuple[bool, str]:
+    """
+    If Coder/ML/DL has returned substantive output in 2+ turns, finish the workflow.
+
+    Prevents supervisor↔code-agent loops where the LLM keeps re-delegating for
+    spurious "refinement" after the task is already satisfied.
+    """
+    if len(messages) < 2:
+        return False, ""
+    last = messages[-1]
+    if not isinstance(last, AIMessage) and not (
+        hasattr(last, "__class__") and last.__class__.__name__ == "AIMessage"
+    ):
+        return False, ""
+    name = getattr(last, "name", None)
+    if name not in _CODE_AGENT_NAMES:
+        return False, ""
+    content = get_message_content(last)
+    if not _is_substantive_code_agent_output(content):
+        return False, ""
+
+    count = 0
+    for msg in messages[-14:]:
+        if isinstance(msg, AIMessage) or (
+            hasattr(msg, "__class__") and msg.__class__.__name__ == "AIMessage"
+        ):
+            if getattr(msg, "name", None) == name:
+                count += 1
+    if count >= 2:
+        return True, (
+            f"Code agent '{name}' has already produced substantive output in multiple turns; "
+            "finishing to avoid redundant delegation."
+        )
+    return False, ""
+
+
+def check_coder_should_force_finish(messages) -> tuple[bool, str]:
+    """
+    If a code agent (Coder/ML/DL) ended with exhaustion or sandbox denial markers,
+    the supervisor must not delegate the same execution again—finish the workflow.
+    """
+    if not messages:
+        return False, ""
+    last = messages[-1]
+    if not isinstance(last, AIMessage) and not (
+        hasattr(last, "__class__") and last.__class__.__name__ == "AIMessage"
+    ):
+        return False, ""
+    if getattr(last, "name", None) not in _CODE_AGENT_NAMES:
+        return False, ""
+    content = get_message_content(last)
+    if (
+        "[CODER_STATUS: max_steps_reached]" in content
+        or "[CODER_STATUS: repeated_parse_errors]" in content
+    ):
+        return True, (
+            "Code agent finished with step-limit or parse-loop exhaustion; "
+            "terminating workflow to avoid redundant delegation."
+        )
+    if "[CODER_STATUS: import_denied]" in content:
+        return True, (
+            "Code agent could not import a required package in the sandbox; "
+            "terminating workflow to avoid an execution loop."
+        )
+    if "[CODER_STATUS: import_failed]" in content:
+        return True, (
+            "Code agent could not import a required library (missing shared object / module); "
+            "terminating workflow to avoid an execution loop."
+        )
+    return False, ""
 
 
 def check_for_empty_response_loop(messages) -> tuple[bool, str]:
@@ -87,39 +202,78 @@ def check_for_repeated_routing(messages) -> tuple[bool, str]:
     if len(messages) < 4:
         return False, ""
 
-    # Valid agent names (exclude tool names and other non-agent identifiers)
     valid_agent_names = {
         "ToolBuilder",
         "Research",
         "Analysis",
         "Coder",
         "ML",
+        "DL",
         "Report",
         "ProteinDesign",
         "Critic",
         "Supervisor",
+        "Summary",
+        "Literature",
+        "WebBrowser",
+        "PaperReplication",
+        "DataAcquisition",
+        "Genomics",
+        "Transcriptomics",
+        "StructuralBiology",
+        "Phylogenetics",
+        "Docking",
+        "Planner",
+        "ToolValidator",
+        "ToolDiscovery",
+        "PromptOptimizer",
+        "ResultChecker",
+        "Shell",
+        "Git",
+        "Environment",
+        "Visualization",
     }
 
     agent_counts: dict[str, int] = {}
-    for msg in messages[-10:]:
-        # Only count AIMessage instances (actual agent responses)
-        # ToolMessage instances have tool names, not agent names
+    agent_content_sigs: dict[str, list[str]] = {}
+    for msg in messages[-20:]:
         if isinstance(msg, AIMessage) or (
             hasattr(msg, "__class__") and msg.__class__.__name__ == "AIMessage"
         ):
             agent_name = getattr(msg, "name", None)
-            # Only count valid agent names, ignore tool names or other identifiers
             if agent_name and agent_name in valid_agent_names:
                 agent_counts[agent_name] = agent_counts.get(agent_name, 0) + 1
+                content = getattr(msg, "content", "")
+                if isinstance(content, str) and len(content) > 100:
+                    sig = content[:200]
+                    agent_content_sigs.setdefault(agent_name, []).append(sig)
 
-    for agent, count in agent_counts.items():
-        if count >= 4:
-            logger.warning(
-                f"Potential loop: agent '{agent}' appeared {count} times in last 10 messages"
-            )
-            return True, agent
+    candidates = [(agent, count) for agent, count in agent_counts.items() if count >= 3]
 
-    return False, ""
+    # Also detect content-based loops: an agent returning near-identical
+    # content twice is a strong signal it's stuck.
+    for agent_name, sigs in agent_content_sigs.items():
+        if len(sigs) >= 2 and agent_name not in {c[0] for c in candidates}:
+            unique = set(sigs)
+            if len(unique) <= len(sigs) // 2:
+                candidates.append((agent_name, len(sigs)))
+    if not candidates:
+        return False, ""
+
+    # Prefer the strongest signal (highest count). On ties, deprioritize synthesis/meta
+    # agents so we break "work" loops (Analysis/Research) instead of oscillating with Report.
+    def _loop_sort_key(item: tuple[str, int]) -> tuple:
+        name, cnt = item
+        deprior = 1 if name in ("Report", "Summary", "Supervisor") else 0
+        return (-cnt, deprior, name)
+
+    candidates.sort(key=_loop_sort_key)
+    agent, count = candidates[0]
+    logger.warning(
+        f"Potential loop: agent '{agent}' appeared {count} times in last 20 messages "
+        f"(among {len(candidates)} agent(s) over threshold)"
+    )
+    return True, agent
 
 
 def check_for_missing_tool(messages) -> tuple[bool, str]:

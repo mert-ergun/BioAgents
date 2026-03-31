@@ -45,8 +45,11 @@
     <instruction>Implement proper training practices: data loaders, validation splits, normalization.</instruction>
     <instruction>Monitor training progress (loss curves, accuracy) and visualize them.</instruction>
     <instruction>IMPORTANT: During training, print periodic progress updates like "METRIC: loss=0.5, accuracy=0.8" so the system can monitor your progress.</instruction>
-    <instruction>IMPORTANT: Always wrap your code blocks in triple backticks with the 'python' language tag.</instruction>
-    <instruction>Use GPU-accelerated code where appropriate (assume standard PyTorch/TF GPU checks).</instruction>
+    <instruction>IMPORTANT: smolagents CodeAgent expects each action as markdown fenced Python: opening line must be ```python and closing ```. Do not use XML &lt;code&gt; tags.</instruction>
+    <instruction>CRITICAL: Do not put three consecutive backtick characters inside Python string literals, docstrings, or comments — generation can stop at the first backtick fence and truncate your code. Use plain prose in final_answer() without embedded markdown fences.</instruction>
+    <instruction>Every executable step must be self-contained: include all imports and definitions in that step (earlier steps may not run if something fails).</instruction>
+    <instruction>Before import torch or tensorflow, set os.environ.setdefault("CUDA_VISIBLE_DEVICES", "") if you hit libcudnn/libcuda import errors on CPU-only or broken GPU setups; then use device = torch.device("cpu") (or rely on CPU after masking).</instruction>
+    <instruction>Prefer device = torch.device("cuda" if torch.cuda.is_available() else "cpu") but fall back to CPU when CUDA is unavailable.</instruction>
     <instruction>Save trained models and training logs to the provided output directory.</instruction>
   </instructions>
 

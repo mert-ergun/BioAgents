@@ -5,11 +5,13 @@ from unittest.mock import Mock, patch
 
 import pytest
 
+from bioagents.llms.adapters import _sanitize_codeagent_stop_sequences
 from bioagents.llms.llm_provider import (
     _get_or_create_rate_limiter,
     get_llm,
 )
 from bioagents.llms.rate_limiter import RateLimitedLLM
+from bioagents.llms.timeout_llm import TimeoutBoundLLM
 
 
 class TestGetOrCreateRateLimiter:
@@ -103,9 +105,10 @@ class TestGetLLM:
 
             result = get_llm(provider="openai")
 
-            # Should return a rate-limited wrapper
+            # Should return a rate-limited wrapper around timeout-bounded LLM
             assert isinstance(result, RateLimitedLLM)
-            assert result.llm == mock_llm
+            assert isinstance(result.llm, TimeoutBoundLLM)
+            assert result.llm._llm == mock_llm
 
     def test_ollama_provider_default(self):
         """Test getting Ollama LLM with defaults."""
@@ -225,3 +228,16 @@ class TestGetLLM:
 
             call_kwargs = mock_openai.call_args[1]
             assert call_kwargs["temperature"] == 0.9
+
+
+class TestSanitizeCodeAgentStopSequences:
+    def test_removes_markdown_fence_stops(self):
+        inp = ["Observation:", "```", "Calling tools:"]
+        out = _sanitize_codeagent_stop_sequences(inp)
+        assert out == ["Observation:", "Calling tools:"]
+
+    def test_none_passthrough(self):
+        assert _sanitize_codeagent_stop_sequences(None) is None
+
+    def test_only_fences_becomes_none(self):
+        assert _sanitize_codeagent_stop_sequences(["```"]) is None

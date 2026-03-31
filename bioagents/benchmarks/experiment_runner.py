@@ -40,6 +40,7 @@ def run_experiment(
     show_trace: bool = False,
     runs_dir: str | Path | None = None,
     save_results: bool = True,
+    run_id: str | None = None,
 ) -> ExperimentRun:
     """
     Run a set of use cases with a given experiment config.
@@ -58,6 +59,7 @@ def run_experiment(
         show_trace: Print per-step execution trace to stdout.
         runs_dir: Directory for JSON persistence. Defaults to ``experiment_runs/``.
         save_results: Whether to persist the run to disk.
+        run_id: Optional pre-assigned run ID. Generated if not provided.
 
     Returns:
         ExperimentRun with per-case RunResults and aggregate metrics.
@@ -65,7 +67,8 @@ def run_experiment(
     if config is None:
         config = ExperimentConfig(name="default")
 
-    run_id = uuid.uuid4().hex
+    if run_id is None:
+        run_id = uuid.uuid4().hex
     started_at = datetime.now(tz=UTC)
 
     logger.info(

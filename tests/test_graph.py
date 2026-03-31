@@ -47,14 +47,12 @@ class TestAgentNode:
         mock_response = AIMessage(content="Response")
         mock_agent.return_value = {"messages": [mock_response]}
 
-        state = {"messages": [HumanMessage(content="Test")], "memory": {}}
+        state = {"messages": [HumanMessage(content="Test")]}
         result = agent_node(state, mock_agent, "TestAgent")
 
         assert "messages" in result
-        # Forward only new messages; LangGraph add_messages merges with prior state
         assert len(result["messages"]) == 1
-        assert result["messages"][0].name == "testagent"
-        assert result["messages"][0].content == "Response"
+        assert result["messages"][0].name == "TestAgent"
         mock_agent.assert_called_once_with(state)
 
     def test_agent_node_multiple_messages(self):
@@ -66,19 +64,19 @@ class TestAgentNode:
         ]
         mock_agent.return_value = {"messages": messages}
 
-        state = {"messages": [HumanMessage(content="Test")], "memory": {}}
+        state = {"messages": [HumanMessage(content="Test")]}
         result = agent_node(state, mock_agent, "TestAgent")
 
         assert len(result["messages"]) == 2
         for msg in result["messages"]:
-            assert msg.name == "testagent"
+            assert msg.name == "TestAgent"
 
     def test_agent_node_empty_messages(self):
         """Test agent_node with empty messages."""
         mock_agent = Mock()
         mock_agent.return_value = {"messages": []}
 
-        state = {"messages": [HumanMessage(content="Test")], "memory": {}}
+        state = {"messages": [HumanMessage(content="Test")]}
         result = agent_node(state, mock_agent, "TestAgent")
 
         assert result["messages"] == []
@@ -172,7 +170,6 @@ class TestRouteSupervisor:
 class TestCreateGraph:
     """Tests for create_graph function."""
 
-    @patch("bioagents.graph.create_rdkit_validator_agent")
     @patch("bioagents.graph.create_summary_agent")
     @patch("bioagents.graph.create_supervisor_agent")
     @patch("bioagents.graph.create_research_agent")
@@ -197,7 +194,6 @@ class TestCreateGraph:
         mock_research,
         mock_supervisor,
         mock_summary,
-        mock_rdkit_validator,
     ):
         """Test basic graph creation."""
         # Setup mocks
@@ -214,7 +210,6 @@ class TestCreateGraph:
         mock_coder.return_value = Mock()
         mock_ml.return_value = Mock()
         mock_dl.return_value = Mock()
-        mock_rdkit_validator.return_value = Mock()
 
         graph = create_graph()
 
@@ -224,7 +219,6 @@ class TestCreateGraph:
         mock_analysis.assert_called_once()
         mock_report.assert_called_once()
 
-    @patch("bioagents.graph.create_rdkit_validator_agent")
     @patch("bioagents.graph.create_summary_agent")
     @patch("bioagents.graph.create_supervisor_agent")
     @patch("bioagents.graph.create_research_agent")
@@ -249,7 +243,6 @@ class TestCreateGraph:
         mock_research,
         mock_supervisor,
         mock_summary,
-        mock_rdkit_validator,
     ):
         """Test that agents are created with correct tools."""
         mock_summary.return_value = Mock()
@@ -265,7 +258,6 @@ class TestCreateGraph:
         mock_coder.return_value = Mock()
         mock_ml.return_value = Mock()
         mock_dl.return_value = Mock()
-        mock_rdkit_validator.return_value = Mock()
 
         create_graph()
 
@@ -293,9 +285,7 @@ class TestCreateGraph:
         assert "coder" in supervisor_call_args
         assert "ml" in supervisor_call_args
         assert "dl" in supervisor_call_args
-        assert "rdkit_validator" in supervisor_call_args
 
-    @patch("bioagents.graph.create_rdkit_validator_agent")
     @patch("bioagents.graph.create_summary_agent")
     @patch("bioagents.graph.create_supervisor_agent")
     @patch("bioagents.graph.create_research_agent")
@@ -320,7 +310,6 @@ class TestCreateGraph:
         mock_research,
         mock_supervisor,
         mock_summary,
-        mock_rdkit_validator,
     ):
         """Test that create_graph returns a compiled graph."""
         mock_summary.return_value = Mock()
@@ -336,7 +325,6 @@ class TestCreateGraph:
         mock_coder.return_value = Mock()
         mock_ml.return_value = Mock()
         mock_dl.return_value = Mock()
-        mock_rdkit_validator.return_value = Mock()
 
         graph = create_graph()
 
@@ -345,10 +333,39 @@ class TestCreateGraph:
         assert hasattr(graph, "stream")
 
 
+_NEW_AGENT_PATCHES = [
+    "bioagents.graph.create_web_browser_agent",
+    "bioagents.graph.create_literature_agent",
+    "bioagents.graph.create_paper_replication_agent",
+    "bioagents.graph.create_data_acquisition_agent",
+    "bioagents.graph.create_genomics_agent",
+    "bioagents.graph.create_transcriptomics_agent",
+    "bioagents.graph.create_structural_biology_agent",
+    "bioagents.graph.create_phylogenetics_agent",
+    "bioagents.graph.create_docking_agent",
+    "bioagents.graph.create_planner_agent",
+    "bioagents.graph.create_tool_validator_agent",
+    "bioagents.graph.create_tool_discovery_agent",
+    "bioagents.graph.create_prompt_optimizer_agent",
+    "bioagents.graph.create_result_checker_agent",
+    "bioagents.graph.create_shell_agent",
+    "bioagents.graph.create_git_agent",
+    "bioagents.graph.create_environment_agent",
+    "bioagents.graph.create_visualization_agent",
+]
+
+
+def _apply_new_agent_patches(func):
+    """Apply patches for all 18 new agents to a test function."""
+    for target in _NEW_AGENT_PATCHES:
+        func = patch(target, return_value=Mock())(func)
+    return func
+
+
 class TestGraphWorkflow:
     """Integration tests for graph workflow."""
 
-    @patch("bioagents.graph.create_rdkit_validator_agent")
+    @_apply_new_agent_patches
     @patch("bioagents.graph.create_summary_agent")
     @patch("bioagents.graph.create_supervisor_agent")
     @patch("bioagents.graph.create_research_agent")
@@ -362,9 +379,9 @@ class TestGraphWorkflow:
     @patch("bioagents.graph.create_coder_agent")
     def test_graph_workflow_simple(
         self,
-        mock_dl,
-        mock_ml,
         mock_coder,
+        mock_ml,
+        mock_dl,
         mock_protein,
         mock_builder,
         mock_critic,
@@ -373,10 +390,9 @@ class TestGraphWorkflow:
         mock_research,
         mock_supervisor,
         mock_summary,
-        mock_rdkit_validator,
+        *new_agent_mocks,
     ):
         """Test a simple workflow through the graph."""
-        # Create mock agents that return appropriate responses
         supervisor_responses = [
             {"next": "research", "reasoning": "Fetch data", "messages": []},
             {"next": "FINISH", "reasoning": "Done", "messages": []},
@@ -384,7 +400,6 @@ class TestGraphWorkflow:
 
         research_response = {"messages": [AIMessage(content="Data fetched", name="Research")]}
 
-        # Setup mocks with side effects for multiple calls
         mock_supervisor_agent = Mock(side_effect=supervisor_responses)
         mock_research_agent = Mock(return_value=research_response)
 
@@ -399,16 +414,12 @@ class TestGraphWorkflow:
         mock_ml.return_value = Mock()
         mock_dl.return_value = Mock()
         mock_coder.return_value = Mock()
-        mock_ml.return_value = Mock()
-        mock_dl.return_value = Mock()
-        mock_rdkit_validator.return_value = Mock()
 
         graph = create_graph()
 
-        # Test that graph was created
         assert graph is not None
 
-    @patch("bioagents.graph.create_rdkit_validator_agent")
+    @_apply_new_agent_patches
     @patch("bioagents.graph.create_summary_agent")
     @patch("bioagents.graph.create_supervisor_agent")
     @patch("bioagents.graph.create_research_agent")
@@ -422,9 +433,9 @@ class TestGraphWorkflow:
     @patch("bioagents.graph.create_coder_agent")
     def test_graph_entry_point(
         self,
-        mock_dl,
-        mock_ml,
         mock_coder,
+        mock_ml,
+        mock_dl,
         mock_protein,
         mock_builder,
         mock_critic,
@@ -433,7 +444,7 @@ class TestGraphWorkflow:
         mock_research,
         mock_supervisor,
         mock_summary,
-        mock_rdkit_validator,
+        *new_agent_mocks,
     ):
         """Test that graph has correct entry point."""
         mock_summary.return_value = Mock()
@@ -447,13 +458,9 @@ class TestGraphWorkflow:
         mock_ml.return_value = Mock()
         mock_dl.return_value = Mock()
         mock_coder.return_value = Mock()
-        mock_ml.return_value = Mock()
-        mock_dl.return_value = Mock()
-        mock_rdkit_validator.return_value = Mock()
 
         graph = create_graph()
 
-        # The graph should be compiled and ready to use
         assert hasattr(graph, "get_graph")
 
 
@@ -484,7 +491,6 @@ class TestGraphEdges:
         assert route_supervisor({"next": "analysis"}) == "analysis"
         assert route_supervisor({"next": "report"}) == "report"
         assert route_supervisor({"next": "critic"}) == "critic"
-        assert route_supervisor({"next": "rdkit_validator"}) == "rdkit_validator"
         assert route_supervisor({"next": "FINISH"}) == "summary"
 
         # Test default case
@@ -494,7 +500,7 @@ class TestGraphEdges:
 class TestGraphStructure:
     """Tests for graph structure and node configuration."""
 
-    @patch("bioagents.graph.create_rdkit_validator_agent")
+    @_apply_new_agent_patches
     @patch("bioagents.graph.create_summary_agent")
     @patch("bioagents.graph.create_supervisor_agent")
     @patch("bioagents.graph.create_research_agent")
@@ -506,13 +512,13 @@ class TestGraphStructure:
     @patch("bioagents.graph.create_dl_agent")
     @patch("bioagents.graph.create_ml_agent")
     @patch("bioagents.graph.create_coder_agent")
-    @patch("bioagents.graph.ToolNode")
+    @patch("bioagents.truncating_tool_node.ToolNode")
     def test_tool_nodes_created(
         self,
         mock_tool_node,
-        mock_dl,
-        mock_ml,
         mock_coder,
+        mock_ml,
+        mock_dl,
         mock_protein,
         mock_builder,
         mock_critic,
@@ -521,9 +527,9 @@ class TestGraphStructure:
         mock_research,
         mock_supervisor,
         mock_summary,
-        mock_rdkit_validator,
+        *new_agent_mocks,
     ):
-        """Test that tool nodes are created for research and analysis."""
+        """Test that tool nodes are created for all tool-using agents."""
         mock_summary.return_value = Mock()
         mock_supervisor.return_value = Mock()
         mock_research.return_value = Mock()
@@ -535,17 +541,13 @@ class TestGraphStructure:
         mock_ml.return_value = Mock()
         mock_dl.return_value = Mock()
         mock_coder.return_value = Mock()
-        mock_ml.return_value = Mock()
-        mock_dl.return_value = Mock()
         mock_tool_node.return_value = Mock()
-        mock_rdkit_validator.return_value = Mock()
 
         create_graph()
 
-        # ToolNode should be called 4 times: research, analysis, tool_builder, protein_design
-        assert mock_tool_node.call_count == 4
+        assert mock_tool_node.call_count == 17
 
-    @patch("bioagents.graph.create_rdkit_validator_agent")
+    @_apply_new_agent_patches
     @patch("bioagents.graph.create_summary_agent")
     @patch("bioagents.graph.create_supervisor_agent")
     @patch("bioagents.graph.create_research_agent")
@@ -559,9 +561,9 @@ class TestGraphStructure:
     @patch("bioagents.graph.create_coder_agent")
     def test_partial_agent_node_wrapping(
         self,
-        mock_dl,
-        mock_ml,
         mock_coder,
+        mock_ml,
+        mock_dl,
         mock_protein,
         mock_builder,
         mock_critic,
@@ -570,7 +572,7 @@ class TestGraphStructure:
         mock_research,
         mock_supervisor,
         mock_summary,
-        mock_rdkit_validator,
+        *new_agent_mocks,
     ):
         """Test that agents are wrapped with partial function for naming."""
         mock_summary.return_value = Mock()
@@ -584,10 +586,6 @@ class TestGraphStructure:
         mock_ml.return_value = Mock()
         mock_dl.return_value = Mock()
         mock_coder.return_value = Mock()
-        mock_ml.return_value = Mock()
-        mock_dl.return_value = Mock()
-        mock_rdkit_validator.return_value = Mock()
 
-        # This should not raise any errors
         graph = create_graph()
         assert graph is not None

@@ -7,7 +7,9 @@ from typing import Literal
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_openai import ChatOpenAI
 
+from bioagents.limits import AGENT_LLM_INVOKE_TIMEOUT_SEC
 from bioagents.llms.rate_limiter import RateLimitedLLM, RateLimiter
+from bioagents.llms.timeout_llm import TimeoutBoundLLM
 from bioagents.prompts.prompt_loader import get_prompt_llm_model
 
 # Context var for per-request API key overrides (set by server when user provides keys)
@@ -27,6 +29,23 @@ def _get_api_key(provider: str) -> str | None:
     if override and provider in override and override[provider]:
         return override[provider]
     return None
+
+
+def _wrap_llm_with_invoke_timeout(llm):
+    """Bound wall time of each `invoke` (see BIOAGENTS_AGENT_LLM_INVOKE_TIMEOUT_SEC)."""
+    if AGENT_LLM_INVOKE_TIMEOUT_SEC and AGENT_LLM_INVOKE_TIMEOUT_SEC > 0:
+        return TimeoutBoundLLM(llm, AGENT_LLM_INVOKE_TIMEOUT_SEC)
+    return llm
+
+
+def _request_timeout_seconds(env_key: str, default: float | None) -> float | None:
+    """Parse HTTP request timeout from env. Use ``0`` or empty to disable (no timeout)."""
+    raw = os.getenv(env_key)
+    if raw is None or raw.strip() == "":
+        return default
+    if raw.strip() == "0":
+        return None
+    return float(raw)
 
 
 # Global rate limiters - shared across all LLM instances
@@ -97,6 +116,16 @@ def get_llm(
         - GEMINI_RATE_LIMIT: Max requests per minute for Gemini (default: 8)
           Default is conservative to provide buffer below the 10 req/min free tier limit
         - OLLAMA_RATE_LIMIT: Max requests per minute for Ollama (default: no limit)
+
+        Request timeouts (HTTP; avoids hanging forever on a stuck API call):
+        - LLM_REQUEST_TIMEOUT: Default seconds for OpenAI and Gemini (default: 600).
+          Set to ``0`` to disable.
+        - GEMINI_REQUEST_TIMEOUT / OPENAI_REQUEST_TIMEOUT / OLLAMA_REQUEST_TIMEOUT:
+          Override per provider.
+
+        Additional safety limits (see ``bioagents.limits``):
+        - BIOAGENTS_AGENT_LLM_INVOKE_TIMEOUT_SEC: Max seconds per ``invoke`` (default 180; 0 disables).
+        - BIOAGENTS_RATE_LIMIT_MAX_WAIT_SEC: Max seconds to wait for an RPM slot (default 120; 0 disables).
     """
     if provider is None:
         provider_str = os.getenv("LLM_PROVIDER", "openai").lower()
@@ -118,11 +147,17 @@ def get_llm(
                 "OPENAI_API_KEY not set. Add it in Settings or set the OPENAI_API_KEY environment variable."
             )
 
+        openai_timeout = _request_timeout_seconds(
+            "OPENAI_REQUEST_TIMEOUT",
+            _request_timeout_seconds("LLM_REQUEST_TIMEOUT", 600.0),
+        )
         llm = ChatOpenAI(
             model=model,
             temperature=temperature,
             api_key=api_key,
+            timeout=openai_timeout,
         )
+        llm = _wrap_llm_with_invoke_timeout(llm)
 
         rate_limit = os.getenv("OPENAI_RATE_LIMIT")
         if rate_limit:
@@ -137,12 +172,18 @@ def get_llm(
         model = model or "qwen3:14b"
         base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434/v1")
 
+        ollama_timeout = _request_timeout_seconds(
+            "OLLAMA_REQUEST_TIMEOUT",
+            _request_timeout_seconds("LLM_REQUEST_TIMEOUT", None),
+        )
         llm = ChatOpenAI(
             model=model,
             temperature=temperature,
             base_url=base_url,
             api_key="ollama",  # Ollama doesn't require a real API key
+            timeout=ollama_timeout,
         )
+        llm = _wrap_llm_with_invoke_timeout(llm)
 
         rate_limit = os.getenv("OLLAMA_RATE_LIMIT")
         if rate_limit:
@@ -161,11 +202,17 @@ def get_llm(
                 "GEMINI_API_KEY not set. Add it in Settings or set the GEMINI_API_KEY environment variable."
             )
 
+        gemini_timeout = _request_timeout_seconds(
+            "GEMINI_REQUEST_TIMEOUT",
+            _request_timeout_seconds("LLM_REQUEST_TIMEOUT", 600.0),
+        )
         llm = ChatGoogleGenerativeAI(
             model=model,
             temperature=temperature,
             google_api_key=api_key,
+            timeout=gemini_timeout,
         )
+        llm = _wrap_llm_with_invoke_timeout(llm)
 
         rate_limit = os.getenv("GEMINI_RATE_LIMIT", "8")
         requests_per_minute = int(rate_limit)

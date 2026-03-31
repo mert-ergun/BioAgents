@@ -13,6 +13,9 @@ DEFAULT_CODER_IMPORTS = [
     "bioagents.*",
     "Bio",
     "Bio.*",
+    # PyTorch: bare `torch` is required for `import torch` in smolagents; `torch.*` covers submodules.
+    "torch",
+    "torch.*",
     "typing",
     "json",
     "os",
@@ -42,7 +45,6 @@ DEFAULT_ML_IMPORTS = [
 
 DEFAULT_DL_IMPORTS = [
     *DEFAULT_ML_IMPORTS,
-    "torch.*",
     "torchvision.*",
     "torchaudio.*",
     "tensorflow.*",
@@ -188,3 +190,57 @@ def format_coder_result(result: Any) -> str:
         return "\n".join(lines)
 
     return f"Task completed successfully.\n\nFinal answer: {final_answer}"
+
+
+def collect_code_agent_run_telemetry(agent: Any) -> dict[str, bool]:
+    """
+    Scan smolagents CodeAgent step observations for failure modes that should not
+    trigger another identical delegation (max steps, parse loops, sandbox import denials).
+    """
+    memory = getattr(agent, "memory", None)
+    if not memory or not getattr(memory, "steps", None):
+        return {
+            "max_steps_reached": False,
+            "repeated_parse_errors": False,
+            "import_denied": False,
+        }
+    combined = ""
+    for step in memory.steps:
+        if hasattr(step, "task"):
+            continue
+        obs = getattr(step, "observations", None)
+        if obs is not None:
+            combined += str(obs)
+    import_failed = (
+        "ImportError:" in combined
+        and ("cannot open shared object" in combined or "No module named" in combined)
+        and combined.count("ImportError:") >= 2
+    )
+    return {
+        "max_steps_reached": "Reached max steps" in combined,
+        "repeated_parse_errors": combined.count("Error in code parsing") >= 3,
+        "import_denied": "is not allowed" in combined and "Import" in combined,
+        "import_failed": import_failed,
+    }
+
+
+def append_code_agent_status_footer(content: str, telemetry: dict[str, bool]) -> str:
+    """Append machine-readable markers for the supervisor to stop re-delegation loops."""
+    markers: list[str] = []
+    if telemetry.get("max_steps_reached"):
+        markers.append("[CODER_STATUS: max_steps_reached]")
+    if telemetry.get("repeated_parse_errors"):
+        markers.append("[CODER_STATUS: repeated_parse_errors]")
+    if telemetry.get("import_denied"):
+        markers.append("[CODER_STATUS: import_denied]")
+    if telemetry.get("import_failed"):
+        markers.append("[CODER_STATUS: import_failed]")
+    if not markers:
+        return content
+    footer = (
+        "\n\n"
+        + " ".join(markers)
+        + " The coding agent ended in a degraded state. The supervisor must choose FINISH "
+        "or report, not delegate the same execution task to a code agent again."
+    )
+    return content + footer

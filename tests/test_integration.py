@@ -131,6 +131,7 @@ class TestMultiAgentWorkflow:
         """Test LLM provider with rate limiting."""
         from bioagents.llms.llm_provider import get_llm
         from bioagents.llms.rate_limiter import RateLimitedLLM
+        from bioagents.llms.timeout_llm import TimeoutBoundLLM
 
         mock_llm = Mock()
         mock_openai.return_value = mock_llm
@@ -138,7 +139,8 @@ class TestMultiAgentWorkflow:
         llm = get_llm(provider="openai")
 
         assert isinstance(llm, RateLimitedLLM)
-        assert llm.llm == mock_llm
+        assert isinstance(llm.llm, TimeoutBoundLLM)
+        assert llm.llm._llm == mock_llm
 
     def test_prompt_loader_integration(self):
         """Test loading all prompts."""

@@ -16,6 +16,8 @@
     <!-- Material Symbols -->
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&display=swap" rel="stylesheet"/>
 
+
+
     <!-- NGL.js for 3D molecular visualization -->
     <script src="https://unpkg.com/ngl@2.0.0-dev.37/dist/ngl.js"></script>
 
@@ -286,6 +288,14 @@
                 <a href="#" class="nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-text-subtle hover:text-white hover:bg-white/5 transition-all">
                     <span class="material-symbols-outlined text-[20px]">smart_toy</span>
                     <span class="font-medium text-sm">Agent Library</span>
+                </a>
+                <a href="#" class="nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-text-subtle hover:text-white hover:bg-white/5 transition-all">
+                    <span class="material-symbols-outlined text-[20px]">extension</span>
+                    <span class="font-medium text-sm">Tool Registry</span>
+                </a>
+                <a href="#" class="nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-text-subtle hover:text-white hover:bg-white/5 transition-all">
+                    <span class="material-symbols-outlined text-[20px]">terminal</span>
+                    <span class="font-medium text-sm">Sandbox Terminal</span>
                 </a>
             </div>
 
@@ -698,6 +708,10 @@
                         <div class="flex-1 flex flex-col min-h-0 overflow-hidden">
                             <div class="px-4 py-3 border-b border-white/5 flex-shrink-0">
                                 <h3 class="text-xs font-bold text-white uppercase tracking-wide">Recent Runs</h3>
+                            </div>
+                            <div id="exp-runs-live-status" class="hidden shrink-0 px-4 py-2.5 text-[11px] leading-snug border-b border-primary/25 bg-primary/5 text-amber-100/90 flex items-start gap-2">
+                                <span class="material-symbols-outlined animate-spin text-base text-primary shrink-0 mt-0.5">progress_activity</span>
+                                <span id="exp-runs-live-status-text"></span>
                             </div>
                             <div class="flex-1 overflow-auto custom-scrollbar min-h-0">
                                 <table class="w-full text-xs">
