@@ -1,15 +1,32 @@
 """Tests for agent modules."""
 
+from typing import Any, ClassVar
 from unittest.mock import Mock, patch
 
 import pytest
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage, HumanMessage
+from smolagents import Tool
 
 from bioagents.agents.analysis_agent import create_analysis_agent
-from bioagents.agents.ml_agent import create_ml_agent
+from bioagents.agents.dl_agent import create_dl_agent, create_dl_node
+from bioagents.agents.ml_agent import create_ml_agent, create_ml_node
 from bioagents.agents.report_agent import create_report_agent
 from bioagents.agents.research_agent import create_research_agent
 from bioagents.agents.supervisor_agent import RouteResponse, create_supervisor_agent
+
+
+class MockTool(Tool):
+    """Mock tool for testing smolagents-based agents."""
+
+    name = "mock_tool"
+    description = "A mock tool for testing."
+    inputs: ClassVar[dict[str, Any]] = {
+        "arg1": {"type": "string", "description": "An argument.", "nullable": True}
+    }
+    output_type = "string"
+
+    def forward(self, arg1: str = "") -> str:
+        return f"Mock output with {arg1}"
 
 
 class TestResearchAgent:
@@ -139,62 +156,112 @@ class TestMlAgent:
     """Tests for the ML agent."""
 
     @patch("bioagents.agents.ml_agent.get_llm")
-    def test_create_ml_agent(self, mock_get_llm):
+    @patch("bioagents.agents.ml_agent.create_executor")
+    def test_create_ml_agent(self, mock_create_executor, mock_get_llm):
         """Test creating an ML agent."""
         mock_llm = Mock()
-        mock_llm.bind_tools = Mock(return_value=mock_llm)
         mock_get_llm.return_value = mock_llm
+        mock_create_executor.return_value = Mock()
 
-        tools = [Mock()]
+        tools = [MockTool()]
         agent = create_ml_agent(tools)
 
-        assert callable(agent)
+        from smolagents import (
+            CodeAgent,  # In CodeAgent, the system prompt is stored in instructions or prompt_templates
+        )
+
+        assert isinstance(agent, CodeAgent)
         mock_get_llm.assert_called_once()
-        mock_llm.bind_tools.assert_called_once_with(tools)
 
     @patch("bioagents.agents.ml_agent.get_llm")
-    def test_ml_agent_invoke(self, mock_get_llm):
+    @patch("bioagents.agents.ml_agent.create_executor")
+    def test_ml_agent_invoke(self, mock_create_executor, mock_get_llm):
         """Test invoking the ML agent."""
         mock_llm = Mock()
-        mock_bound_llm = Mock()
-        mock_response = AIMessage(content="Model created", name="ML")
-
-        mock_llm.bind_tools = Mock(return_value=mock_bound_llm)
-        mock_bound_llm.invoke = Mock(return_value=mock_response)
         mock_get_llm.return_value = mock_llm
+        mock_create_executor.return_value = Mock()
 
-        tools = [Mock()]
+        tools = [MockTool()]
         agent = create_ml_agent(tools)
+        node = create_ml_node(agent)
 
-        state = {"messages": [HumanMessage(content="Design model")]}
-        result = agent(state)
+        with patch.object(agent, "run", return_value="Model created") as mock_run:
+            state = {"messages": [HumanMessage(content="Design model")]}
+            result = node(state)
 
-        assert "messages" in result
-        assert len(result["messages"]) == 1
-        assert result["messages"][0] == mock_response
-        mock_bound_llm.invoke.assert_called_once()
+            assert "messages" in result
+            assert len(result["messages"]) == 1
+            assert "Model created" in result["messages"][0].content
+            mock_run.assert_called_once()
 
     @patch("bioagents.agents.ml_agent.get_llm")
-    def test_ml_agent_includes_system_message(self, mock_get_llm):
+    @patch("bioagents.agents.ml_agent.create_executor")
+    def test_ml_agent_includes_system_message(self, mock_create_executor, mock_get_llm):
         """Test that the ML agent includes its system prompt."""
         mock_llm = Mock()
-        mock_bound_llm = Mock()
-        mock_response = AIMessage(content="Response")
-
-        mock_llm.bind_tools = Mock(return_value=mock_bound_llm)
-        mock_bound_llm.invoke = Mock(return_value=mock_response)
         mock_get_llm.return_value = mock_llm
+        mock_create_executor.return_value = Mock()
 
-        tools = [Mock()]
+        tools = [MockTool()]
         agent = create_ml_agent(tools)
 
-        state = {"messages": [HumanMessage(content="Test")]}
-        agent(state)
+        assert agent.instructions is not None
+        assert "Machine Learning Agent" in agent.instructions
 
-        call_args = mock_bound_llm.invoke.call_args[0][0]
-        assert len(call_args) >= 2
-        assert isinstance(call_args[0], SystemMessage)
-        assert isinstance(call_args[1], HumanMessage)
+
+class TestDlAgent:
+    """Tests for the DL agent."""
+
+    @patch("bioagents.agents.dl_agent.get_llm")
+    @patch("bioagents.agents.dl_agent.create_executor")
+    def test_create_dl_agent(self, mock_create_executor, mock_get_llm):
+        """Test creating a DL agent."""
+        mock_llm = Mock()
+        mock_get_llm.return_value = mock_llm
+        mock_create_executor.return_value = Mock()
+
+        tools = [MockTool()]
+        agent = create_dl_agent(tools)
+
+        from smolagents import CodeAgent
+
+        assert isinstance(agent, CodeAgent)
+        mock_get_llm.assert_called_once()
+
+    @patch("bioagents.agents.dl_agent.get_llm")
+    @patch("bioagents.agents.dl_agent.create_executor")
+    def test_dl_agent_invoke(self, mock_create_executor, mock_get_llm):
+        """Test invoking the DL agent."""
+        mock_llm = Mock()
+        mock_get_llm.return_value = mock_llm
+        mock_create_executor.return_value = Mock()
+
+        tools = [MockTool()]
+        agent = create_dl_agent(tools)
+        node = create_dl_node(agent)
+
+        with patch.object(agent, "run", return_value="Model created") as mock_run:
+            state = {"messages": [HumanMessage(content="Design model")]}
+            result = node(state)
+
+            assert "messages" in result
+            assert len(result["messages"]) == 1
+            assert "Model created" in result["messages"][0].content
+            mock_run.assert_called_once()
+
+    @patch("bioagents.agents.dl_agent.get_llm")
+    @patch("bioagents.agents.dl_agent.create_executor")
+    def test_dl_agent_includes_system_message(self, mock_create_executor, mock_get_llm):
+        """Test that the DL agent includes its system prompt."""
+        mock_llm = Mock()
+        mock_get_llm.return_value = mock_llm
+        mock_create_executor.return_value = Mock()
+
+        tools = [MockTool()]
+        agent = create_dl_agent(tools)
+
+        assert agent.instructions is not None
+        assert "Deep Learning Agent" in agent.instructions
 
 
 class TestReportAgent:
@@ -400,8 +467,15 @@ class TestAgentIntegration:
             ],
         )
 
+        final_ai = AIMessage(
+            content=(
+                '{"fetched_sequences":[],"literature_findings":"done","data_sources":[],'
+                '"completeness":"full","next_steps":"","status":"success","error":null}'
+            )
+        )
+
         mock_llm.bind_tools = Mock(return_value=mock_bound_llm)
-        mock_bound_llm.invoke = Mock(return_value=mock_response)
+        mock_bound_llm.invoke = Mock(side_effect=[mock_response, final_ai])
         mock_get_llm.return_value = mock_llm
 
         tools = [Mock(name="fetch_uniprot_fasta")]
@@ -412,8 +486,8 @@ class TestAgentIntegration:
 
         assert "messages" in result
         assert len(result["messages"]) == 1
-        assert hasattr(result["messages"][0], "tool_calls")
-        assert len(result["messages"][0].tool_calls) == 1
+        assert result["messages"][0] is final_ai
+        assert "fetch_uniprot_fasta" in result["tool_calls"]
 
     @patch("bioagents.agents.supervisor_agent.get_llm")
     def test_supervisor_sequential_routing(self, mock_get_llm):

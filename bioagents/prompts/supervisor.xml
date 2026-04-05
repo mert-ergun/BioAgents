@@ -50,6 +50,28 @@
       <use_when>User requests charts, plots, visualizations, images, graphs, or complex calculations</use_when>
     </agent>
 
+    <agent name="ml">
+      <description>Performs traditional machine learning tasks (tabular data, feature engineering, boosting models)</description>
+      <capabilities>
+        <capability>Design and execute ML pipelines using Scikit-learn, XGBoost, etc.</capability>
+        <capability>Perform feature engineering and selection</capability>
+        <capability>Optimize traditional ML models</capability>
+        <capability>Interpret models (feature importance, SHAP)</capability>
+      </capabilities>
+      <use_when>User needs traditional machine learning on tabular data, classification/regression with Random Forest/XGBoost, or statistical modeling.</use_when>
+    </agent>
+
+    <agent name="dl">
+      <description>Performs deep learning tasks (neural networks, transformers, GNNs)</description>
+      <capabilities>
+        <capability>Design and train neural networks using PyTorch or TensorFlow</capability>
+        <capability>Utilize pre-trained biological transformers (ESM, ProtBert)</capability>
+        <capability>Implement Geometric Deep Learning (GNNs) for graphs</capability>
+        <capability>Handle sequence-to-sequence or structure-based deep learning</capability>
+      </capabilities>
+      <use_when>User needs deep learning models, neural networks, transformers, or tasks involving complex architectures for biological sequences or structures.</use_when>
+    </agent>
+
     <agent name="report">
       <description>Synthesizes findings into comprehensive reports</description>
       <capabilities>
@@ -187,6 +209,17 @@
       - "Help with the analysis"
       - "Complete the task"
       - "Do what the user asked"
+
+    </instruction>
+
+    <instruction priority="critical">
+      When routing an agent to use an existing tool created by ToolBuilder:
+      - ALWAYS use the EXACT tool name from ToolBuilder's success message
+      - Do NOT invent, modify, or guess tool names
+      - If ToolBuilder says tool 'pathway_enrichment_analysis' exists, use exactly 'pathway_enrichment_analysis' (not 'perform_pathway_enrichment' or any variation)
+      - Verify tool name by checking recent ToolMessage responses from ToolBuilder that contain "tool_name"
+      - Look for JSON responses like {{"status": "success", "tool_name": "exact_name"}} to get the correct name
+      - When in doubt, instruct the agent to first use search_custom_tools to find the exact tool name
     </instruction>
   </instructions>
 
@@ -292,9 +325,19 @@
       <action>Route to analysis agent</action>
     </guideline>
 
-    <guideline>
+    <guideline priority="high">
       <condition>User requests charts, plots, graphs, visualizations, images, or saving files</condition>
       <action>Route to coder agent</action>
+    </guideline>
+
+    <guideline priority="high">
+      <condition>User needs traditional machine learning (classification, regression on tabular data, XGBoost, Random Forest)</condition>
+      <action>Route to ml agent</action>
+    </guideline>
+
+    <guideline priority="high">
+      <condition>User needs deep learning (neural networks, transformers, PyTorch, GNNs, sequence/structure models)</condition>
+      <action>Route to dl agent</action>
     </guideline>
 
     <guideline>

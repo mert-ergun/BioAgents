@@ -2,7 +2,11 @@
 
 import json
 import logging
+import os
 import re
+import shutil
+import subprocess  # nosec B404
+import sys
 
 from langchain_core.tools import tool
 
@@ -14,6 +18,146 @@ from bioagents.tools.tool_registry import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _run_pip_install_streaming(pip_cmd, timeout=180):
+    """
+    Run pip install command with real-time output streaming.
+
+    Args:
+        pip_cmd: List of command arguments for pip install
+        timeout: Timeout in seconds
+
+    Returns:
+        Result object with returncode, stdout, and stderr attributes
+    """
+    # Use Popen to stream output in real-time
+    process = subprocess.Popen(  # nosec B603
+        pip_cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,  # Merge stderr into stdout
+        text=True,
+        bufsize=1,  # Line buffered for real-time output
+    )
+
+    # Stream output line by line in real-time
+    output_lines = []
+    if process.stdout is not None:
+        for line in process.stdout:
+            line = line.rstrip()
+            if line:
+                logger.info(f"pip: {line}")
+                output_lines.append(line)
+
+    # Wait for process to complete (with timeout)
+    try:
+        returncode = process.wait(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        process.wait()
+        logger.warning(f"Pip install timed out after {timeout}s")
+        returncode = 1
+
+    # Create result object for compatibility
+    class Result:
+        def __init__(self, returncode, output_lines):
+            self.returncode = returncode
+            self.stdout = "\n".join(output_lines)
+            self.stderr = ""
+
+    return Result(returncode, output_lines)
+
+
+def extract_system_dependencies_from_code(code: str) -> list[str]:
+    """Extract system dependency names from tool code.
+
+    Looks for patterns like:
+    - shutil.which("tool_name")
+    - subprocess.run(["tool_name", ...])
+    - "tool_name" in error messages about missing tools
+
+    Args:
+        code: Python code to analyze
+
+    Returns:
+        List of potential system dependency names
+    """
+    dependencies = []
+
+    # Pattern 1: shutil.which("tool_name")
+    pattern1 = r'shutil\.which\(["\']([^"\']+)["\']\)'
+    matches = re.findall(pattern1, code)
+    dependencies.extend(matches)
+
+    # Pattern 2: subprocess.run(["tool_name", ...])
+    pattern2 = r'subprocess\.run\(\[["\']([^"\']+)["\']'
+    matches = re.findall(pattern2, code)
+    dependencies.extend(matches)
+
+    # Pattern 3: "tool_name not found" or similar error messages
+    pattern3 = r'["\']([a-z_][a-z0-9_-]*)\s+not\s+found'
+    matches = re.findall(pattern3, code, re.IGNORECASE)
+    dependencies.extend(matches)
+
+    # Pattern 4: Check for common bioinformatics tools in comments/docstrings
+    bioinfo_tools = [
+        "samtools",
+        "blast",
+        "blastn",
+        "blastp",
+        "blastx",
+        "tblastn",
+        "tblastx",
+        "bowtie",
+        "bowtie2",
+        "bwa",
+        "gatk",
+        "picard",
+        "bedtools",
+        "vcftools",
+        "bcftools",
+        "htslib",
+    ]
+    for bioinfo_tool in bioinfo_tools:
+        if (
+            bioinfo_tool in code.lower()
+            and bioinfo_tool not in dependencies
+            and any(
+                pattern in code.lower()
+                for pattern in [
+                    f"{bioinfo_tool} command",
+                    f"{bioinfo_tool} not found",
+                    f"which {bioinfo_tool}",
+                    f"check.*{bioinfo_tool}",
+                ]
+            )
+        ):
+            dependencies.append(bioinfo_tool)
+
+    # Remove duplicates and common false positives
+    dependencies = list(set(dependencies))
+    false_positives = [
+        "python",
+        "pip",
+        "conda",
+        "sh",
+        "bash",
+        "echo",
+        "cat",
+        "grep",
+        "ls",
+        "cd",
+        "mkdir",
+        "rm",
+        "cp",
+        "mv",
+        "tar",
+        "zip",
+        "unzip",
+    ]
+    dependencies = [d for d in dependencies if d not in false_positives]
+
+    return sorted(dependencies)
 
 
 @tool
@@ -202,6 +346,7 @@ def register_custom_tool(
     return_type: str,
     return_description: str,
     dependencies_json: str = "[]",
+    system_dependencies_json: str = "[]",
     source_paper: str | None = None,
     source_url: str | None = None,
     source_software: str | None = None,
@@ -219,6 +364,7 @@ def register_custom_tool(
         return_type: What the tool returns
         return_description: Description of return value
         dependencies_json: JSON array of pip dependencies
+        system_dependencies_json: JSON array of system dependencies (e.g., ["samtools", "blast"])
         source_paper: DOI or bioRxiv ID if from literature
         source_url: GitHub or documentation URL
         source_software: Name of the wrapped software
@@ -241,6 +387,14 @@ def register_custom_tool(
         ]
 
         dependencies = json.loads(dependencies_json)
+        system_dependencies = json.loads(system_dependencies_json)
+
+        # If system_dependencies is empty, try to extract from code
+        if not system_dependencies:
+            extracted_deps = extract_system_dependencies_from_code(code)
+            if extracted_deps:
+                system_dependencies = extracted_deps
+                logger.info(f"Auto-extracted system dependencies from code: {extracted_deps}")
 
         # Create tool definition
         definition = ToolDefinition(
@@ -252,6 +406,7 @@ def register_custom_tool(
             return_description=return_description,
             code=code,
             dependencies=dependencies,
+            system_dependencies=system_dependencies,
             source_paper=source_paper,
             source_url=source_url,
             source_software=source_software,
@@ -305,6 +460,7 @@ def validate_custom_tool(tool_name: str, test_args_json: str = "{}") -> str:
                 {
                     "status": "success",
                     "message": f"Tool '{tool_name}' validated successfully",
+                    "tool_name": tool_name,  # Add tool_name for success detection
                 }
             )
         else:
@@ -421,6 +577,8 @@ def get_tool_code(tool_name: str) -> str:
 def execute_custom_tool(tool_name: str, arguments_json: str = "{}") -> str:
     """Execute a custom tool from the registry.
 
+    Automatically checks and installs missing system dependencies before execution.
+
     Args:
         tool_name: Name of the tool to execute
         arguments_json: JSON object with tool arguments
@@ -428,8 +586,322 @@ def execute_custom_tool(tool_name: str, arguments_json: str = "{}") -> str:
     Returns:
         Tool execution result
     """
+    import subprocess  # nosec B404
+
     try:
         registry = get_registry()
+        tool_def = registry.get_tool(tool_name)
+
+        if tool_def is None:
+            return json.dumps(
+                {
+                    "status": "error",
+                    "message": f"Tool '{tool_name}' not found in registry",
+                }
+            )
+
+        # Check and install system dependencies BEFORE executing
+        if tool_def.system_dependencies:
+            missing_deps = []
+            for dep in tool_def.system_dependencies:
+                if not shutil.which(dep):
+                    missing_deps.append(dep)
+
+            if missing_deps:
+                logger.info(
+                    f"Missing system dependencies for {tool_name}: {missing_deps}. "
+                    "Attempting to install..."
+                )
+
+                # Try mamba first (faster, better dependency resolution)
+                mamba_path = shutil.which("mamba")
+                if mamba_path:
+                    try:
+                        # Install via mamba with bioconda and conda-forge channels
+                        # Use shorter timeout to avoid blocking workflow
+                        install_cmd = [
+                            "mamba",
+                            "install",
+                            "-y",
+                            "--quiet",  # Reduce output
+                            "-c",
+                            "bioconda",
+                            "-c",
+                            "conda-forge",
+                            *missing_deps,
+                        ]
+                        result = subprocess.run(  # nosec B603
+                            install_cmd,
+                            capture_output=True,
+                            text=True,
+                            timeout=60,  # 1 minute timeout (shorter to avoid workflow timeout)
+                        )
+                        if result.returncode == 0:
+                            logger.info(
+                                f"Successfully installed dependencies via mamba: {missing_deps}"
+                            )
+                            # Re-check which dependencies are still missing
+                            missing_deps = [d for d in missing_deps if not shutil.which(d)]
+                        else:
+                            logger.warning(f"Mamba install failed: {result.stderr}")
+                    except subprocess.TimeoutExpired:
+                        logger.warning(
+                            f"Mamba dependency installation timed out after 60s for: {missing_deps}. "
+                            "Skipping automatic installation."
+                        )
+                    except Exception as e:
+                        logger.warning(f"Mamba install failed: {e}")
+
+                # If mamba failed or not available, try conda (fallback)
+                conda_path = shutil.which("conda")
+                if conda_path and missing_deps:
+                    try:
+                        # Install via conda with bioconda and conda-forge channels
+                        # Use shorter timeout to avoid blocking workflow
+                        install_cmd = [
+                            "conda",
+                            "install",
+                            "-y",
+                            "--quiet",  # Reduce output
+                            "-c",
+                            "bioconda",
+                            "-c",
+                            "conda-forge",
+                            *missing_deps,
+                        ]
+                        result = subprocess.run(  # nosec B603
+                            install_cmd,
+                            capture_output=True,
+                            text=True,
+                            timeout=60,  # 1 minute timeout (shorter to avoid workflow timeout)
+                        )
+                        if result.returncode == 0:
+                            logger.info(
+                                f"Successfully installed dependencies via conda: {missing_deps}"
+                            )
+                            # Re-check which dependencies are still missing
+                            missing_deps = [d for d in missing_deps if not shutil.which(d)]
+                        else:
+                            logger.warning(f"Conda install failed: {result.stderr}")
+                    except subprocess.TimeoutExpired:
+                        logger.warning(
+                            f"Conda dependency installation timed out after 60s for: {missing_deps}. "
+                            "Skipping automatic installation."
+                        )
+                    except Exception as e:
+                        logger.warning(f"Conda install failed: {e}")
+
+                # Skip apt-get (requires sudo, not suitable for automatic installation)
+                # Just log a warning with instructions
+                if missing_deps and os.name != "nt" and shutil.which("apt-get"):
+                    logger.warning(
+                        f"apt-get installation requires sudo privileges. "
+                        f"Please install manually: sudo apt-get install {' '.join(missing_deps)}"
+                    )
+
+                # Check what's still missing after all attempts
+                still_missing = [d for d in missing_deps if not shutil.which(d)]
+                if still_missing:
+                    # Build comprehensive install instructions
+                    install_instructions = {
+                        "mamba": f"mamba install -c bioconda -c conda-forge {' '.join(still_missing)}",
+                        "conda": f"conda install -c bioconda -c conda-forge {' '.join(still_missing)}",
+                    }
+                    if os.name != "nt":
+                        install_instructions["apt"] = (
+                            f"sudo apt-get install {' '.join(still_missing)}"
+                        )
+
+                    # Log warning but try to run tool anyway (graceful degradation)
+                    # The tool itself may handle missing dependencies gracefully
+                    logger.warning(
+                        f"Missing system dependencies: {', '.join(still_missing)}. "
+                        f"Attempting to run tool anyway. Install with: {install_instructions}"
+                    )
+
+        # Check and install Python pip dependencies BEFORE executing
+        if tool_def.dependencies:
+            missing_pip_deps = []
+            for dep in tool_def.dependencies:
+                # Try to import the package
+                # Handle package name variations (e.g., "scikit-learn" -> "sklearn")
+                module_name = dep.replace("-", "_")
+                try:
+                    __import__(module_name)
+                except ImportError:
+                    # Also try the original name in case it's different
+                    try:
+                        __import__(dep)
+                    except ImportError:
+                        missing_pip_deps.append(dep)
+
+            if missing_pip_deps:
+                logger.info(
+                    f"Missing Python dependencies for {tool_name}: {missing_pip_deps}. "
+                    "Attempting to install via pip..."
+                )
+
+                try:
+                    # First, try to install pip if it's missing
+                    pip_cmd = [
+                        sys.executable,
+                        "-m",
+                        "pip",
+                        "install",
+                        "--disable-pip-version-check",
+                        *missing_pip_deps,
+                    ]
+
+                    logger.info(f"Installing packages: {', '.join(missing_pip_deps)}")
+                    logger.info("Installation progress (real-time):")
+                    result = _run_pip_install_streaming(pip_cmd, timeout=180)
+
+                    # If pip module is missing, try to install it first
+                    if result.returncode != 0 and "No module named pip" in result.stdout:
+                        logger.info(
+                            "Pip module not found. Attempting to install pip via ensurepip..."
+                        )
+                        ensurepip_cmd = [sys.executable, "-m", "ensurepip", "--upgrade"]
+                        ensurepip_installed = False
+
+                        try:
+                            ensurepip_result = subprocess.run(  # nosec B603
+                                ensurepip_cmd,
+                                capture_output=True,
+                                text=True,
+                                timeout=180,  # Increased timeout to 3 minutes
+                            )
+                            if ensurepip_result.returncode == 0:
+                                logger.info(
+                                    "Pip installed successfully via ensurepip. Verifying installation..."
+                                )
+                                # Verify pip is actually available
+                                verify_cmd = [sys.executable, "-m", "pip", "--version"]
+                                verify_result = subprocess.run(  # nosec B603
+                                    verify_cmd,
+                                    capture_output=True,
+                                    text=True,
+                                    timeout=10,
+                                )
+                                if verify_result.returncode == 0:
+                                    logger.info(f"Pip verified: {verify_result.stdout.strip()}")
+                                    ensurepip_installed = True
+                                else:
+                                    logger.warning(
+                                        f"Pip installation verification failed: {verify_result.stderr}"
+                                    )
+                            else:
+                                logger.warning(
+                                    f"Failed to install pip via ensurepip (returncode {ensurepip_result.returncode}): "
+                                    f"{ensurepip_result.stderr or ensurepip_result.stdout}. "
+                                    "Trying alternative methods..."
+                                )
+                        except subprocess.TimeoutExpired:
+                            logger.warning(
+                                "ensurepip timed out after 180s. This may indicate network issues or "
+                                "a corrupted Python installation. Trying alternative methods..."
+                            )
+                        except Exception as e:
+                            logger.warning(
+                                f"ensurepip failed with exception: {e}. Trying alternative methods..."
+                            )
+
+                        # If ensurepip didn't work, try alternative methods
+                        if not ensurepip_installed:
+                            # Try ensurepip with --user flag
+                            try:
+                                logger.info("Trying ensurepip with --user flag...")
+                                ensurepip_user_cmd = [
+                                    sys.executable,
+                                    "-m",
+                                    "ensurepip",
+                                    "--upgrade",
+                                    "--user",
+                                ]
+                                ensurepip_user_result = subprocess.run(  # nosec B603
+                                    ensurepip_user_cmd,
+                                    capture_output=True,
+                                    text=True,
+                                    timeout=180,
+                                )
+                                if ensurepip_user_result.returncode == 0:
+                                    logger.info("Pip installed successfully via ensurepip --user")
+                                    ensurepip_installed = True
+                            except Exception as e:
+                                logger.warning(f"ensurepip --user failed: {e}")
+
+                            # Try direct pip command if available in PATH
+                            if not ensurepip_installed:
+                                direct_pip = shutil.which("pip")
+                                if direct_pip:
+                                    logger.info(
+                                        f"Found pip in PATH: {direct_pip}. Using it directly..."
+                                    )
+                                    direct_pip_cmd = [
+                                        direct_pip,
+                                        "install",
+                                        "--disable-pip-version-check",
+                                        *missing_pip_deps,
+                                    ]
+                                    try:
+                                        logger.info("Installation progress (real-time):")
+                                        result = _run_pip_install_streaming(
+                                            direct_pip_cmd, timeout=180
+                                        )
+                                        if result.returncode == 0:
+                                            ensurepip_installed = True  # Mark as success
+                                    except Exception as e:
+                                        logger.warning(f"Direct pip install failed: {e}")
+                                else:
+                                    logger.warning(
+                                        "Pip not available via ensurepip, ensurepip --user, or PATH. "
+                                        "Please install pip manually or use a proper virtual environment. "
+                                        "You can try: python -m ensurepip --upgrade"
+                                    )
+
+                        # Retry pip install if ensurepip succeeded
+                        if ensurepip_installed:
+                            logger.info("Retrying package installation with newly installed pip...")
+                            logger.info("Installation progress (real-time):")
+                            result = _run_pip_install_streaming(pip_cmd, timeout=180)
+
+                    # Check result after initial install or retry
+                    if result.returncode == 0:
+                        logger.info(
+                            f"Successfully installed Python dependencies via pip: {missing_pip_deps}"
+                        )
+                        # Re-check which dependencies are still missing
+                        still_missing_pip = []
+                        for dep in missing_pip_deps:
+                            module_name = dep.replace("-", "_")
+                            try:
+                                __import__(module_name)
+                            except ImportError:
+                                try:
+                                    __import__(dep)
+                                except ImportError:
+                                    still_missing_pip.append(dep)
+                        if still_missing_pip:
+                            logger.warning(
+                                f"Some Python dependencies could not be imported after installation: {still_missing_pip}"
+                            )
+                    else:
+                        logger.warning(f"Pip install failed: {result.stderr}")
+                except subprocess.TimeoutExpired:
+                    logger.warning(
+                        f"Pip dependency installation timed out after 180s for: {missing_pip_deps}"
+                    )
+                except Exception as e:
+                    logger.warning(f"Pip install failed: {e}")
+
+        # Check if there are still missing dependencies before executing
+        still_missing_before_exec = []
+        if tool_def.system_dependencies:
+            still_missing_before_exec = [
+                d for d in tool_def.system_dependencies if not shutil.which(d)
+            ]
+
+        # Now execute the tool
         func = registry.load_tool_function(tool_name)
 
         if func is None:
@@ -442,6 +914,28 @@ def execute_custom_tool(tool_name: str, arguments_json: str = "{}") -> str:
 
         args = json.loads(arguments_json)
         result = func(**args)
+
+        # Check if result indicates missing dependencies
+        # (some tools return error dicts with dependency messages)
+        if isinstance(result, dict):
+            error_msg = result.get("message", "") or result.get("error", "")
+            if still_missing_before_exec and any(
+                dep in error_msg.lower() for dep in still_missing_before_exec
+            ):
+                # Build install instructions for the error response
+                install_instructions = {
+                    "mamba": f"mamba install -c bioconda -c conda-forge {' '.join(still_missing_before_exec)}",
+                    "conda": f"conda install -c bioconda -c conda-forge {' '.join(still_missing_before_exec)}",
+                }
+                if os.name != "nt":
+                    install_instructions["apt"] = (
+                        f"sudo apt-get install {' '.join(still_missing_before_exec)}"
+                    )
+
+                # Enhance error message with install instructions
+                if result.get("status") == "error":
+                    result["install_instructions"] = install_instructions
+                    result["note"] = "Please install the missing dependencies and try again."
 
         # Record usage
         registry.record_usage(tool_name)
@@ -457,10 +951,41 @@ def execute_custom_tool(tool_name: str, arguments_json: str = "{}") -> str:
 
     except Exception as e:
         logger.error(f"Tool execution failed: {e}")
+        error_msg = str(e)
+
+        # Check if error is related to missing dependencies
+        try:
+            registry = get_registry()
+            tool_def = registry.get_tool(tool_name)
+            if tool_def and tool_def.system_dependencies:
+                still_missing = [d for d in tool_def.system_dependencies if not shutil.which(d)]
+                if still_missing and any(dep in error_msg.lower() for dep in still_missing):
+                    install_instructions = {
+                        "mamba": f"mamba install -c bioconda -c conda-forge {' '.join(still_missing)}",
+                        "conda": f"conda install -c bioconda -c conda-forge {' '.join(still_missing)}",
+                    }
+                    if os.name != "nt":
+                        install_instructions["apt"] = (
+                            f"sudo apt-get install {' '.join(still_missing)}"
+                        )
+
+                    return json.dumps(
+                        {
+                            "status": "error",
+                            "message": error_msg,
+                            "install_instructions": install_instructions,
+                            "note": "Please install the missing dependencies and try again.",
+                        },
+                        indent=2,
+                    )
+        except Exception:  # nosec B110
+            # If we can't get tool_def, just return the error
+            pass
+
         return json.dumps(
             {
                 "status": "error",
-                "message": str(e),
+                "message": error_msg,
             }
         )
 

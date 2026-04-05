@@ -11,6 +11,7 @@ from bioagents.graph import create_graph
 class TestBasicWorkflow:
     """Integration tests for basic workflow scenarios."""
 
+    @patch("bioagents.graph.create_summary_agent")
     @patch("bioagents.graph.create_supervisor_agent")
     @patch("bioagents.graph.create_research_agent")
     @patch("bioagents.graph.create_analysis_agent")
@@ -18,9 +19,13 @@ class TestBasicWorkflow:
     @patch("bioagents.graph.create_critic_agent")
     @patch("bioagents.graph.create_tool_builder_agent")
     @patch("bioagents.graph.create_protein_design_agent")
+    @patch("bioagents.graph.create_dl_agent")
+    @patch("bioagents.graph.create_ml_agent")
     @patch("bioagents.graph.create_coder_agent")
     def test_graph_creation_integration(
         self,
+        mock_dl,
+        mock_ml,
         mock_coder,
         mock_protein,
         mock_builder,
@@ -29,9 +34,11 @@ class TestBasicWorkflow:
         mock_analysis,
         mock_research,
         mock_supervisor,
+        mock_summary,
     ):
         """Test that graph can be created with all components."""
         # Setup all mocks
+        mock_summary.return_value = Mock()
         mock_supervisor.return_value = Mock()
         mock_research.return_value = Mock()
         mock_analysis.return_value = Mock()
@@ -39,7 +46,11 @@ class TestBasicWorkflow:
         mock_critic.return_value = Mock()
         mock_builder.return_value = Mock()
         mock_protein.return_value = Mock()
+        mock_ml.return_value = Mock()
+        mock_dl.return_value = Mock()
         mock_coder.return_value = Mock()
+        mock_ml.return_value = Mock()
+        mock_dl.return_value = Mock()
 
         # Create graph - should not raise any errors
         graph = create_graph()
@@ -144,6 +155,7 @@ class TestMultiAgentWorkflow:
 class TestEndToEndWorkflow:
     """End-to-end integration tests simulating real workflows."""
 
+    @patch("bioagents.graph.create_summary_agent")
     @patch("bioagents.graph.create_supervisor_agent")
     @patch("bioagents.graph.create_research_agent")
     @patch("bioagents.graph.create_analysis_agent")
@@ -151,9 +163,13 @@ class TestEndToEndWorkflow:
     @patch("bioagents.graph.create_critic_agent")
     @patch("bioagents.graph.create_tool_builder_agent")
     @patch("bioagents.graph.create_protein_design_agent")
+    @patch("bioagents.graph.create_dl_agent")
+    @patch("bioagents.graph.create_ml_agent")
     @patch("bioagents.graph.create_coder_agent")
     def test_simple_query_workflow(
         self,
+        mock_dl,
+        mock_ml,
         mock_coder,
         mock_protein,
         mock_builder,
@@ -162,6 +178,7 @@ class TestEndToEndWorkflow:
         mock_analysis,
         mock_research,
         mock_supervisor,
+        mock_summary,
     ):
         """Test a simple query workflow."""
         # Mock supervisor routing: research -> FINISH
@@ -179,6 +196,7 @@ class TestEndToEndWorkflow:
         mock_supervisor_agent = Mock(side_effect=supervisor_calls)
         mock_research_agent = Mock(return_value=research_response)
 
+        mock_summary.return_value = Mock()
         mock_supervisor.return_value = mock_supervisor_agent
         mock_research.return_value = mock_research_agent
         mock_analysis.return_value = Mock()
@@ -186,7 +204,11 @@ class TestEndToEndWorkflow:
         mock_critic.return_value = Mock()
         mock_builder.return_value = Mock()
         mock_protein.return_value = Mock()
+        mock_ml.return_value = Mock()
+        mock_dl.return_value = Mock()
         mock_coder.return_value = Mock()
+        mock_ml.return_value = Mock()
+        mock_dl.return_value = Mock()
 
         graph = create_graph()
 
@@ -200,6 +222,7 @@ class TestEndToEndWorkflow:
             # Some exceptions are expected in mocked scenarios
             pass
 
+    @patch("bioagents.graph.create_summary_agent")
     @patch("bioagents.graph.create_supervisor_agent")
     @patch("bioagents.graph.create_research_agent")
     @patch("bioagents.graph.create_analysis_agent")
@@ -207,9 +230,13 @@ class TestEndToEndWorkflow:
     @patch("bioagents.graph.create_critic_agent")
     @patch("bioagents.graph.create_tool_builder_agent")
     @patch("bioagents.graph.create_protein_design_agent")
+    @patch("bioagents.graph.create_dl_agent")
+    @patch("bioagents.graph.create_ml_agent")
     @patch("bioagents.graph.create_coder_agent")
     def test_multi_step_workflow(
         self,
+        mock_dl,
+        mock_ml,
         mock_coder,
         mock_protein,
         mock_builder,
@@ -218,6 +245,7 @@ class TestEndToEndWorkflow:
         mock_analysis,
         mock_research,
         mock_supervisor,
+        mock_summary,
     ):
         """Test a multi-step workflow: research -> analysis -> report -> finish."""
         # Mock supervisor routing through all agents
@@ -245,6 +273,7 @@ class TestEndToEndWorkflow:
         mock_analysis_agent = Mock(return_value=analysis_response)
         mock_report_agent = Mock(return_value=report_response)
 
+        mock_summary.return_value = Mock()
         mock_supervisor.return_value = mock_supervisor_agent
         mock_research.return_value = mock_research_agent
         mock_analysis.return_value = mock_analysis_agent
@@ -252,7 +281,11 @@ class TestEndToEndWorkflow:
         mock_critic.return_value = Mock()
         mock_builder.return_value = Mock()
         mock_protein.return_value = Mock()
+        mock_ml.return_value = Mock()
+        mock_dl.return_value = Mock()
         mock_coder.return_value = Mock()
+        mock_ml.return_value = Mock()
+        mock_dl.return_value = Mock()
 
         graph = create_graph()
 

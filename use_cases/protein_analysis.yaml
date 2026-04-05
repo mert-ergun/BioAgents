@@ -1,0 +1,52 @@
+use_cases:
+
+  - id: uc_p53_analysis
+    name: "p53 Protein Analysis"
+    category: protein_analysis
+    tags: [protein, uniprot, analysis, structure]
+    description: >
+      Full biochemical analysis of the human p53 tumor suppressor protein,
+      including sequence retrieval, structural download, and property calculation.
+    prompt: >
+      Analyze the human p53 tumor suppressor protein (UniProt: P04637).
+      Fetch the FASTA sequence, download the AlphaFold structure, calculate
+      molecular weight and isoelectric point, and provide a comprehensive summary.
+    expected_agents: [research, analysis, report]
+    expected_tools: [fetch_uniprot_fasta, fetch_alphafold_structure, calculate_molecular_weight, calculate_isoelectric_point]
+    evaluation_criteria: |
+      - The response must include the UniProt accession P04637.
+      - Molecular weight should be reported in Daltons (Da) or kDa.
+      - Isoelectric point should be a numeric value between 0 and 14.
+      - An AlphaFold structure URL or file path must be mentioned.
+      - The summary should mention p53's role as a tumor suppressor.
+
+  - id: uc_insulin_3d
+    name: "Insulin 3D Structure"
+    category: protein_analysis
+    tags: [protein, structure, alphafold]
+    description: Retrieve and describe the 3D structure of human insulin.
+    prompt: >
+      Fetch and describe the 3D structure of human insulin (UniProt: P01308)
+      from AlphaFold. Include the structure URL and summarize its key structural
+      features.
+    expected_agents: [research]
+    expected_tools: [fetch_alphafold_structure]
+    evaluation_criteria: |
+      - Must reference UniProt ID P01308.
+      - Must provide an AlphaFold structure URL or file path.
+      - Response should describe key structural features (e.g., alpha-helices, disulfide bonds).
+
+  - id: uc_amino_acid_composition
+    name: "Amino Acid Composition"
+    category: protein_analysis
+    tags: [protein, analysis, composition]
+    description: Analyze amino acid composition of a given FASTA sequence.
+    prompt: >
+      Analyze the amino acid composition of the following protein sequence and
+      report the percentage of each amino acid type:
+      MTEYKLVVVGAGGVGKSALTIQLIQNHFVDEYDPTIEDSY
+    expected_agents: [analysis]
+    expected_tools: [analyze_amino_acid_composition]
+    evaluation_criteria: |
+      - Must report percentages or counts for each amino acid present in the sequence.
+      - The analysis must cover the full 41-residue sequence.

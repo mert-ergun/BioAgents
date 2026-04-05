@@ -2,10 +2,30 @@
 
 import logging
 import re
+from typing import Any
 
 from langchain_core.messages import AIMessage, SystemMessage
+from langchain_core.tools import BaseTool
 
 logger = logging.getLogger(__name__)
+
+
+def resolve_tool_name(tool: Any) -> str:
+    """Return a stable tool name for dict registration (handles unittest.mock.Mock)."""
+    if isinstance(tool, BaseTool):
+        return str(tool.name)
+    mock_name = getattr(tool, "_mock_name", None)
+    if isinstance(mock_name, str) and mock_name:
+        return mock_name
+    n = getattr(tool, "name", None)
+    if isinstance(n, str) and n:
+        return n
+    if callable(tool):
+        fn = getattr(tool, "__name__", None)
+        if isinstance(fn, str) and fn:
+            return fn
+    return str(tool)
+
 
 MAX_RETRIES = 2
 

@@ -1,9 +1,40 @@
 """Utility for loading and parsing XML-formatted system prompts."""
 
 import xml.etree.ElementTree as ET  # nosec B405  # Internal trusted XML files only
+from contextvars import ContextVar
 from pathlib import Path
 
 ModelMap = dict[str, str]
+
+# ---------------------------------------------------------------------------
+# Experiment prompt-override context variable
+# ---------------------------------------------------------------------------
+# The experiment runner sets this context variable before executing each run.
+# It maps prompt_name -> override text (plain string, replaces XML-parsed output).
+# The global load_prompt() function checks this first; if an override exists
+# for the requested prompt, it returns that text without loading the XML file.
+# This enables per-run system prompt tweaks without modifying any agent code.
+# ---------------------------------------------------------------------------
+_experiment_prompt_overrides: ContextVar[dict[str, str] | None] = ContextVar(
+    "experiment_prompt_overrides", default=None
+)
+
+
+def set_experiment_prompt_overrides(overrides: dict[str, str] | None) -> None:
+    """
+    Set per-run prompt overrides for the current async/thread context.
+
+    Call this before running the graph in an experiment. Pass ``None`` to clear.
+
+    Args:
+        overrides: Mapping of prompt_name -> replacement text, or None.
+    """
+    _experiment_prompt_overrides.set(overrides)
+
+
+def get_experiment_prompt_overrides() -> dict[str, str] | None:
+    """Return the currently active prompt overrides for this context."""
+    return _experiment_prompt_overrides.get()
 
 
 class PromptLoader:
@@ -47,7 +78,34 @@ class PromptLoader:
             ET.ParseError: If the XML is malformed
         """
         root = self._get_prompt_root(prompt_name)
+        return self._format_prompt_from_root(root)
 
+    def load_prompt_from_xml_string(self, xml_string: str) -> str:
+        """
+        Load and parse an XML prompt string into a formatted string.
+
+        Args:
+            xml_string: XML prompt content as string
+
+        Returns:
+            The formatted prompt text ready for use as a system message
+
+        Raises:
+            ET.ParseError: If the XML is malformed
+        """
+        root = ET.fromstring(xml_string)  # nosec B314  # Internal trusted XML
+        return self._format_prompt_from_root(root)
+
+    def _format_prompt_from_root(self, root: ET.Element) -> str:
+        """
+        Format an XML root element into a prompt string.
+
+        Args:
+            root: Root element of XML prompt
+
+        Returns:
+            The formatted prompt text
+        """
         # Build the prompt text
         sections = []
 
@@ -423,13 +481,82 @@ def load_prompt(prompt_name: str) -> str:
     """
     Convenience function to load a prompt using the global loader.
 
+    Checks the experiment prompt-override context first. If an override exists
+    for *prompt_name*, that text is returned immediately without parsing the XML
+    file (ACE playbook is also skipped for overridden prompts to keep overrides
+    predictable).
+
+    If ACE is enabled, appends playbook learnings directly to the XML-loaded prompt
+    (following ACE's original approach where playbook is added to the prompt).
+
     Args:
         prompt_name: Name of the prompt file (without .xml extension)
 
     Returns:
-        The formatted prompt text
+        The formatted prompt text (with playbook appended if ACE enabled)
     """
-    return _loader.load_prompt(prompt_name)
+    # Check for experiment-level per-run prompt override
+    overrides = _experiment_prompt_overrides.get()
+    if overrides and prompt_name in overrides:
+        return overrides[prompt_name]
+
+    # Load base prompt from XML
+    base_prompt = _loader.load_prompt(prompt_name)
+
+    # Check if ACE is enabled
+    try:
+        from bioagents.learning import is_ace_enabled
+        from bioagents.learning.playbook_manager import _parse_playbook_line, load_playbook
+
+        if is_ace_enabled():
+            # Load playbook
+            playbook = load_playbook(prompt_name)
+
+            # Only append if playbook has bullets (not empty)
+            # Check if playbook has any bullet lines (format: [id] helpful=X harmful=Y :: content)
+            import re
+
+            has_bullets = bool(re.search(r"\[[^\]]+\]\s*helpful=\d+\s*harmful=\d+\s*::", playbook))
+
+            if has_bullets:
+                # Filter bullets: only include helpful ones (helpful > harmful)
+                # Format playbook bullets for prompt
+                playbook_lines = playbook.strip().split("\n")
+                filtered_bullets = []
+
+                for line in playbook_lines:
+                    # Skip section headers and empty lines
+                    if line.strip().startswith("#") or not line.strip():
+                        continue
+
+                    # Parse bullet line
+                    parsed = _parse_playbook_line(line)
+                    if parsed:
+                        helpful = parsed.get("helpful", 0) or 0
+                        harmful = parsed.get("harmful", 0) or 0
+                        content_str = parsed.get("content", "")
+                        content = content_str.strip() if isinstance(content_str, str) else ""
+
+                        # Only include helpful bullets (helpful > harmful)
+                        if content and helpful > harmful:
+                            # Format: [id] (helpful: X, harmful: Y, score: Z) - content
+                            bullet_id = parsed.get("id", "") or ""
+                            score = helpful - harmful
+                            formatted = f"[{bullet_id}] (helpful: {helpful}, harmful: {harmful}, score: {score}) - {content}"
+                            filtered_bullets.append(formatted)
+
+                # Append playbook section to prompt
+                if filtered_bullets:
+                    playbook_section = "\n\n## Learned Best Practices (from ACE)\n\n"
+                    playbook_section += "The following strategies and insights have been learned from previous executions:\n\n"
+                    playbook_section += "\n".join(f"- {bullet}" for bullet in filtered_bullets)
+                    base_prompt += playbook_section
+
+    except Exception:  # nosec B110
+        # If anything fails, fall back to normal loading
+        pass
+
+    return base_prompt
 
 
 def get_prompt_llm_models(prompt_name: str) -> ModelMap:

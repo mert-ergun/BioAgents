@@ -17,6 +17,7 @@ dependencies = [
     "langchain-openai>=1.0.2",
     "langgraph>=1.0.3",
     "litellm>=1.79.3",
+    "networkx>=3.5",
     "notebook>=7.4.7",
     "pandas>=2.3.3",
     "pytest>=9.0.1",
@@ -28,6 +29,13 @@ dependencies = [
     "fastapi>=0.115.0",
     "uvicorn[standard]>=0.32.0",
     "websockets>=14.0",
+    "paper-qa>=2026.2.16",
+]
+
+[project.optional-dependencies]
+esm = [
+    "fair-esm>=2.0.0",
+    "torch>=2.2.0",
 ]
 
 [project.scripts]
@@ -35,7 +43,7 @@ bioagents-web = "frontend.server:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["bioagents*"]
+include = ["bioagents*", "frontend*"]
 exclude = ["tests*", "docs*", "data*", "config*", "notebooks*"]
 
 [dependency-groups]
@@ -102,10 +110,12 @@ strict_equality = true
 module = [
     "biopython.*",
     "docker.*",
+    "esm.*",
     "langchain.*",
     "langchain_google_genai.*",
     "langgraph.*",
     "litellm.*",
+    "torch.*",
 ]
 ignore_missing_imports = true
 

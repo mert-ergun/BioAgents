@@ -11,13 +11,54 @@ DEFAULT_CODER_IMPORTS = [
     "matplotlib.*",
     "scipy.*",
     "bioagents.*",
+    "Bio",
+    "Bio.*",
     "typing",
     "json",
     "os",
     "os.path",
+    "posixpath",
+    "ntpath",
     "sys",
     "pathlib",
+    "io",
+    "base64",
+    "binascii",
+    "subprocess",
+    "importlib",
+    "pkg_resources",
 ]
+
+DEFAULT_ML_IMPORTS = [
+    *DEFAULT_CODER_IMPORTS,
+    "sklearn.*",
+    "xgboost",
+    "lightgbm",
+    "catboost",
+    "seaborn",
+    "joblib",
+    "statsmodels.*",
+]
+
+DEFAULT_DL_IMPORTS = [
+    *DEFAULT_ML_IMPORTS,
+    "torch.*",
+    "torchvision.*",
+    "torchaudio.*",
+    "tensorflow.*",
+    "keras.*",
+    "tensorboard",
+    "transformers",
+    "datasets",
+    "tqdm",
+]
+
+
+class PermissiveList(list):
+    """A list that contains everything, used to allow all imports in sandboxed environments."""
+
+    def __contains__(self, item: Any) -> bool:
+        return True
 
 
 def extract_original_query(messages: list) -> str | None:
@@ -70,7 +111,6 @@ def build_task_with_output_dir(
     original_query: str | None,
     available_data: list[str],
     output_dir: str | None,
-    system_prompt: str | None = None,
 ) -> str:
     """
     Build the task string for the coder agent with output directory instructions.
@@ -79,7 +119,6 @@ def build_task_with_output_dir(
         original_query: The original user query
         available_data: List of available data strings from previous messages
         output_dir: Output directory path for saving files
-        system_prompt: System prompt to include in task description (for visibility in logs)
 
     Returns:
         Formatted task string for the coder agent
@@ -92,10 +131,8 @@ def build_task_with_output_dir(
     if available_data:
         task_parts.append("\nAVAILABLE DATA/CONTEXT:\n" + "\n".join(available_data[-3:]))
 
-    # Add system prompt to task description so it's visible in "New run" output
-    # (smolagents only shows task in logs, not system prompt)
-    if system_prompt:
-        task_parts.append(f"\n\nSYSTEM PROMPT / INSTRUCTIONS:\n{system_prompt}")
+    # System prompt is already passed to CodeAgent via instructions parameter,
+    # so we don't need to include it in the task description to avoid cluttering logs
 
     task = "\n".join(task_parts) if task_parts else "Please complete the requested task."
 
@@ -133,9 +170,21 @@ def format_coder_result(result: Any) -> str:
     Returns:
         A string representation of the result
     """
-    if hasattr(result, "final_answer") and result.final_answer:
-        return f"Task completed successfully.\n\nFinal answer: {result.final_answer}"
-    elif hasattr(result, "output") and result.output:
-        return str(result.output)
-    else:
-        return str(result)
+    final_answer = getattr(result, "final_answer", None)
+    if not final_answer:
+        output = getattr(result, "output", None)
+        return str(output) if output else str(result)
+
+    if isinstance(final_answer, dict):
+        lines = ["Task completed successfully.\n"]
+        for key, value in final_answer.items():
+            formatted_key = key.replace("_", " ").title()
+            if isinstance(value, str) and (
+                value.endswith(".png") or value.endswith(".jpg") or value.endswith(".pdf")
+            ):
+                lines.append(f"- **{formatted_key}**: `{value}`")
+            else:
+                lines.append(f"- **{formatted_key}**:\n{value}")
+        return "\n".join(lines)
+
+    return f"Task completed successfully.\n\nFinal answer: {final_answer}"

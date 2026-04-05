@@ -1,51 +1,168 @@
-"""ML Agent for designing and executing machine learning systems."""
+"""ML Agent for designing and executing traditional machine learning systems."""
 
 import logging
+import re
+from collections.abc import Callable
+from typing import Any
 
-from langchain_core.messages import SystemMessage
+from langchain_core.messages import AIMessage
+from smolagents import CodeAgent
 
+from bioagents.llms.adapters import LangChainModelAdapter
 from bioagents.llms.llm_provider import get_llm
 from bioagents.prompts.prompt_loader import load_prompt
+from bioagents.sandbox.coder_executor import create_executor
+from bioagents.sandbox.coder_helpers import (
+    DEFAULT_ML_IMPORTS,
+    build_task_with_output_dir,
+    extract_available_data,
+    extract_original_query,
+    format_coder_result,
+)
+from bioagents.tools.smol_tool_wrappers import ToolUniverseExecuteTool, ToolUniverseSearchTool
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("BioAgents")
 
 ML_AGENT_PROMPT = load_prompt("ml_agent")
 
 
-def create_ml_agent(tools: list):
+def create_ml_agent(
+    tools: list | None = None,
+    additional_imports: list[str] | None = None,
+    max_steps: int = 20,
+) -> CodeAgent:
+    """
+    Create the ML Agent instance.
+
+    Args:
+        tools: List of tools available to the agent
+        additional_imports: Additional Python packages to allow in the sandbox
+        max_steps: Maximum number of execution steps
+
+    Returns:
+        A CodeAgent instance that can generate and execute Python code via Jupyter notebooks
+    """
+    if tools is None:
+        tools = [ToolUniverseSearchTool(), ToolUniverseExecuteTool()]
+
+    if additional_imports is None:
+        additional_imports = DEFAULT_ML_IMPORTS
+
+    lc_model = get_llm(prompt_name="ml_agent")
+    model = LangChainModelAdapter(lc_model)
+    executor = create_executor("ml", additional_imports)
+
+    # Escape Jinja2 template syntax in instructions to avoid conflicts
+    escaped_instructions = ML_AGENT_PROMPT.replace("{", "{{").replace("}", "}}")
+
+    from bioagents.sandbox.coder_helpers import PermissiveList
+
+    agent = CodeAgent(
+        tools=tools,
+        model=model,
+        executor=executor,
+        additional_authorized_imports=PermissiveList(additional_imports),
+        max_steps=max_steps,
+        instructions=escaped_instructions,
+    )
+
+    return agent
+
+
+def create_ml_node(agent: CodeAgent) -> Callable:
     """
     Create the ML Agent node function.
 
-    The ML agent specializes in designing, executing, and optimizing
-    machine learning systems for bioinformatics tasks.
-
     Args:
-        tools: List of tools available to the agent (should include ml_tools)
+        agent: The CodeAgent instance to wrap
 
     Returns:
         A function that can be used as a LangGraph node
     """
-    llm = get_llm(prompt_name="ml_agent")
-    llm_with_tools = llm.bind_tools(tools)
 
-    def agent_node(state):
+    def ml_node(state: dict[str, Any]) -> dict[str, Any]:
+        """Memory-based ML node.
+
+        Writes structured results into shared memory via the agent wrapper.
+        Returns a dict: {data, raw_output, tool_calls, error}
         """
-        The ML agent node function.
+        messages = state.get("messages", [])
 
-        Args:
-            state: The current AgentState
+        original_query = extract_original_query(messages)
+        available_data = extract_available_data(messages)
+        output_dir = state.get("output_dir")
 
-        Returns:
-            A dict with the 'messages' key containing the agent's response
-        """
-        messages = state["messages"]
+        task = build_task_with_output_dir(original_query, available_data, output_dir)
 
-        messages_with_system = [SystemMessage(content=ML_AGENT_PROMPT), *messages]
+        try:
+            logger.info("Starting ML agent execution")
+            result = agent.run(task)
+            content = format_coder_result(result)
 
-        response = llm_with_tools.invoke(messages_with_system)
+            execution_steps: list[dict[str, Any]] = []
 
-        logger.info("ML Agent: Received LLM response")
+            # Guard against union type: agent.memory may not have .steps
+            agent_memory = getattr(agent, "memory", None)
+            raw_steps = getattr(agent_memory, "steps", []) if agent_memory is not None else []
 
-        return {"messages": [response]}
+            for step in raw_steps:
+                if hasattr(step, "task"):
+                    continue
 
-    return agent_node
+                step_data: dict[str, Any] = {"step": len(execution_steps) + 1}
+
+                if hasattr(step, "thought") and step.thought:
+                    step_data["thought"] = step.thought
+                elif hasattr(step, "model_output") and step.model_output:
+                    thought = step.model_output
+                    thought = re.sub(r"```python\n[\s\S]*?```", "", thought).strip()
+                    if thought:
+                        step_data["thought"] = thought
+
+                if hasattr(step, "code") and step.code:
+                    step_data["code"] = step.code
+                elif hasattr(step, "model_output") and step.model_output:
+                    code_match = re.search(r"```python\n([\s\S]*?)```", step.model_output)
+                    if code_match:
+                        step_data["code"] = code_match.group(1)
+
+                if hasattr(step, "observations") and step.observations:
+                    step_data["output"] = str(step.observations)
+
+                if hasattr(step, "logs") and step.logs:
+                    step_data["logs"] = step.logs
+
+                if any(k in step_data for k in ["thought", "code", "output", "logs"]):
+                    execution_steps.append(step_data)
+
+            logger.info("Extracted %d execution steps", len(execution_steps))
+
+            structured = {
+                "model_result": {
+                    "summary": content,
+                    "code_steps": execution_steps,
+                }
+            }
+
+            return {
+                "data": structured,
+                "raw_output": content,
+                "tool_calls": [],
+                "error": None,
+                "messages": [AIMessage(content=content, name="ML")],
+            }
+
+        except Exception as e:
+            import traceback
+
+            error_msg = f"Error executing ML code: {e}\n\nTraceback:\n{traceback.format_exc()}"
+            logger.error("ML agent error: %s", error_msg)
+            return {
+                "data": {},
+                "raw_output": "",
+                "tool_calls": [],
+                "error": error_msg,
+                "messages": [AIMessage(content=error_msg, name="ML")],
+            }
+
+    return ml_node

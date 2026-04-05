@@ -373,6 +373,7 @@ class TestToolBuilderWrappers:
 class TestGraphIntegration:
     """Tests for graph integration."""
 
+    @patch("bioagents.graph.create_summary_agent")
     @patch("bioagents.graph.create_supervisor_agent")
     @patch("bioagents.graph.create_research_agent")
     @patch("bioagents.graph.create_analysis_agent")
@@ -380,9 +381,13 @@ class TestGraphIntegration:
     @patch("bioagents.graph.create_critic_agent")
     @patch("bioagents.graph.create_tool_builder_agent")
     @patch("bioagents.graph.create_protein_design_agent")
+    @patch("bioagents.graph.create_dl_agent")
+    @patch("bioagents.graph.create_ml_agent")
     @patch("bioagents.graph.create_coder_agent")
     def test_graph_includes_tool_builder(
         self,
+        mock_dl,
+        mock_ml,
         mock_coder,
         mock_protein,
         mock_builder,
@@ -391,11 +396,13 @@ class TestGraphIntegration:
         mock_analysis,
         mock_research,
         mock_supervisor,
+        mock_summary,
     ):
         """Test that the graph includes tool_builder node."""
         from bioagents.graph import create_graph
 
         # Mock all agent creations to avoid API calls
+        mock_summary.return_value = MagicMock()
         mock_supervisor.return_value = MagicMock()
         mock_research.return_value = MagicMock()
         mock_analysis.return_value = MagicMock()
@@ -403,7 +410,11 @@ class TestGraphIntegration:
         mock_critic.return_value = MagicMock()
         mock_builder.return_value = MagicMock()
         mock_protein.return_value = MagicMock()
+        mock_ml.return_value = MagicMock()
+        mock_dl.return_value = MagicMock()
         mock_coder.return_value = MagicMock()
+        mock_ml.return_value = MagicMock()
+        mock_dl.return_value = MagicMock()
 
         # This should not raise an exception
         graph = create_graph()

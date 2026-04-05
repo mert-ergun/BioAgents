@@ -4,19 +4,31 @@ repos:
     rev: v6.0.0
     hooks:
       - id: trailing-whitespace
+        exclude: ^ace/
       - id: end-of-file-fixer
+        exclude: ^ace/
       - id: check-yaml
+        exclude: ^(benchmarks/STELLA/tasks\.yaml$|ace/|playbooks/)
       - id: check-toml
+        exclude: ^ace/
       - id: check-json
+        exclude: ^ace/
       - id: check-added-large-files
         args: ['--maxkb=1000']
+        exclude: ^ace/
       - id: check-merge-conflict
+        exclude: ^ace/
       - id: check-case-conflict
+        exclude: ^ace/
       - id: detect-private-key
+        exclude: ^ace/
       - id: mixed-line-ending
         args: ['--fix=lf']
+        exclude: ^ace/
       - id: check-docstring-first
+        exclude: ^ace/
       - id: debug-statements
+        exclude: ^ace/
 
   # Ruff - Fast Python linter and formatter (replaces black, isort, flake8, etc.)
   - repo: https://github.com/astral-sh/ruff-pre-commit
@@ -25,8 +37,10 @@ repos:
       # Run the linter
       - id: ruff
         args: [--fix, --exit-non-zero-on-fix]
+        exclude: ^ace/
       # Run the formatter
       - id: ruff-format
+        exclude: ^ace/
 
   # Security checks with bandit
   - repo: https://github.com/PyCQA/bandit
@@ -35,6 +49,7 @@ repos:
       - id: bandit
         args: ['-c', 'pyproject.toml']
         additional_dependencies: ['bandit[toml]']
+        exclude: ^ace/
 
   # Type checking with mypy
   - repo: https://github.com/pre-commit/mirrors-mypy
@@ -48,6 +63,7 @@ repos:
         ]
         args: [--ignore-missing-imports, --show-error-codes]
         files: ^bioagents/
+        exclude: ^ace/
 
   # Check dependencies are synced
   - repo: local
