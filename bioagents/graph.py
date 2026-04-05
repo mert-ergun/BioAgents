@@ -16,6 +16,7 @@ from bioagents.agents.critic_agent import create_critic_agent
 from bioagents.agents.dl_agent import create_dl_agent, create_dl_node
 from bioagents.agents.ml_agent import create_ml_agent, create_ml_node
 from bioagents.agents.protein_design_agent import create_protein_design_agent
+from bioagents.agents.rdkit_validator_agent import create_rdkit_validator_agent
 from bioagents.agents.report_agent import create_report_agent
 from bioagents.agents.research_agent import create_research_agent
 from bioagents.agents.summary_agent import create_summary_agent
@@ -88,6 +89,7 @@ def agent_node(state: AgentState, agent, name: str) -> dict:
     - Extracts and stores citations via ReferenceManager (if enabled)
     - Records execution telemetry via ACE tracking (zero overhead if disabled)
     - Forwards ``messages`` returned by the agent (needed for tool routing)
+    - Preserves supervisor routing fields (``next``, ``reasoning``)
 
     Agent callables must return a dict with at least::
 
@@ -98,8 +100,9 @@ def agent_node(state: AgentState, agent, name: str) -> dict:
             "error":      str | None,
         }
 
-    They may additionally include a ``"messages"`` key whose value is forwarded
-    to the graph so that conditional tool edges can fire correctly.
+    They may additionally include:
+    - ``"messages"``: forwarded so conditional tool edges can fire
+    - ``"next"`` and ``"reasoning"``: supervisor routing decisions
 
     Args:
         state: The current AgentState.
@@ -107,7 +110,7 @@ def agent_node(state: AgentState, agent, name: str) -> dict:
         name:  Human-readable agent name used as the memory key.
 
     Returns:
-        Updated graph state slice.
+        Updated graph state slice, including routing decisions if present.
     """
     try:
         result = agent(state)
@@ -145,21 +148,25 @@ def agent_node(state: AgentState, agent, name: str) -> dict:
         for msg in outgoing_messages:
             msg.name = memory_key
 
-        if outgoing_messages:
-            # Emit a lightweight completion signal alongside any real messages
-            completion_msg = AIMessage(
-                content=f"[COMPLETED] {name} agent has finished. Results written to shared memory.",
-                name=memory_key,
-            )
-            return {
-                "messages": [*outgoing_messages, completion_msg],
-                "memory": memory,
-            }
-
-        return {
-            "messages": [],
+        # Build return dict with messages and memory
+        return_dict = {
             "memory": memory,
         }
+
+        if outgoing_messages:
+            # Forward messages as-is (with any tool_calls intact) so conditional edges can route correctly
+            # Do NOT append a completion message that would hide tool_calls from the routing logic
+            return_dict["messages"] = outgoing_messages
+        else:
+            return_dict["messages"] = []
+
+        # Preserve supervisor routing fields (next, reasoning)
+        if "next" in result:
+            return_dict["next"] = result["next"]
+        if "reasoning" in result:
+            return_dict["reasoning"] = result["reasoning"]
+
+        return return_dict
 
     except Exception as e:
         memory_key = name.lower()
@@ -211,6 +218,7 @@ def route_supervisor(
     "report",
     "tool_builder",
     "protein_design",
+    "rdkit_validator",
     "critic",
     "summary",
 ]:
@@ -220,7 +228,7 @@ def route_supervisor(
     ``"FINISH"`` is remapped to ``"summary"`` so the workflow always
     produces a final summary before reaching ``END``.
     """
-    next_agent = state.get("next", "FINISH")
+    next_agent = state.get("next") or "FINISH" 
     return "summary" if next_agent == "FINISH" else next_agent
 
 
@@ -274,6 +282,7 @@ def create_graph(_initialize_references: bool = True):
     dl_node_func = create_dl_node(dl_agent)
     tool_builder_agent = create_tool_builder_agent()
     protein_design_agent = create_protein_design_agent(protein_design_tools)
+    rdkit_validator_agent = create_rdkit_validator_agent()
     critic_agent = create_critic_agent()
 
     members = [
@@ -285,6 +294,7 @@ def create_graph(_initialize_references: bool = True):
         "report",
         "tool_builder",
         "protein_design",
+        "rdkit_validator",
         "critic",
     ]
     supervisor_agent = create_supervisor_agent(members)
@@ -315,6 +325,10 @@ def create_graph(_initialize_references: bool = True):
         "protein_design",
         partial(agent_node, agent=protein_design_agent, name="protein_design"),
     )
+    workflow.add_node(
+        "rdkit_validator",
+        partial(agent_node, agent=rdkit_validator_agent, name="RdkitValidator"),
+    )
     workflow.add_node("critic", partial(agent_node, agent=critic_agent, name="Critic"))
     workflow.add_node("summary", partial(agent_node, agent=summary_agent, name="Summary"))
 
@@ -340,6 +354,7 @@ def create_graph(_initialize_references: bool = True):
             "report": "report",
             "tool_builder": "tool_builder",
             "protein_design": "protein_design",
+            "rdkit_validator": "rdkit_validator",
             "critic": "critic",
             "summary": "summary",
         },
@@ -388,6 +403,7 @@ def create_graph(_initialize_references: bool = True):
     workflow.add_edge("coder", "supervisor")
     workflow.add_edge("ml", "supervisor")
     workflow.add_edge("dl", "supervisor")
+    workflow.add_edge("rdkit_validator", "supervisor")
     workflow.add_edge("critic", "supervisor")
 
     workflow.add_edge("research_tools", "research")
