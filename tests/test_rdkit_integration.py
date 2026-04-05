@@ -1,6 +1,7 @@
 """Integration tests for rdkit-agent with BioAgents system."""
 
 import json
+import shutil
 
 import pytest
 
@@ -13,6 +14,11 @@ from bioagents.tools.rdkit_tools import (
     filter_by_descriptor_constraints,
     get_all_rdkit_tools,
     validate_smiles,
+)
+
+pytestmark = pytest.mark.skipif(
+    shutil.which("rdkit-agent") is None,
+    reason="rdkit-agent CLI not installed (npm install -g rdkit-agent)",
 )
 
 

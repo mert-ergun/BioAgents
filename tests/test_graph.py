@@ -51,9 +51,10 @@ class TestAgentNode:
         result = agent_node(state, mock_agent, "TestAgent")
 
         assert "messages" in result
-        assert len(result["messages"]) == 2
+        # Forward only new messages; LangGraph add_messages merges with prior state
+        assert len(result["messages"]) == 1
         assert result["messages"][0].name == "testagent"
-        assert "[COMPLETED]" in result["messages"][1].content
+        assert result["messages"][0].content == "Response"
         mock_agent.assert_called_once_with(state)
 
     def test_agent_node_multiple_messages(self):
@@ -68,7 +69,7 @@ class TestAgentNode:
         state = {"messages": [HumanMessage(content="Test")], "memory": {}}
         result = agent_node(state, mock_agent, "TestAgent")
 
-        assert len(result["messages"]) == 3
+        assert len(result["messages"]) == 2
         for msg in result["messages"]:
             assert msg.name == "testagent"
 
@@ -171,6 +172,7 @@ class TestRouteSupervisor:
 class TestCreateGraph:
     """Tests for create_graph function."""
 
+    @patch("bioagents.graph.create_rdkit_validator_agent")
     @patch("bioagents.graph.create_summary_agent")
     @patch("bioagents.graph.create_supervisor_agent")
     @patch("bioagents.graph.create_research_agent")
@@ -195,6 +197,7 @@ class TestCreateGraph:
         mock_research,
         mock_supervisor,
         mock_summary,
+        mock_rdkit_validator,
     ):
         """Test basic graph creation."""
         # Setup mocks
@@ -211,6 +214,7 @@ class TestCreateGraph:
         mock_coder.return_value = Mock()
         mock_ml.return_value = Mock()
         mock_dl.return_value = Mock()
+        mock_rdkit_validator.return_value = Mock()
 
         graph = create_graph()
 
@@ -220,6 +224,7 @@ class TestCreateGraph:
         mock_analysis.assert_called_once()
         mock_report.assert_called_once()
 
+    @patch("bioagents.graph.create_rdkit_validator_agent")
     @patch("bioagents.graph.create_summary_agent")
     @patch("bioagents.graph.create_supervisor_agent")
     @patch("bioagents.graph.create_research_agent")
@@ -244,6 +249,7 @@ class TestCreateGraph:
         mock_research,
         mock_supervisor,
         mock_summary,
+        mock_rdkit_validator,
     ):
         """Test that agents are created with correct tools."""
         mock_summary.return_value = Mock()
@@ -259,6 +265,7 @@ class TestCreateGraph:
         mock_coder.return_value = Mock()
         mock_ml.return_value = Mock()
         mock_dl.return_value = Mock()
+        mock_rdkit_validator.return_value = Mock()
 
         create_graph()
 
@@ -286,7 +293,9 @@ class TestCreateGraph:
         assert "coder" in supervisor_call_args
         assert "ml" in supervisor_call_args
         assert "dl" in supervisor_call_args
+        assert "rdkit_validator" in supervisor_call_args
 
+    @patch("bioagents.graph.create_rdkit_validator_agent")
     @patch("bioagents.graph.create_summary_agent")
     @patch("bioagents.graph.create_supervisor_agent")
     @patch("bioagents.graph.create_research_agent")
@@ -311,6 +320,7 @@ class TestCreateGraph:
         mock_research,
         mock_supervisor,
         mock_summary,
+        mock_rdkit_validator,
     ):
         """Test that create_graph returns a compiled graph."""
         mock_summary.return_value = Mock()
@@ -326,6 +336,7 @@ class TestCreateGraph:
         mock_coder.return_value = Mock()
         mock_ml.return_value = Mock()
         mock_dl.return_value = Mock()
+        mock_rdkit_validator.return_value = Mock()
 
         graph = create_graph()
 
@@ -337,6 +348,7 @@ class TestCreateGraph:
 class TestGraphWorkflow:
     """Integration tests for graph workflow."""
 
+    @patch("bioagents.graph.create_rdkit_validator_agent")
     @patch("bioagents.graph.create_summary_agent")
     @patch("bioagents.graph.create_supervisor_agent")
     @patch("bioagents.graph.create_research_agent")
@@ -361,6 +373,7 @@ class TestGraphWorkflow:
         mock_research,
         mock_supervisor,
         mock_summary,
+        mock_rdkit_validator,
     ):
         """Test a simple workflow through the graph."""
         # Create mock agents that return appropriate responses
@@ -388,12 +401,14 @@ class TestGraphWorkflow:
         mock_coder.return_value = Mock()
         mock_ml.return_value = Mock()
         mock_dl.return_value = Mock()
+        mock_rdkit_validator.return_value = Mock()
 
         graph = create_graph()
 
         # Test that graph was created
         assert graph is not None
 
+    @patch("bioagents.graph.create_rdkit_validator_agent")
     @patch("bioagents.graph.create_summary_agent")
     @patch("bioagents.graph.create_supervisor_agent")
     @patch("bioagents.graph.create_research_agent")
@@ -418,6 +433,7 @@ class TestGraphWorkflow:
         mock_research,
         mock_supervisor,
         mock_summary,
+        mock_rdkit_validator,
     ):
         """Test that graph has correct entry point."""
         mock_summary.return_value = Mock()
@@ -433,6 +449,7 @@ class TestGraphWorkflow:
         mock_coder.return_value = Mock()
         mock_ml.return_value = Mock()
         mock_dl.return_value = Mock()
+        mock_rdkit_validator.return_value = Mock()
 
         graph = create_graph()
 
@@ -467,6 +484,7 @@ class TestGraphEdges:
         assert route_supervisor({"next": "analysis"}) == "analysis"
         assert route_supervisor({"next": "report"}) == "report"
         assert route_supervisor({"next": "critic"}) == "critic"
+        assert route_supervisor({"next": "rdkit_validator"}) == "rdkit_validator"
         assert route_supervisor({"next": "FINISH"}) == "summary"
 
         # Test default case
@@ -476,6 +494,7 @@ class TestGraphEdges:
 class TestGraphStructure:
     """Tests for graph structure and node configuration."""
 
+    @patch("bioagents.graph.create_rdkit_validator_agent")
     @patch("bioagents.graph.create_summary_agent")
     @patch("bioagents.graph.create_supervisor_agent")
     @patch("bioagents.graph.create_research_agent")
@@ -502,6 +521,7 @@ class TestGraphStructure:
         mock_research,
         mock_supervisor,
         mock_summary,
+        mock_rdkit_validator,
     ):
         """Test that tool nodes are created for research and analysis."""
         mock_summary.return_value = Mock()
@@ -518,12 +538,14 @@ class TestGraphStructure:
         mock_ml.return_value = Mock()
         mock_dl.return_value = Mock()
         mock_tool_node.return_value = Mock()
+        mock_rdkit_validator.return_value = Mock()
 
         create_graph()
 
         # ToolNode should be called 4 times: research, analysis, tool_builder, protein_design
         assert mock_tool_node.call_count == 4
 
+    @patch("bioagents.graph.create_rdkit_validator_agent")
     @patch("bioagents.graph.create_summary_agent")
     @patch("bioagents.graph.create_supervisor_agent")
     @patch("bioagents.graph.create_research_agent")
@@ -548,6 +570,7 @@ class TestGraphStructure:
         mock_research,
         mock_supervisor,
         mock_summary,
+        mock_rdkit_validator,
     ):
         """Test that agents are wrapped with partial function for naming."""
         mock_summary.return_value = Mock()
@@ -563,6 +586,7 @@ class TestGraphStructure:
         mock_coder.return_value = Mock()
         mock_ml.return_value = Mock()
         mock_dl.return_value = Mock()
+        mock_rdkit_validator.return_value = Mock()
 
         # This should not raise any errors
         graph = create_graph()
