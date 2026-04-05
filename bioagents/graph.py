@@ -3,9 +3,9 @@
 import logging
 from datetime import datetime
 from functools import partial
-from typing import Annotated, Any, ClassVar, Literal
+from typing import Annotated, Any, ClassVar, Literal, cast
 
-from langchain_core.messages import AIMessage, BaseMessage, SystemMessage
+from langchain_core.messages import BaseMessage, SystemMessage
 from langgraph.graph import END, StateGraph
 from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode
@@ -228,8 +228,13 @@ def route_supervisor(
     ``"FINISH"`` is remapped to ``"summary"`` so the workflow always
     produces a final summary before reaching ``END``.
     """
-    next_agent = state.get("next") or "FINISH" 
-    return "summary" if next_agent == "FINISH" else next_agent
+    next_agent = state.get("next")
+    if next_agent == "FINISH" or next_agent is None:
+        return "summary"
+    return cast(
+        "Literal['research', 'analysis', 'coder', 'ml', 'dl', 'report', 'tool_builder', 'protein_design', 'rdkit_validator', 'critic', 'summary']",
+        next_agent,
+    )
 
 
 def create_graph(_initialize_references: bool = True):

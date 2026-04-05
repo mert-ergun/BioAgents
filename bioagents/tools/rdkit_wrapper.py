@@ -12,21 +12,22 @@ from __future__ import annotations
 import json
 import logging
 import shutil
-import subprocess
+import subprocess  # nosec B404
 import sys
-from typing import Any
+from typing import Any, cast
 
 logger = logging.getLogger(__name__)
 
 
 class RdkitAgentError(Exception):
     """Base exception for rdkit-agent errors."""
+
     pass
 
 
 class RdkitAgentWASMError(RdkitAgentError):
     """Exception for WASM-unsupported features."""
-    
+
     def __init__(self, feature: str, message: str = ""):
         self.feature = feature
         self.message = message
@@ -35,6 +36,7 @@ class RdkitAgentWASMError(RdkitAgentError):
 
 class RdkitAgentValidationError(RdkitAgentError):
     """Exception for validation failures."""
+
     pass
 
 
@@ -44,23 +46,28 @@ def _get_rdkit_agent_path() -> str:
     rdkit_path = shutil.which("rdkit-agent")
     if rdkit_path:
         return rdkit_path
-    
+
     # Try npm global bin directory
     try:
-        npm_prefix = subprocess.check_output(
-            ["npm", "config", "get", "prefix"],
+        npm_exe = shutil.which("npm")
+        if not npm_exe:
+            raise FileNotFoundError("npm not on PATH")
+        npm_prefix = subprocess.check_output(  # nosec B603
+            [npm_exe, "config", "get", "prefix"],
             text=True,
-            timeout=5
+            timeout=5,
         ).strip()
-        
+
         # Construct path to rdkit-agent
-        bin_dir = f"{npm_prefix}\\node_modules\\.bin" if sys.platform == "win32" else f"{npm_prefix}/bin"
+        bin_dir = (
+            f"{npm_prefix}\\node_modules\\.bin" if sys.platform == "win32" else f"{npm_prefix}/bin"
+        )
         rdkit_path = shutil.which("rdkit-agent", path=bin_dir)
         if rdkit_path:
             return rdkit_path
     except (subprocess.CalledProcessError, FileNotFoundError):
         pass
-    
+
     # If nothing found, return the command and let subprocess.run handle the error
     return "rdkit-agent"
 
@@ -73,16 +80,16 @@ def _run_rdkit_command(
 ) -> dict[str, Any]:
     """
     Execute an rdkit-agent CLI command and return JSON output.
-    
+
     Args:
         command: rdkit-agent command (e.g., "check", "descriptors", "convert")
         args: List of CLI arguments/flags (e.g., ["--smiles", "CCO"])
         json_input: Dict to pass via --json stdin
         timeout: Command timeout in seconds
-    
+
     Returns:
         Parsed JSON response from rdkit-agent
-        
+
     Raises:
         RdkitAgentError: If rdkit-agent not installed or command fails
         RdkitAgentWASMError: If WASM-unsupported feature requested
@@ -90,19 +97,19 @@ def _run_rdkit_command(
     """
     rdkit_agent = _get_rdkit_agent_path()
     cmd = [rdkit_agent, command]
-    
+
     if args:
         cmd.extend(args)
-    
+
     # Force JSON output
     cmd.append("--output")
     cmd.append("json")
-    
+
     try:
         if json_input:
             # Pass JSON via stdin
-            result = subprocess.run(
-                cmd + ["--json", "-"],
+            result = subprocess.run(  # nosec B603
+                [*cmd, "--json", "-"],
                 input=json.dumps(json_input),
                 capture_output=True,
                 text=True,
@@ -110,62 +117,60 @@ def _run_rdkit_command(
                 check=False,
             )
         else:
-            result = subprocess.run(
+            result = subprocess.run(  # nosec B603
                 cmd,
                 capture_output=True,
                 text=True,
                 timeout=timeout,
                 check=False,
             )
-        
+
         # Handle exit codes
         if result.returncode == 0:
             # Success
             try:
-                return json.loads(result.stdout)
+                return cast("dict[str, Any]", json.loads(result.stdout))
             except json.JSONDecodeError as e:
                 raise RdkitAgentError(
                     f"Invalid JSON from rdkit-agent: {result.stdout}. Error: {e}"
                 ) from e
-        
+
         elif result.returncode == 1:
             # Validation failure (expected for invalid SMILES, etc.)
             try:
-                return json.loads(result.stdout)
-            except json.JSONDecodeError:
+                return cast("dict[str, Any]", json.loads(result.stdout))
+            except json.JSONDecodeError as e:
                 raise RdkitAgentValidationError(
                     f"Validation failed: {result.stderr or result.stdout}"
-                )
-        
+                ) from e
+
         elif result.returncode == 2:
             # Usage error
             raise RdkitAgentError(f"Usage error: {result.stderr}")
-        
+
         elif result.returncode == 3:
             # RDKit error (including WASM limitations)
             stderr = result.stderr or result.stdout
-            
+
             # Check for WASM-specific errors
             if "NOT_SUPPORTED_IN_WASM" in stderr:
                 if "react" in stderr or "RunReactants" in stderr:
                     raise RdkitAgentWASMError(
                         "Reaction application (react)",
-                        "Use Python RDKit installation instead: AllChem.RunReactants"
+                        "Use Python RDKit installation instead: AllChem.RunReactants",
                     )
                 elif "stereo" in stderr and "enumerate" in stderr:
                     raise RdkitAgentWASMError(
                         "Stereo enumeration (stereo --enumerate)",
-                        "Use Python RDKit: EnumerateStereoisomers"
+                        "Use Python RDKit: EnumerateStereoisomers",
                     )
                 raise RdkitAgentWASMError("Unknown", stderr)
-            
+
             raise RdkitAgentError(f"RDKit error: {stderr}")
-        
+
         else:
-            raise RdkitAgentError(
-                f"Unknown error (exit code {result.returncode}): {result.stderr}"
-            )
-    
+            raise RdkitAgentError(f"Unknown error (exit code {result.returncode}): {result.stderr}")
+
     except subprocess.TimeoutExpired as e:
         raise RdkitAgentError(f"rdkit-agent command timed out after {timeout}s") from e
     except FileNotFoundError as e:
@@ -178,10 +183,11 @@ def _run_rdkit_command(
 # VALIDATION COMMANDS
 # ============================================================================
 
+
 def check_smiles(smiles: str) -> dict[str, Any]:
     """
     Validate a SMILES string for chemical correctness.
-    
+
     Returns:
         {
             "overall_pass": bool,
@@ -235,10 +241,11 @@ def check_reaction(reactants: list[str], products: list[str]) -> dict[str, Any]:
 # REPAIR COMMANDS
 # ============================================================================
 
+
 def repair_smiles(input_str: str) -> dict[str, Any]:
     """
     Repair/reconstruct malformed SMILES.
-    
+
     Returns:
         {
             "success": bool,
@@ -256,6 +263,7 @@ def repair_smiles(input_str: str) -> dict[str, Any]:
 # CONVERSION COMMANDS
 # ============================================================================
 
+
 def convert_notation(
     input_str: str,
     from_format: str,
@@ -263,7 +271,7 @@ def convert_notation(
 ) -> dict[str, Any]:
     """
     Convert between chemical notations (smiles, inchi, inchikey, mol, sdf).
-    
+
     Args:
         input_str: The chemical notation to convert
         from_format: Source format (smiles, inchi, mol, sdf)
@@ -277,17 +285,18 @@ def convert_notation(
 # DESCRIPTOR COMMANDS
 # ============================================================================
 
+
 def compute_descriptors(
     smiles_list: list[str] | str,
     fields: list[str] | None = None,
 ) -> dict[str, Any]:
     """
     Compute molecular descriptors (MW, logP, TPSA, HBA, HBD, rotatable bonds, rings).
-    
+
     Args:
         smiles_list: Single SMILES or list of SMILES strings (comma-separated string or list)
         fields: Optional list of descriptors to compute (e.g., ["MW", "logP", "TPSA"])
-    
+
     Returns:
         {
             "molecules": [
@@ -303,14 +312,14 @@ def compute_descriptors(
             smiles_array = [smiles_list]
     else:
         smiles_array = list(smiles_list)
-    
+
     molecules = []
     for smiles in smiles_array:
         try:
             args = ["--smiles", smiles]
             if fields:
                 args.extend(["--fields", ",".join(fields)])
-            
+
             result = _run_rdkit_command("descriptors", args)
             if result:
                 # Wrap single result in expected format
@@ -318,13 +327,14 @@ def compute_descriptors(
         except Exception as e:
             logger.warning(f"Failed to compute descriptors for {smiles}: {e}")
             molecules.append({"smiles": smiles, "error": str(e)})
-    
+
     return {"molecules": molecules}
 
 
 # ============================================================================
 # SIMILARITY & FILTERING COMMANDS
 # ============================================================================
+
 
 def search_similar_molecules(
     query: str,
@@ -334,7 +344,7 @@ def search_similar_molecules(
 ) -> dict[str, Any]:
     """
     Find molecules similar to query (Tanimoto similarity).
-    
+
     Returns:
         {
             "query": str,
@@ -346,10 +356,14 @@ def search_similar_molecules(
         }
     """
     args = [
-        "--query", query,
-        "--targets", ",".join(targets),
-        "--threshold", str(threshold),
-        "--top", str(top),
+        "--query",
+        query,
+        "--targets",
+        ",".join(targets),
+        "--threshold",
+        str(threshold),
+        "--top",
+        str(top),
     ]
     return _run_rdkit_command("similarity", args)
 
@@ -368,12 +382,12 @@ def filter_molecules(
 ) -> dict[str, Any]:
     """
     Filter molecules by descriptor ranges.
-    
+
     Args:
         smiles_list: List of SMILES to filter
         Various descriptor constraints (see rdkit-agent filter command)
         lipinski: If True, apply Lipinski's Rule of Five
-    
+
     Returns:
         {
             "input_count": int,
@@ -383,7 +397,7 @@ def filter_molecules(
     """
     json_input = {"molecules": smiles_list}
     args = []
-    
+
     if lipinski:
         args.append("--lipinski")
     else:
@@ -403,7 +417,7 @@ def filter_molecules(
             args.extend(["--hbd-max", str(hbd_max)])
         if hba_max is not None:
             args.extend(["--hba-max", str(hba_max)])
-    
+
     return _run_rdkit_command("filter", args, json_input=json_input)
 
 
@@ -411,10 +425,11 @@ def filter_molecules(
 # FUNCTIONAL GROUP & SUBSTRUCTURE COMMANDS
 # ============================================================================
 
+
 def detect_functional_groups(smiles: str) -> dict[str, Any]:
     """
     Detect functional groups in a molecule (tiered SMARTS catalog).
-    
+
     Returns:
         {
             "smiles": str,
@@ -427,7 +442,7 @@ def detect_functional_groups(smiles: str) -> dict[str, Any]:
 def substructure_search(smiles: str, smarts_pattern: str) -> dict[str, Any]:
     """
     Search for SMARTS substructure in molecule.
-    
+
     Returns:
         {
             "smiles": str,
@@ -445,10 +460,11 @@ def substructure_search(smiles: str, smarts_pattern: str) -> dict[str, Any]:
 # RING & STEREOCHEMISTRY COMMANDS
 # ============================================================================
 
+
 def analyze_rings(smiles: str) -> dict[str, Any]:
     """
     Analyze ring systems in a molecule.
-    
+
     Returns:
         {
             "smiles": str,
@@ -465,7 +481,7 @@ def analyze_rings(smiles: str) -> dict[str, Any]:
 def analyze_stereo(smiles: str) -> dict[str, Any]:
     """
     Analyze stereocenters (tetrahedral + E/Z with CIP codes).
-    
+
     Returns:
         {
             "smiles": str,
@@ -481,6 +497,7 @@ def analyze_stereo(smiles: str) -> dict[str, Any]:
 # ============================================================================
 # ATOM MAPPING COMMANDS
 # ============================================================================
+
 
 def atom_map_list(smiles: str) -> dict[str, Any]:
     """List atom mapping numbers in SMILES."""
@@ -506,6 +523,7 @@ def atom_map_check(smirks: str) -> dict[str, Any]:
 # FINGERPRINTING COMMANDS
 # ============================================================================
 
+
 def compute_fingerprint(
     smiles: str,
     fp_type: str = "Morgan",
@@ -514,13 +532,13 @@ def compute_fingerprint(
 ) -> dict[str, Any]:
     """
     Compute molecular fingerprint (Morgan or topological).
-    
+
     Args:
         smiles: SMILES string
         fp_type: "Morgan" or "topological"
         radius: Radius for Morgan fingerprints (default 2)
         nbits: Number of bits (default 2048)
-    
+
     Returns:
         {
             "smiles": str,
@@ -533,7 +551,7 @@ def compute_fingerprint(
     if fp_type == "Morgan":
         args.extend(["--radius", str(radius)])
     args.extend(["--nbits", str(nbits)])
-    
+
     return _run_rdkit_command("fingerprint", args)
 
 
@@ -541,13 +559,14 @@ def compute_fingerprint(
 # REACTION COMMANDS (with WASM limitation handling)
 # ============================================================================
 
+
 def apply_reaction(smirks: str, reactants: list[str]) -> dict[str, Any]:
     """
     Apply a reaction SMIRKS to reactant SMILES.
-    
+
     Raises:
         RdkitAgentWASMError: If WASM build doesn't support reactions
-    
+
     Returns:
         {
             "reaction": str,
@@ -563,14 +582,15 @@ def apply_reaction(smirks: str, reactants: list[str]) -> dict[str, Any]:
 # MOLECULAR EDITING COMMANDS
 # ============================================================================
 
+
 def edit_molecule(smiles: str, operation: str) -> dict[str, Any]:
     """
     Modify a molecule (neutralize, sanitize, add-h, remove-h, strip-maps).
-    
+
     Args:
         smiles: SMILES string
         operation: One of "neutralize", "sanitize", "add-h", "remove-h", "strip-maps"
-    
+
     Returns:
         {
             "input_smiles": str,
@@ -586,6 +606,7 @@ def edit_molecule(smiles: str, operation: str) -> dict[str, Any]:
 # VISUALIZATION COMMANDS
 # ============================================================================
 
+
 def draw_molecule(
     smiles: str,
     output_file: str | None = None,
@@ -598,7 +619,7 @@ def draw_molecule(
 ) -> dict[str, Any]:
     """
     Draw molecule to SVG or PNG.
-    
+
     Args:
         smiles: SMILES string
         output_file: Path to save output (optional, returns base64 if not specified)
@@ -608,7 +629,7 @@ def draw_molecule(
         highlight_atoms: Dict mapping atom index -> CSS hex colour
         highlight_bonds: Dict mapping bond index -> CSS hex colour
         highlight_radius: Highlight circle radius (default 0.3)
-    
+
     Returns:
         {
             "smiles": str,
@@ -617,22 +638,27 @@ def draw_molecule(
         }
     """
     args = [
-        "--smiles", smiles,
-        "--format", output_format,
-        "--width", str(width),
-        "--height", str(height),
-        "--highlight-radius", str(highlight_radius),
+        "--smiles",
+        smiles,
+        "--format",
+        output_format,
+        "--width",
+        str(width),
+        "--height",
+        str(height),
+        "--highlight-radius",
+        str(highlight_radius),
     ]
-    
+
     if output_file:
         args.extend(["--output", output_file])
-    
+
     if highlight_atoms:
         args.extend(["--highlight-atoms", json.dumps(highlight_atoms)])
-    
+
     if highlight_bonds:
         args.extend(["--highlight-bonds", json.dumps(highlight_bonds)])
-    
+
     return _run_rdkit_command("draw", args)
 
 
@@ -640,10 +666,11 @@ def draw_molecule(
 # BATCH ANALYSIS COMMANDS
 # ============================================================================
 
+
 def dataset_statistics(smiles_list: list[str]) -> dict[str, Any]:
     """
     Compute statistics across a molecule dataset.
-    
+
     Returns:
         {
             "molecule_count": int,
@@ -657,6 +684,7 @@ def dataset_statistics(smiles_list: list[str]) -> dict[str, Any]:
 # ============================================================================
 # VERSION & SCHEMA COMMANDS
 # ============================================================================
+
 
 def get_version() -> dict[str, Any]:
     """Get rdkit-agent version."""

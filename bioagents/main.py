@@ -182,11 +182,10 @@ def main():
                 elif node_name.endswith("_tools"):
                     print("  -> Executing tools...")
                 else:
-                    print(f"  -> Agent working...")
+                    print("  -> Agent working...")
                     if "memory" in node_output and node_name in node_output["memory"]:
                         agent_mem = node_output["memory"][node_name]
                         print(f"     Status: {agent_mem.get('status', 'unknown')}")
-
 
         print(f"\n{'=' * 80}")
         print("FINAL RESULTS (FROM SHARED MEMORY)")

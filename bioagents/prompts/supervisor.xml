@@ -152,10 +152,10 @@
     <instruction priority="critical">
       ⚠️ MOLECULE VALIDATION DETECTION - CRITICAL ⚠️
       If user asks to validate, repair, or analyze MOLECULES/SMILES/SMIRKS/chemical structures → Route to 'rdkit_validator'
-      
+
       Keywords that indicate rdkit_validator:
       "validate molecule", "validate SMILES", "repair SMILES", "molecular validation", "check molecule", "analyze molecule", "molecular structure", "SMILES", "SMIRKS", "chemical validation"
-      
+
       This takes PRIORITY over routing to critic or other agents for chemistry validation tasks.
     </instruction>
 
