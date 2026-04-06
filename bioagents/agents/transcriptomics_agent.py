@@ -16,14 +16,17 @@ TRANSCRIPTOMICS_AGENT_PROMPT = (
 )
 
 
-def create_transcriptomics_agent():
+def create_transcriptomics_agent(extra_tools: list | None = None):
     """Create the Transcriptomics Agent node function.
+
+    Args:
+        extra_tools: Additional tools to make available (e.g. tool_universe).
 
     Returns:
         A function that can be used as a LangGraph node
     """
     llm = get_llm()
-    tools = get_transcriptomics_tools()
+    tools = get_transcriptomics_tools() + (extra_tools or [])
     llm_with_tools = llm.bind_tools(tools)
     tool_names = [t.name for t in tools]
 

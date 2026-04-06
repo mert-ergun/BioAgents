@@ -2,15 +2,19 @@
 
 from __future__ import annotations
 
+import asyncio
+import inspect
 import json
 import logging
 import os
 import re
-from typing import TYPE_CHECKING
+from concurrent.futures import ThreadPoolExecutor
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from collections.abc import Callable
-    from typing import Any, ClassVar
+    from typing import ClassVar
+
 from dataclasses import dataclass
 from pathlib import Path
 from threading import Lock
@@ -149,6 +153,81 @@ class ToolUniverseWrapper:
         self._lock = Lock()
         self._default_finder = os.getenv("BIOAGENTS_TOOL_UNIVERSE_FINDER", "keyword").lower()
 
+    # ------------------------------------------------------------------
+    # Custom tool registry integration
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _search_custom_registry(query: str, limit: int = 5) -> list[dict[str, Any]]:
+        """Search the local custom tool registry and return results in SDK format."""
+        try:
+            from bioagents.tools.tool_registry import get_registry
+
+            registry = get_registry()
+            hits = registry.search_tools(query, limit=limit)
+            results: list[dict[str, Any]] = []
+            for tool_def, _score in hits:
+                params: dict[str, Any] = {}
+                required: list[str] = []
+                for p in tool_def.parameters:
+                    params[p.name] = {
+                        "type": p.type,
+                        "description": p.description,
+                        "required": p.required,
+                    }
+                    if p.required:
+                        required.append(p.name)
+                results.append({
+                    "name": tool_def.name,
+                    "description": tool_def.description,
+                    "parameter": {"type": "object", "properties": params},
+                    "required": required,
+                    "source": "custom_registry",
+                })
+            return results
+        except Exception as exc:
+            logger.debug("Custom registry search failed (non-fatal): %s", exc)
+            return []
+
+    @staticmethod
+    def _execute_custom_tool(tool_name: str, arguments: dict[str, Any]) -> tuple[bool, Any]:
+        """Try executing a tool from the custom registry. Returns (found, result)."""
+        try:
+            from bioagents.tools.tool_registry import get_registry
+
+            registry = get_registry()
+            tool_def = registry.get_tool(tool_name)
+            if tool_def is None:
+                return False, None
+            func = registry.load_tool_function(tool_name)
+            if func is None:
+                return True, {"error": f"Tool '{tool_name}' found but failed to load"}
+
+            from concurrent.futures import TimeoutError as FuturesTimeout
+            from bioagents.llms.timeout_llm import _workflow_deadline
+            import time
+
+            hard_cap = 30
+            if _workflow_deadline is not None:
+                remaining = _workflow_deadline - time.monotonic()
+                hard_cap = max(5, min(hard_cap, remaining - 10))
+
+            with ThreadPoolExecutor(max_workers=1) as pool:
+                fut = pool.submit(func, **arguments)
+                try:
+                    result = fut.result(timeout=hard_cap)
+                except FuturesTimeout:
+                    logger.warning(
+                        "Custom tool '%s' timed out after %.0fs", tool_name, hard_cap
+                    )
+                    result = f"Tool '{tool_name}' timed out after {hard_cap:.0f}s — partial results unavailable."
+
+            registry.record_usage(tool_name)
+            return True, result
+        except Exception as exc:
+            logger.warning("Custom tool execution failed for '%s': %s", tool_name, exc)
+            return True, {"error": str(exc)}
+
     @property
     def client_available(self) -> bool:
         """Whether the Python SDK is available in the runtime environment."""
@@ -176,6 +255,26 @@ class ToolUniverseWrapper:
                 else:
                     raise RuntimeError("Failed to load ToolUniverse SDK")
         return self._client
+
+    @staticmethod
+    def _resolve_result(result: Any) -> Any:
+        """Await the result if the SDK returned a coroutine instead of a value.
+
+        The ToolUniverse SDK may delegate to ``_run_async`` internally.  When
+        called from synchronous code the ``client.run()`` call can return a
+        bare coroutine object.  This helper transparently awaits it so callers
+        always receive a concrete value.
+        """
+        if not inspect.isawaitable(result):
+            return result
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            return asyncio.run(result)
+        # Already inside an event loop (e.g. Jupyter kernel) — offload to a
+        # background thread so we can call asyncio.run() without conflict.
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            return pool.submit(asyncio.run, result).result(timeout=60)
 
     @staticmethod
     def _format_response(payload: Any) -> str:
@@ -206,15 +305,118 @@ class ToolUniverseWrapper:
     def _resolve_finder(self, finder: str | None) -> str:
         mode = (finder or self._default_finder or "keyword").lower()
         if mode not in self.FINDER_TO_TOOL:
-            raise ValueError(
-                f"Unknown ToolUniverse finder strategy '{mode}'. "
-                f"Choose from {', '.join(self.FINDER_TO_TOOL)}."
+            logger.warning(
+                "Unknown ToolUniverse finder strategy '%s'; falling back to 'keyword'.",
+                mode,
             )
+            mode = "keyword"
         return mode
+
+    @staticmethod
+    def _coerce_tool_entry(item: Any) -> dict[str, Any]:
+        """Build a consistent tool dict for JSON consumers (name, description, parameters)."""
+        if isinstance(item, dict):
+            name = item.get("name") or item.get("tool_name") or ""
+            param = item.get("parameter")
+            if param is None:
+                param = item.get("parameters") or {}
+            req = item.get("required")
+            if not isinstance(req, list):
+                req = []
+            return {
+                "name": str(name),
+                "description": str(item.get("description", "") or ""),
+                "parameter": param if isinstance(param, dict) else {},
+                "required": req,
+            }
+        if isinstance(item, str):
+            return {"name": item, "description": "", "parameter": {}, "required": []}
+        return {"name": repr(item), "description": "", "parameter": {}, "required": []}
+
+    def _normalize_find_tools_sdk_result(self, raw: Any) -> list[dict[str, Any]]:
+        """
+        Coerce ToolUniverse ``client.run`` output into a list of tool metadata dicts.
+
+        The SDK returns different shapes depending on the finder: formatted prompt strings,
+        JSON strings, tuples of (prompts, tool names), or lists of tool names. Callers
+        (including generated notebook code) expect ``result`` to be a list of dicts with
+        at least ``name`` and ``description``.
+        """
+        if raw is None:
+            return []
+
+        if isinstance(raw, tuple) and len(raw) == 2:
+            prompts, names = raw[0], raw[1]
+            if not isinstance(names, list):
+                return []
+            tools: list[dict[str, Any]] = []
+            for i, name in enumerate(names):
+                if not isinstance(name, str):
+                    tools.append(self._coerce_tool_entry(name))
+                    continue
+                desc = ""
+                parameter: dict[str, Any] = {}
+                required: list[Any] = []
+                if isinstance(prompts, list) and i < len(prompts):
+                    p = prompts[i]
+                    if isinstance(p, dict):
+                        desc = str(p.get("description", "") or "")
+                        parameter = p.get("parameter") or p.get("parameters") or {}
+                        if not isinstance(parameter, dict):
+                            parameter = {}
+                        req = p.get("required")
+                        required = list(req) if isinstance(req, list) else []
+                tools.append(
+                    {
+                        "name": name,
+                        "description": desc,
+                        "parameter": parameter,
+                        "required": required,
+                    }
+                )
+            return tools
+
+        if isinstance(raw, str):
+            text = raw.strip()
+            if not text:
+                return []
+            if text.startswith("{") or text.startswith("["):
+                try:
+                    parsed: Any = json.loads(text)
+                except json.JSONDecodeError:
+                    return []
+                if isinstance(parsed, dict):
+                    if "tools" in parsed and isinstance(parsed["tools"], list):
+                        return [self._coerce_tool_entry(x) for x in parsed["tools"]]
+                    if "error" in parsed and parsed.get("tools") == []:
+                        return []
+                    inner = parsed.get("result")
+                    if inner is not None:
+                        return self._normalize_find_tools_sdk_result(inner)
+                    return []
+                if isinstance(parsed, list):
+                    return [self._coerce_tool_entry(x) for x in parsed]
+            return []
+
+        if isinstance(raw, dict):
+            if "tools" in raw and isinstance(raw["tools"], list):
+                return [self._coerce_tool_entry(x) for x in raw["tools"]]
+            inner = raw.get("result")
+            if inner is not None:
+                return self._normalize_find_tools_sdk_result(inner)
+            return []
+
+        if isinstance(raw, list):
+            return [self._coerce_tool_entry(x) for x in raw]
+
+        return []
 
     def find_tools(self, description: str, limit: int = 5, finder: str | None = None) -> str:
         """
         Run the Tool Finder tool (or the local fallback) to identify relevant tools.
+
+        Also searches the local custom tool registry and merges results so that
+        tools created by the ToolBuilder agent are always discoverable.
 
         Args:
             description: A natural language description of the needed capability.
@@ -223,6 +425,9 @@ class ToolUniverseWrapper:
         """
         limit = max(1, int(limit))
         finder_mode = self._resolve_finder(finder)
+
+        # Always search custom registry first — these are purpose-built tools
+        custom_hits = self._search_custom_registry(description, limit=limit)
 
         if self.client_available:
             client = self._ensure_client()
@@ -234,43 +439,70 @@ class ToolUniverseWrapper:
                 "arguments": {
                     "description": description,
                     "limit": limit,
+                    "return_call_result": True,
                 },
             }
-            result = client.run(payload)
+            result = self._resolve_result(client.run(payload))
+            normalized = self._normalize_find_tools_sdk_result(result)
+
+            # Merge: custom tools first, then SDK results (deduplicated)
+            seen_names = {h["name"] for h in custom_hits}
+            merged = list(custom_hits)
+            for tool_entry in normalized:
+                if tool_entry.get("name") not in seen_names:
+                    merged.append(tool_entry)
+            merged = merged[:limit]
+
             return self._format_response(
                 {
                     "source": "sdk",
                     "finder": finder_mode,
                     "query": description,
-                    "result": result,
+                    "result": merged,
                 }
             )
 
         fallback_hits = self._catalog.search(description, limit)
+        # Merge custom tools with fallback catalog
+        seen_names = {h["name"] for h in custom_hits}
+        merged = list(custom_hits)
+        for hit in fallback_hits:
+            if hit.get("name") not in seen_names:
+                merged.append(hit)
+        merged = merged[:limit]
+
         return self._format_response(
             {
                 "source": "catalog",
                 "finder": "markdown_fallback",
                 "query": description,
-                "results": fallback_hits,
+                "results": merged,
                 "note": "Install the 'tooluniverse' package to run live tool searches.",
             }
         )
 
     def execute_tool(self, tool_name: str, arguments: str | dict[str, Any] | None = None) -> str:
         """
-        Call a ToolUniverse tool by name via the SDK.
+        Call a tool by name — checks the custom registry first, then the SDK.
 
         Args:
             tool_name: Exact identifier of the tool to invoke.
             arguments: JSON string or dictionary of tool arguments.
         """
+        parsed_args = self._parse_arguments(arguments)
+
+        # Try custom registry first
+        found, result = self._execute_custom_tool(tool_name, parsed_args)
+        if found:
+            return self._format_response({"tool": tool_name, "result": result})
+
+        # Fall back to ToolUniverse SDK
         client = self._ensure_client()
         payload = {
             "name": tool_name,
-            "arguments": self._parse_arguments(arguments),
+            "arguments": parsed_args,
         }
-        result = client.run(payload)
+        result = self._resolve_result(client.run(payload))
         return self._format_response({"tool": tool_name, "result": result})
 
 
@@ -285,6 +517,12 @@ def tool_universe_find_tools(description: str, limit: int = 5, strategy: str = "
     Uses the live ToolUniverse SDK when available. If the SDK is not installed, the tool falls
     back to the locally cached ``tool_universe.md`` catalogue so agents can still inspect the
     ecosystem enumerated at https://aiscientist.tools/.
+
+    Args:
+        description: Natural language description of the capability you need.
+        limit: Maximum number of tools to return (default 5).
+        strategy: Search method — must be one of ``keyword``, ``llm``, or ``embedding``.
+            Defaults to ``keyword``. Any other value is silently replaced with ``keyword``.
     """
     try:
         return DEFAULT_WRAPPER.find_tools(description, limit=int(limit), finder=strategy)

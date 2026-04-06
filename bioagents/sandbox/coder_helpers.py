@@ -16,6 +16,7 @@ DEFAULT_CODER_IMPORTS = [
     # PyTorch: bare `torch` is required for `import torch` in smolagents; `torch.*` covers submodules.
     "torch",
     "torch.*",
+    "tooluniverse",
     "typing",
     "json",
     "os",

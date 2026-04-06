@@ -19,6 +19,30 @@ import smolagents.local_python_executor as _lpe
 from rich.console import Console
 from smolagents import AgentLogger, DockerExecutor, LocalPythonExecutor, LogLevel
 
+# ---------------------------------------------------------------------------
+# Monkey-patch RemotePythonExecutor._patch_final_answer_with_exception to be
+# idempotent.  smolagents calls this on every agent.run() invocation via
+# send_tools(), but the patch is not safe to apply twice: the second call
+# grabs the already-patched `forward` (which calls self._forward) as the
+# "original forward", stores it as `_forward`, and from that point both
+# `forward` and `_forward` call `self._forward` → infinite recursion.
+#
+# The fix: if the tool's class is already named `_FinalAnswerTool` (i.e. has
+# already been patched), skip the re-patch entirely.
+# ---------------------------------------------------------------------------
+from smolagents.remote_executors import RemotePythonExecutor as _RPE
+
+_original_patch = _RPE._patch_final_answer_with_exception
+
+
+def _idempotent_patch(self, final_answer_tool):
+    if final_answer_tool.__class__.__name__ == "_FinalAnswerTool":
+        return  # already patched — re-patching would create infinite recursion
+    _original_patch(self, final_answer_tool)
+
+
+_RPE._patch_final_answer_with_exception = _idempotent_patch
+
 
 def _patched_evaluate_with(with_node, state, static_tools, custom_tools, authorized_imports):
     contexts = []
@@ -180,17 +204,10 @@ def create_executor(
     if use_local:
         apply_local_executor_runtime_env()
         print(f"Using LocalPythonExecutor for {agent_type} (USE_LOCAL_EXECUTOR=true)")
-        installed_imports = [imp for imp in additional_imports if is_module_installed(imp)]
-
-        if len(installed_imports) < len(additional_imports):
-            missing = set(additional_imports) - set(installed_imports)
-            print(
-                f"Warning: The following authorized modules are not installed locally: {', '.join(missing)}"
-            )
-            print("These will be omitted from the authorized list for the LocalExecutor.")
+        from bioagents.sandbox.coder_helpers import PermissiveList
 
         return LocalPythonExecutor(
-            additional_authorized_imports=installed_imports,
+            additional_authorized_imports=PermissiveList(additional_imports),
             additional_functions=_extra_builtins(),
         )
 
@@ -292,16 +309,10 @@ def create_executor(
         print(f"Warning: Could not initialize DockerExecutor for {agent_type}: {e}")
         print("Falling back to LocalExecutor (NOT SANDBOXED) for development purposes.")
 
-        installed_imports = [imp for imp in additional_imports if is_module_installed(imp)]
-
-        if len(installed_imports) < len(additional_imports):
-            missing = set(additional_imports) - set(installed_imports)
-            print(
-                f"Warning: The following authorized modules are not installed locally: {', '.join(missing)}"
-            )
-            print("These will be omitted from the authorized list for the LocalExecutor.")
+        apply_local_executor_runtime_env()
+        from bioagents.sandbox.coder_helpers import PermissiveList
 
         return LocalPythonExecutor(
-            additional_authorized_imports=installed_imports,
+            additional_authorized_imports=PermissiveList(additional_imports),
             additional_functions=_extra_builtins(),
         )

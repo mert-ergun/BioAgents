@@ -122,9 +122,49 @@ class AgentState(dict):
     tool_usage_log: list[dict] | None = None
 
 
+def _count_agent_tool_rounds(messages: list, agent_name: str) -> int:
+    """Count tool-call rounds this agent has taken since the last supervisor handoff."""
+    from langchain_core.messages import AIMessage, HumanMessage
+
+    rounds = 0
+    for msg in reversed(messages):
+        if isinstance(msg, HumanMessage):
+            content = msg.content if isinstance(msg.content, str) else str(msg.content)
+            if "[SUPERVISOR TASK]" in content:
+                break
+        if (
+            isinstance(msg, AIMessage)
+            and getattr(msg, "name", "") == agent_name
+            and hasattr(msg, "tool_calls")
+            and msg.tool_calls
+        ):
+            rounds += 1
+    return rounds
+
+
 def agent_node(state, agent, name):
     """Wrapper for agent nodes that adds agent identification and ACE tracking."""
     from langchain_core.messages import AIMessage
+
+    from bioagents.limits import MAX_AGENT_TOOL_ROUNDS
+
+    if MAX_AGENT_TOOL_ROUNDS and MAX_AGENT_TOOL_ROUNDS > 0:
+        rounds = _count_agent_tool_rounds(state.get("messages", []), name)
+        if rounds >= MAX_AGENT_TOOL_ROUNDS:
+            logger.warning(
+                "Agent '%s' hit max tool rounds (%d) — forcing return to supervisor.",
+                name,
+                MAX_AGENT_TOOL_ROUNDS,
+            )
+            error_msg = AIMessage(
+                content=(
+                    f"[MAX_TOOL_ROUNDS] Agent '{name}' reached the tool-round limit "
+                    f"({MAX_AGENT_TOOL_ROUNDS}). The supervisor should proceed with "
+                    f"available results or try a different approach."
+                ),
+                name=name,
+            )
+            return {"messages": [error_msg]}
 
     try:
         result = agent(state)
@@ -158,6 +198,15 @@ def agent_node(state, agent, name):
 
 def should_continue_to_tools(state: AgentState) -> Literal["tools", "supervisor"]:
     """Conditional edge: route to tools if last message has tool calls."""
+    from bioagents.llms.timeout_llm import _workflow_deadline
+
+    if _workflow_deadline is not None:
+        import time
+
+        if time.monotonic() >= _workflow_deadline:
+            logger.warning("Workflow deadline reached — skipping tool execution, returning to supervisor.")
+            return "supervisor"
+
     messages = state["messages"]
     last_message = messages[-1]
 
@@ -234,12 +283,13 @@ def create_graph(_initialize_references: bool = True):
     pd_tools = get_all_protein_design_tools()
 
     # ---- new tool lists ----
-    lit_tools = get_literature_tools()
+    _tu_tools = [tool_universe_find_tools, tool_universe_call_tool]
+    lit_tools = get_literature_tools() + _tu_tools
     web_tools = get_web_tools()
     paper_rep_tools = get_web_tools() + get_git_tools()
     data_acq_tools = get_web_tools() + get_file_tools() + [download_uniprot_flat_file]
-    gen_tools = get_genomics_tools()
-    trans_tools = get_transcriptomics_tools()
+    gen_tools = get_genomics_tools() + _tu_tools
+    trans_tools = get_transcriptomics_tools() + _tu_tools
     struct_tools = get_structural_tools()
     phylo_tools = get_genomics_tools()
     td_tools = get_tool_builder_tools()
@@ -263,12 +313,12 @@ def create_graph(_initialize_references: bool = True):
     critic_agent = create_critic_agent()
     summary_agent = create_summary_agent()
 
-    literature_agent = create_literature_agent()
+    literature_agent = create_literature_agent(extra_tools=_tu_tools)
     web_browser_agent = create_web_browser_agent()
     paper_replication_agent = create_paper_replication_agent()
     data_acquisition_agent = create_data_acquisition_agent()
-    genomics_agent = create_genomics_agent()
-    transcriptomics_agent = create_transcriptomics_agent()
+    genomics_agent = create_genomics_agent(extra_tools=_tu_tools)
+    transcriptomics_agent = create_transcriptomics_agent(extra_tools=_tu_tools)
     structural_biology_agent = create_structural_biology_agent()
     phylogenetics_agent = create_phylogenetics_agent()
     docking_agent = create_docking_agent()

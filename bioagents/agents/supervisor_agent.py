@@ -15,12 +15,13 @@ from bioagents.agents.supervisor_helpers import (
     check_for_empty_response_loop,
     check_for_missing_tool,
     check_for_repeated_routing,
+    check_for_research_failure,
     check_tool_builder_execution_success,
     check_tool_builder_success,
     extract_original_query,
     get_all_created_tools,
 )
-from bioagents.llms.llm_provider import get_llm
+from bioagents.llms.llm_provider import get_llm, get_structured_output_kwargs_for_routing
 from bioagents.prompts.prompt_loader import load_prompt
 
 logger = logging.getLogger(__name__)
@@ -96,7 +97,10 @@ def create_supervisor_agent(members: list[str]):
         ]
     )
 
-    supervisor_chain = prompt | llm.with_structured_output(RouteResponse)
+    supervisor_chain = prompt | llm.with_structured_output(
+        RouteResponse,
+        **get_structured_output_kwargs_for_routing(),
+    )
 
     def supervisor_node(state):
         """
@@ -387,8 +391,83 @@ def create_supervisor_agent(members: list[str]):
                     "messages": [],
                 }
 
+        # Before normal routing, check if research already failed—avoid re-sending
+        research_failed, research_fail_reason = check_for_research_failure(messages)
+
+        # Detect if planner just responded — prevent routing back to planner
+        planner_just_responded = False
+        if messages:
+            for msg in reversed(messages[-3:]):
+                if isinstance(msg, AIMessage) and getattr(msg, "name", "") == "Planner":
+                    planner_just_responded = True
+                    break
+                if isinstance(msg, HumanMessage) and "[SUPERVISOR TASK]" in str(msg.content):
+                    break
+
+        # Window messages for the routing LLM to avoid slow calls on large histories.
+        # Keep the first message (user query) and the last 12 messages (recent context).
+        if len(messages) > 14:
+            routing_messages = messages[:1] + messages[-12:]
+        else:
+            routing_messages = messages
+
         # Normal LLM-based routing
-        result = supervisor_chain.invoke({"messages": messages})
+        result = supervisor_chain.invoke({"messages": routing_messages})
+        if result is None:
+            logger.warning(
+                "Supervisor: structured routing returned None (likely parse failure); retrying once."
+            )
+            result = supervisor_chain.invoke({"messages": messages})
+
+        if result is None:
+            logger.error(
+                "Supervisor: structured routing failed twice; finishing with error instead of crashing."
+            )
+            return {
+                "next": "FINISH",
+                "reasoning": "Supervisor could not obtain a valid routing decision from the model.",
+                "messages": [
+                    SystemMessage(
+                        content="[SYSTEM] Supervisor routing failed: the model did not return a valid "
+                        "structured routing response after two attempts. The task may be too long or the "
+                        "model output was unparsable."
+                    )
+                ],
+            }
+
+        if research_failed and result.next_agent == "research":
+            alt = "coder" if "coder" in members else "report"
+            logger.warning(
+                "Supervisor: Research already failed; overriding routing from "
+                "'research' to '%s'. Reason: %s",
+                alt,
+                research_fail_reason,
+            )
+            result.next_agent = alt
+
+        if planner_just_responded and result.next_agent == "planner":
+            for candidate in ("research", "data_acquisition", "coder", "report"):
+                if candidate in members:
+                    result.next_agent = candidate
+                    break
+            # Extract original user query so the execution agent knows what to do
+            original_query = ""
+            for msg in messages:
+                if isinstance(msg, HumanMessage) and "[SUPERVISOR TASK]" not in str(
+                    msg.content
+                ):
+                    original_query = str(msg.content)[:800]
+                    break
+            result.task_for_agent = (
+                f"A plan has been created (see conversation history). "
+                f"Begin executing the first data-retrieval steps now. "
+                f"Original user request: {original_query}"
+            )
+            logger.warning(
+                "Supervisor: Planner already produced a plan; skipping duplicate routing. "
+                "Proceeding to %s with execution task.",
+                result.next_agent,
+            )
 
         handoff_messages = []
         if result.next_agent != "FINISH" and result.task_for_agent:

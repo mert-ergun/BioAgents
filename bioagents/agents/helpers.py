@@ -163,17 +163,23 @@ def create_retry_response(
                 f"{agent_name} received empty response from LLM "
                 f"(attempt {attempt + 1}/{MAX_RETRIES + 1}). Retrying..."
             )
-            if task_extractor:
-                original_messages = messages_with_system[1:]
-                task_hint = task_extractor(original_messages)
-                hint_content = (
-                    f"Your previous response was empty. Please use your tools to {task_hint}. "
-                    f"Available tools: {', '.join(tool_names)}"
-                )
+            if tool_names:
+                if task_extractor:
+                    original_messages = messages_with_system[1:]
+                    task_hint = task_extractor(original_messages)
+                    hint_content = (
+                        f"Your previous response was empty. Please use your tools to {task_hint}. "
+                        f"Available tools: {', '.join(tool_names)}"
+                    )
+                else:
+                    hint_content = (
+                        f"Your previous response was empty. Please analyze the data or use your tools. "
+                        f"Available tools: {', '.join(tool_names)}"
+                    )
             else:
                 hint_content = (
-                    f"Your previous response was empty. Please analyze the data or use your tools. "
-                    f"Available tools: {', '.join(tool_names)}"
+                    "Your previous response was empty. You MUST provide a substantive text "
+                    "response synthesizing the information available in the conversation."
                 )
             hint_message = SystemMessage(content=hint_content)
             messages_with_system.append(hint_message)

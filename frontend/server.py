@@ -582,9 +582,14 @@ async def websocket_endpoint(websocket: WebSocket):
                         await run_bioagents_streaming(
                             query, websocket, api_keys=api_keys, session_id=session_id
                         )
+                    except WebSocketDisconnect:
+                        raise  # Let the outer handler deal with the disconnect
                     except Exception as e:
                         logger.error(f"Query execution error: {e}")
-                        await websocket.send_json({"type": "error", "message": str(e)})
+                        try:
+                            await websocket.send_json({"type": "error", "message": str(e)})
+                        except Exception:
+                            pass  # Connection already closed.
 
             elif data.get("type") == "ping":
                 await websocket.send_json({"type": "pong"})
@@ -862,9 +867,15 @@ async def run_bioagents_streaming(
 
         await websocket.send_json(completion_data)
 
+    except WebSocketDisconnect:
+        # Client disconnected cleanly during streaming — nothing to send back.
+        raise
     except Exception as e:
         logger.error(f"Streaming error: {e}")
-        await websocket.send_json({"type": "error", "message": str(e)})
+        try:
+            await websocket.send_json({"type": "error", "message": str(e)})
+        except Exception:
+            pass  # Connection already closed; error can't be delivered.
 
 
 # =====================================================

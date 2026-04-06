@@ -118,3 +118,35 @@ def test_langchain_tool_functions_use_wrapper(monkeypatch):
         {"tool_name": "Example", "arguments_json": '{"id": 1}'}
     )
     assert json.loads(call_result)["tool"] == "Example"
+
+
+def test_normalize_find_tools_tuple_of_names():
+    """SDK may return (prompts, tool_names); result must be a list of dicts with name keys."""
+    w = ToolUniverseWrapper(tool_factory=None, catalog=DummyCatalogue())
+    prompts = [{"description": "d1", "parameter": {"x": {"type": "string"}}}]
+    raw = (prompts, ["Tool_A"])
+    out = w._normalize_find_tools_sdk_result(raw)
+    assert len(out) == 1
+    assert out[0]["name"] == "Tool_A"
+    assert out[0]["description"] == "d1"
+    assert "x" in out[0]["parameter"]
+
+
+def test_normalize_find_tools_json_string_with_tools():
+    w = ToolUniverseWrapper(tool_factory=None, catalog=DummyCatalogue())
+    raw = json.dumps(
+        {
+            "tools": [
+                {"name": "N", "description": "hello", "parameter": {}},
+            ]
+        }
+    )
+    out = w._normalize_find_tools_sdk_result(raw)
+    assert out[0]["name"] == "N"
+    assert out[0]["description"] == "hello"
+
+
+def test_normalize_find_tools_prompt_string_yields_empty():
+    """Legacy single-string prompt output cannot be indexed as tool dicts; normalize to []."""
+    w = ToolUniverseWrapper(tool_factory=None, catalog=DummyCatalogue())
+    assert w._normalize_find_tools_sdk_result("not json, just prompts") == []

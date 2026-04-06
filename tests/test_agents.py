@@ -431,6 +431,33 @@ class TestSupervisorAgent:
             assert result["reasoning"] == "Task complete"
 
     @patch("bioagents.agents.supervisor_agent.get_llm")
+    def test_supervisor_structured_output_none_fallback(self, mock_get_llm):
+        """When structured routing returns None (parse failure), do not crash."""
+        mock_llm = Mock()
+        mock_structured_llm = Mock()
+        mock_chain = Mock()
+        mock_chain.invoke = Mock(return_value=None)
+        mock_llm.with_structured_output = Mock(return_value=mock_structured_llm)
+        mock_get_llm.return_value = mock_llm
+
+        with patch(
+            "bioagents.agents.supervisor_agent.ChatPromptTemplate.from_messages"
+        ) as mock_prompt:
+            mock_prompt.return_value.__or__ = Mock(return_value=mock_chain)
+
+            members = ["research", "analysis", "report"]
+            agent = create_supervisor_agent(members)
+
+            state = {"messages": [HumanMessage(content="Continue after planner")]}
+            result = agent(state)
+
+            assert result["next"] == "FINISH"
+            assert "routing" in result["reasoning"].lower() or "valid" in result["reasoning"].lower()
+            assert mock_chain.invoke.call_count == 2
+            assert len(result["messages"]) == 1
+            assert "[SYSTEM]" in result["messages"][0].content
+
+    @patch("bioagents.agents.supervisor_agent.get_llm")
     def test_supervisor_includes_all_members(self, mock_get_llm):
         """Test that supervisor is aware of all team members."""
         mock_llm = Mock()

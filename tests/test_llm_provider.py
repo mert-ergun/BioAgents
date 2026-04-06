@@ -1,6 +1,7 @@
 """Tests for LLM provider module."""
 
 import os
+import time
 from unittest.mock import Mock, patch
 
 import pytest
@@ -9,6 +10,7 @@ from bioagents.llms.adapters import _sanitize_codeagent_stop_sequences
 from bioagents.llms.llm_provider import (
     _get_or_create_rate_limiter,
     get_llm,
+    get_structured_output_kwargs_for_routing,
 )
 from bioagents.llms.rate_limiter import RateLimitedLLM
 from bioagents.llms.timeout_llm import TimeoutBoundLLM
@@ -160,7 +162,7 @@ class TestGetLLM:
 
             mock_gemini.assert_called_once()
             call_kwargs = mock_gemini.call_args[1]
-            assert call_kwargs["model"] == "gemini-2.5-flash"
+            assert call_kwargs["model"] == "gemini-3-flash-preview"
             assert call_kwargs["temperature"] == 0.0
             assert call_kwargs["google_api_key"] == "test-gemini-key"
 
@@ -230,6 +232,26 @@ class TestGetLLM:
             assert call_kwargs["temperature"] == 0.9
 
 
+class TestStructuredOutputRoutingKwargs:
+    """Supervisor routing uses provider-specific structured-output modes."""
+
+    @patch.dict(os.environ, {"LLM_PROVIDER": "openai"}, clear=True)
+    def test_openai_uses_default_function_calling_kwargs(self):
+        assert get_structured_output_kwargs_for_routing() == {}
+
+    @patch.dict(os.environ, {"LLM_PROVIDER": "gemini"}, clear=True)
+    def test_gemini_prefers_json_schema(self):
+        assert get_structured_output_kwargs_for_routing() == {"method": "json_schema"}
+
+    @patch.dict(
+        os.environ,
+        {"LLM_PROVIDER": "gemini", "GEMINI_STRUCTURED_ROUTING_METHOD": "function_calling"},
+        clear=True,
+    )
+    def test_gemini_override_function_calling(self):
+        assert get_structured_output_kwargs_for_routing() == {"method": "function_calling"}
+
+
 class TestSanitizeCodeAgentStopSequences:
     def test_removes_markdown_fence_stops(self):
         inp = ["Observation:", "```", "Calling tools:"]
@@ -241,3 +263,35 @@ class TestSanitizeCodeAgentStopSequences:
 
     def test_only_fences_becomes_none(self):
         assert _sanitize_codeagent_stop_sequences(["```"]) is None
+
+
+class TestBindPreservesTimeoutAndRateLimit:
+    """``model.bind()`` must not bypass TimeoutBoundLLM / RateLimitedLLM (smolagents CodeAgent)."""
+
+    def test_timeout_bound_bind_invokes_under_timeout(self):
+        inner = Mock()
+        bound = Mock()
+        bound.invoke = Mock(side_effect=lambda *a, **k: time.sleep(60))
+        inner.bind.return_value = bound
+
+        wrapped = TimeoutBoundLLM(inner, timeout_sec=0.15)
+        br = wrapped.bind(stop=["x"])
+        inner.bind.assert_called_once_with(stop=["x"])
+        with pytest.raises(TimeoutError, match="exceeded 0.15"):
+            br.invoke([])
+
+    @patch.dict(os.environ, {"OPENAI_API_KEY": "test-key", "OPENAI_RATE_LIMIT": "100"}, clear=True)
+    def test_rate_limited_bind_acquires_before_invoke(self):
+        with patch("bioagents.llms.llm_provider.ChatOpenAI") as mock_openai:
+            mock_inner = Mock()
+            mock_openai.return_value = mock_inner
+
+            rl = get_llm(provider="openai")
+            bound = Mock()
+            bound.invoke = Mock(return_value=Mock(content="ok"))
+            mock_inner.bind.return_value = bound
+
+            br = rl.bind(stop=["```"])
+            assert br.invoke([]) is not None
+            mock_inner.bind.assert_called_once_with(stop=["```"])
+            bound.invoke.assert_called_once()

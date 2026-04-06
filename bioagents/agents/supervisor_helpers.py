@@ -126,9 +126,10 @@ def check_coder_should_force_finish(messages) -> tuple[bool, str]:
     if (
         "[CODER_STATUS: max_steps_reached]" in content
         or "[CODER_STATUS: repeated_parse_errors]" in content
+        or "[CODER_STATUS: timeout]" in content
     ):
         return True, (
-            "Code agent finished with step-limit or parse-loop exhaustion; "
+            "Code agent finished with step-limit, parse-loop exhaustion, or timeout; "
             "terminating workflow to avoid redundant delegation."
         )
     if "[CODER_STATUS: import_denied]" in content:
@@ -193,6 +194,9 @@ def check_for_repeated_routing(messages) -> tuple[bool, str]:
     Looks for patterns like the same agent being called multiple times without progress.
     Only counts AIMessage instances with agent names, not tool names.
 
+    Also detects tool-call pattern loops where the research agent repeatedly calls
+    tool_universe_find_tools without ever calling tool_universe_call_tool.
+
     Args:
         messages: List of conversation messages
 
@@ -248,15 +252,50 @@ def check_for_repeated_routing(messages) -> tuple[bool, str]:
                     sig = content[:200]
                     agent_content_sigs.setdefault(agent_name, []).append(sig)
 
-    candidates = [(agent, count) for agent, count in agent_counts.items() if count >= 3]
+    # The Research agent legitimately produces 3 named AIMessages in a single pass:
+    #   1. initial sub-task dispatch, 2. continue after first tool results, 3. merger output.
+    # Only flag as a loop after 5+ appearances (1 full pass + 1 re-route still allowed).
+    AGENT_APPEARANCE_LOOP_THRESHOLD = 5
+    candidates = [
+        (agent, count)
+        for agent, count in agent_counts.items()
+        if count >= AGENT_APPEARANCE_LOOP_THRESHOLD
+    ]
 
     # Also detect content-based loops: an agent returning near-identical
-    # content twice is a strong signal it's stuck.
+    # content multiple times is a strong signal it's stuck.
     for agent_name, sigs in agent_content_sigs.items():
-        if len(sigs) >= 2 and agent_name not in {c[0] for c in candidates}:
+        if len(sigs) >= 3 and agent_name not in {c[0] for c in candidates}:
             unique = set(sigs)
             if len(unique) <= len(sigs) // 2:
                 candidates.append((agent_name, len(sigs)))
+
+    # Detect tool-call pattern loops even when AIMessages have no name.
+    # Specifically: if the recent window contains many tool_universe_find_tools
+    # calls but zero tool_universe_call_tool calls, the research sub-agents are
+    # stuck in a search loop that the per-agent name check would miss.
+    find_tools_calls = 0
+    call_tool_calls = 0
+    for msg in messages[-30:]:
+        tool_calls = getattr(msg, "tool_calls", None) or []
+        for tc in tool_calls:
+            name = tc.get("name", "") if isinstance(tc, dict) else getattr(tc, "name", "")
+            if name == "tool_universe_find_tools":
+                find_tools_calls += 1
+            elif name == "tool_universe_call_tool":
+                call_tool_calls += 1
+    # The research agent runs up to 4 sub-tasks in parallel, each making 1–2
+    # tool_universe_find_tools calls before a tool_universe_call_tool call.
+    # Worst case before any actual execution: 4 sub-agents × 2 rounds = 8 searches.
+    # Only flag as a loop if we exceed that budget with zero executions.
+    if find_tools_calls >= 9 and call_tool_calls == 0:
+        logger.warning(
+            "Tool-call loop detected: %d tool_universe_find_tools calls with 0 "
+            "tool_universe_call_tool calls in last 30 messages.",
+            find_tools_calls,
+        )
+        candidates.append(("Research", find_tools_calls))
+
     if not candidates:
         return False, ""
 
@@ -274,6 +313,43 @@ def check_for_repeated_routing(messages) -> tuple[bool, str]:
         f"(among {len(candidates)} agent(s) over threshold)"
     )
     return True, agent
+
+
+_RESEARCH_FAILURE_PATTERNS = re.compile(
+    r"(no\s+(genetic|transcriptomic|proteomic|omics)\s+data\s+(was|were|could be)\s+(retrieved|collected|obtained)"
+    r"|foundational\s+data\s+collection\s+steps?\s+failed"
+    r"|no\s+substantive\s+data\s+was\s+collected"
+    r"|could\s+not\s+be\s+successfully\s+(retrieved|executed|completed)"
+    r"|this\s+foundational\s+step.*was\s+unsuccessful"
+    r"|no\s+specific\s+tool\s+calls?\s+were\s+executed"
+    r"|tool\s+searches?\s+were\s+unsuccessful)",
+    re.IGNORECASE,
+)
+
+
+def check_for_research_failure(messages) -> tuple[bool, str]:
+    """
+    Check if the last research agent message indicates a data-collection failure.
+
+    Prevents the supervisor from re-sending the same task to research when the
+    previous attempt already reported that no data could be retrieved.
+    """
+    for msg in reversed(messages[-5:]):
+        if not (
+            isinstance(msg, AIMessage)
+            or (hasattr(msg, "__class__") and msg.__class__.__name__ == "AIMessage")
+        ):
+            continue
+        name = getattr(msg, "name", "")
+        if name != "Research":
+            continue
+        content = get_message_content(msg)
+        if _RESEARCH_FAILURE_PATTERNS.search(content):
+            return True, (
+                f"Research agent already reported data-collection failure. "
+                f"Re-sending the same task will not produce different results."
+            )
+    return False, ""
 
 
 def check_for_missing_tool(messages) -> tuple[bool, str]:

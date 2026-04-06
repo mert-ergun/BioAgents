@@ -138,6 +138,11 @@ class RateLimitedLLM:
             self._rate_limiter.acquire()
         return self._llm.invoke(*args, **kwargs)
 
+    def bind(self, **kwargs):
+        """Preserve RPM limiting when callers use ``model.bind(stop=...)`` (e.g. smolagents)."""
+        bound = self._llm.bind(**kwargs)
+        return RateLimitedRunnable(bound, self._rate_limiter)
+
     def bind_tools(self, tools):
         """
         Bind tools to the LLM.

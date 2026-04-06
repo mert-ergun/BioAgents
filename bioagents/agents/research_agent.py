@@ -54,19 +54,25 @@ RESEARCH_AGENT_MEMORY_PROMPT = (
     "Use only shared memory and your tools.\n\n" + RESEARCH_AGENT_SYSTEM_PROMPT
 )
 
+# Maximum number of tool-result rounds a sub-agent is allowed before being
+# forced to synthesise with what it has.
+MAX_SUB_AGENT_TOOL_ROUNDS = 2
 
-def parse_sub_tasks(content: str) -> list[str]:
+
+def parse_sub_tasks(content) -> list[str]:
     """
-    Parse a numbered list of sub-tasks from string.
+    Parse a numbered list of sub-tasks from string or content-block list.
 
     Args:
-        content: String containing a numbered list of tasks
+        content: String or list of content blocks (Gemini format)
 
     Returns:
         List of task descriptions
     """
     tasks = []
     if not isinstance(content, str):
+        content = get_content_text(content)
+    if not content:
         return []
     lines = content.strip().split("\n")
     for line in lines:
@@ -159,6 +165,7 @@ def create_research_agent(tools: list):
                 logger.warning(
                     "Research Agent: Detected possible loop. "
                     "Last message is already from Research. Returning empty."
+                )
                 )
                 return {
                     "data": {},

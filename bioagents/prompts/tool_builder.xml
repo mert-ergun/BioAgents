@@ -6,7 +6,7 @@
     <description>Specialized agent for discovering, creating, validating, and managing custom bioinformatics tools</description>
     <llm_models>
       <model provider="openai">gpt-5.1</model>
-      <model provider="gemini">gemini-2.5-flash</model>
+      <model provider="gemini">gemini-3-flash-preview</model>
       <model provider="ollama">qwen3:8b</model>
     </llm_models>
   </metadata>
