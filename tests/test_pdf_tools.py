@@ -75,6 +75,8 @@ class TestPdfToolsIntegration:
 
             # Basic checks
             assert len(result) > 0, "Web page returned empty"
+            if "tooluniverse" in result.lower() and "not installed" in result.lower():
+                pytest.skip("tooluniverse package not installed (required for live webpage fetch)")
             assert "Error" not in result or "example" in result.lower(), (
                 f"Unexpected error: {result[:200]}"
             )

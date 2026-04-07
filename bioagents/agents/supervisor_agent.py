@@ -35,6 +35,7 @@ class RouteResponse(BaseModel):
         "report",
         "tool_builder",
         "protein_design",
+        "rdkit_validator",
         "critic",
         "FINISH",
     ]
