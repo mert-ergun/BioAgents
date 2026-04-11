@@ -71,6 +71,7 @@ const state = {
     settings: {
         autoScroll: true,
         notifications: true,
+        advancedMode: false,
         theme: 'dark',
         apiKeys: {
             openai: '',
@@ -590,6 +591,7 @@ function initializeApp() {
     initSettings();
     initFileAttachment();
     initVoiceInput();
+    initAdvancedModeToggle();
 
     // Render initial state
     renderAgentList();
@@ -679,15 +681,8 @@ function loadSession(sessionId) {
 
     elements.projectTitle.textContent = session.title;
 
-    // Re-render everything
     resetChatUI();
-    state.messages.forEach(msg => {
-        if (msg.role === 'user') {
-            renderUserMessage(msg);
-        } else {
-            renderAssistantMessage(msg);
-        }
-    });
+    renderAllMessages();
 
     renderArtifacts();
     updateAuditLog(state.auditLog);
@@ -827,8 +822,13 @@ function handleMessage(data) {
             setActiveAgent(data.agent, data.progress);
             break;
         case 'message':
-            // Pass the entire message object to preserve references
             addAssistantMessage(data.content, data.agent, data.references);
+            break;
+        case 'tool_call':
+            addToolCallMessage(data.agent, data.tool_name, data.arguments);
+            break;
+        case 'tool_result':
+            addToolResultMessage(data.agent, data.tool_name, data.content);
             break;
         case 'audit':
             updateAuditLog(data.entries);
@@ -840,7 +840,6 @@ function handleMessage(data) {
             loadStructure(data.pdbContent);
             break;
         case 'complete':
-            // Handle all_references if provided
             if (data.all_references) {
                 console.log('Received all references:', data.all_references);
             }
@@ -1249,6 +1248,12 @@ function addUserMessage(content) {
     saveCurrentSession();
 }
 
+function shouldShowMessage(message) {
+    if (message.role === 'user') return true;
+    if (state.settings.advancedMode) return true;
+    return message.role === 'assistant' && message.agent === 'summary';
+}
+
 function addAssistantMessage(content, agent = null, references = null) {
     const message = {
         role: 'assistant',
@@ -1258,8 +1263,40 @@ function addAssistantMessage(content, agent = null, references = null) {
         references: references || []
     };
     state.messages.push(message);
-    renderAssistantMessage(message);
-    scrollToBottom();
+    if (shouldShowMessage(message)) {
+        renderAssistantMessage(message);
+        scrollToBottom();
+    }
+}
+
+function addToolCallMessage(agent, toolName, args) {
+    const message = {
+        role: 'tool_call',
+        agent,
+        toolName,
+        arguments: args,
+        timestamp: new Date().toISOString(),
+    };
+    state.messages.push(message);
+    if (state.settings.advancedMode) {
+        renderToolCallMessage(message);
+        scrollToBottom();
+    }
+}
+
+function addToolResultMessage(agent, toolName, content) {
+    const message = {
+        role: 'tool_result',
+        agent,
+        toolName,
+        content,
+        timestamp: new Date().toISOString(),
+    };
+    state.messages.push(message);
+    if (state.settings.advancedMode) {
+        renderToolResultMessage(message);
+        scrollToBottom();
+    }
 }
 
 function renderUserMessage(message) {
@@ -1346,6 +1383,105 @@ function renderAssistantMessage(message) {
             });
         });
     }, 0);
+}
+
+function renderToolCallMessage(message) {
+    const agent = AGENTS[message.agent] || { label: message.agent || 'Agent', icon: 'smart_toy', color: 'slate' };
+    const colorClass = getColorClass(agent.color);
+    const argsStr = message.arguments ? JSON.stringify(message.arguments, null, 2) : '{}';
+    const argsPreview = argsStr.length > 80 ? argsStr.substring(0, 80) + '...' : argsStr;
+
+    const html = `
+        <div class="flex gap-2 animate-fadeIn ml-6">
+            <div class="tool-connector" style="background: rgba(245,158,11,0.3)"></div>
+            <div class="flex-1 max-w-[80%] tool-card">
+                <div class="rounded-xl px-3.5 py-2.5 border" style="background: rgba(245,158,11,0.04); border-color: rgba(245,158,11,0.1)">
+                    <div class="flex items-center gap-2 mb-0.5">
+                        <span class="material-symbols-outlined text-[14px]" style="color: rgba(251,191,36,0.8)">build</span>
+                        <span class="text-[10px] font-bold uppercase tracking-wider" style="color: rgba(251,191,36,0.9)">${escapeHtml(agent.label)}</span>
+                        <span class="material-symbols-outlined text-slate-600 text-[12px]">arrow_forward</span>
+                        <span class="text-[10px] font-mono font-semibold text-white/80">${escapeHtml(message.toolName)}</span>
+                    </div>
+                    <details>
+                        <summary class="flex items-center gap-1 text-[10px] text-slate-500 hover:text-slate-300 transition-colors py-1">
+                            <span class="material-symbols-outlined chevron-icon text-[12px]">chevron_right</span>
+                            <span>Arguments</span>
+                            <span class="text-slate-600 font-mono ml-1">${escapeHtml(argsPreview)}</span>
+                        </summary>
+                        <pre class="mt-1.5 bg-black/30 rounded-lg p-2.5 text-[10px] font-mono overflow-x-auto max-h-40 overflow-y-auto custom-scrollbar border border-white/5" style="color: rgba(253,230,138,0.7)">${escapeHtml(argsStr)}</pre>
+                    </details>
+                </div>
+            </div>
+        </div>
+    `;
+    elements.chatMessages.insertAdjacentHTML('beforeend', html);
+}
+
+function renderToolResultMessage(message) {
+    const content = message.content || '';
+    const preview = content.length > 120 ? content.substring(0, 120).replace(/\n/g, ' ') + '...' : content.replace(/\n/g, ' ');
+    const isError = content.toLowerCase().includes('error') || content.toLowerCase().includes('traceback');
+
+    const connectorBg = isError ? 'background: rgba(244,63,94,0.3)' : 'background: rgba(16,185,129,0.3)';
+    const cardBg = isError ? 'background: rgba(244,63,94,0.04); border-color: rgba(244,63,94,0.1)' : 'background: rgba(16,185,129,0.04); border-color: rgba(16,185,129,0.1)';
+    const iconColor = isError ? 'color: rgba(251,113,133,0.8)' : 'color: rgba(52,211,153,0.8)';
+    const labelColor = isError ? 'color: rgba(251,113,133,0.7)' : 'color: rgba(52,211,153,0.7)';
+    const preColor = isError ? 'color: rgba(254,205,211,0.6)' : 'color: rgba(167,243,208,0.6)';
+    const iconName = isError ? 'error' : 'check_circle';
+
+    const html = `
+        <div class="flex gap-2 animate-fadeIn ml-6">
+            <div class="tool-connector" style="${connectorBg}"></div>
+            <div class="flex-1 max-w-[80%] tool-card">
+                <div class="rounded-xl px-3.5 py-2.5 border" style="${cardBg}">
+                    <div class="flex items-center gap-2 mb-0.5">
+                        <span class="material-symbols-outlined text-[14px]" style="${iconColor}">${iconName}</span>
+                        <span class="text-[10px] font-mono font-semibold text-white/70">${escapeHtml(message.toolName)}</span>
+                        <span class="text-[10px] font-medium" style="${labelColor}">result</span>
+                    </div>
+                    <details>
+                        <summary class="flex items-center gap-1 text-[10px] text-slate-500 hover:text-slate-300 transition-colors py-1">
+                            <span class="material-symbols-outlined chevron-icon text-[12px]">chevron_right</span>
+                            <span class="truncate font-mono text-slate-400">${escapeHtml(preview)}</span>
+                        </summary>
+                        <pre class="mt-1.5 bg-black/30 rounded-lg p-2.5 text-[10px] font-mono overflow-x-auto max-h-48 overflow-y-auto custom-scrollbar border border-white/5" style="${preColor}">${escapeHtml(content)}</pre>
+                    </details>
+                </div>
+            </div>
+        </div>
+    `;
+    elements.chatMessages.insertAdjacentHTML('beforeend', html);
+}
+
+function renderAllMessages() {
+    if (!elements.chatMessages) return;
+
+    elements.chatMessages.innerHTML = '';
+
+    if (state.messages.length === 0) {
+        resetChatUI();
+        return;
+    }
+
+    state.messages.forEach(msg => {
+        if (!shouldShowMessage(msg)) return;
+        switch (msg.role) {
+            case 'user':
+                renderUserMessage(msg);
+                break;
+            case 'assistant':
+                renderAssistantMessage(msg);
+                break;
+            case 'tool_call':
+                renderToolCallMessage(msg);
+                break;
+            case 'tool_result':
+                renderToolResultMessage(msg);
+                break;
+        }
+    });
+
+    scrollToBottom();
 }
 
 function scrollToBottom() {
@@ -2695,6 +2831,54 @@ function showSettingsPanel() {
 }
 
 // =====================================================
+// ADVANCED MODE
+// =====================================================
+
+function initAdvancedModeToggle() {
+    const btn = document.getElementById('advancedModeBtn');
+    const label = document.getElementById('advancedModeLabel');
+    if (!btn) return;
+
+    updateAdvancedToggleVisual(btn, label, state.settings.advancedMode);
+
+    btn.addEventListener('click', () => {
+        state.settings.advancedMode = !state.settings.advancedMode;
+        updateAdvancedToggleVisual(btn, label, state.settings.advancedMode);
+        saveToStorage();
+        renderAllMessages();
+        showToast(
+            state.settings.advancedMode
+                ? 'Advanced mode enabled — showing all agent activity'
+                : 'Advanced mode disabled — showing summary only',
+            'info'
+        );
+    });
+}
+
+function updateAdvancedToggleVisual(btn, label, isOn) {
+    const knob = btn.querySelector('span');
+    if (isOn) {
+        btn.style.background = 'rgba(7, 182, 213, 0.4)';
+        btn.style.borderColor = 'rgba(7, 182, 213, 0.5)';
+        knob.style.transform = 'translateX(18px)';
+        knob.style.background = '#07b6d5';
+        knob.style.boxShadow = '0 0 8px rgba(7, 182, 213, 0.5)';
+        if (label) {
+            label.style.color = '#07b6d5';
+        }
+    } else {
+        btn.style.background = '#334155';
+        btn.style.borderColor = 'rgba(255,255,255,0.1)';
+        knob.style.transform = 'translateX(0)';
+        knob.style.background = '#94a3b8';
+        knob.style.boxShadow = 'none';
+        if (label) {
+            label.style.color = '#64748b';
+        }
+    }
+}
+
+// =====================================================
 // TABS
 // =====================================================
 
@@ -2851,6 +3035,16 @@ function getColorClass(color) {
         indigo: { bg: 'bg-indigo-500/10', text: 'text-indigo-400', border: 'border-indigo-500/30' },
         rose: { bg: 'bg-rose-500/10', text: 'text-rose-400', border: 'border-rose-500/30' },
         purple: { bg: 'bg-purple-500/10', text: 'text-purple-400', border: 'border-purple-500/30' },
+        cyan: { bg: 'bg-cyan-500/10', text: 'text-cyan-400', border: 'border-cyan-500/30' },
+        teal: { bg: 'bg-teal-500/10', text: 'text-teal-400', border: 'border-teal-500/30' },
+        sky: { bg: 'bg-sky-500/10', text: 'text-sky-400', border: 'border-sky-500/30' },
+        green: { bg: 'bg-green-500/10', text: 'text-green-400', border: 'border-green-500/30' },
+        lime: { bg: 'bg-lime-500/10', text: 'text-lime-400', border: 'border-lime-500/30' },
+        yellow: { bg: 'bg-yellow-500/10', text: 'text-yellow-400', border: 'border-yellow-500/30' },
+        orange: { bg: 'bg-orange-500/10', text: 'text-orange-400', border: 'border-orange-500/30' },
+        red: { bg: 'bg-red-500/10', text: 'text-red-400', border: 'border-red-500/30' },
+        violet: { bg: 'bg-violet-500/10', text: 'text-violet-400', border: 'border-violet-500/30' },
+        fuchsia: { bg: 'bg-fuchsia-500/10', text: 'text-fuchsia-400', border: 'border-fuchsia-500/30' },
     };
     return colors[color] || colors.slate;
 }
@@ -3049,4 +3243,5 @@ window.BioAgents = {
     setActiveAgent,
     showToast,
     logTerminal,
+    renderAllMessages,
 };

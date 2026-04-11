@@ -109,6 +109,38 @@
         }
         .message-content th { background: rgba(0,0,0,0.3); }
 
+        /* Advanced mode: tool call & result cards */
+        .tool-card {
+            position: relative;
+            transition: all 0.2s;
+        }
+        .tool-card:hover {
+            border-color: rgba(255,255,255,0.12) !important;
+        }
+        .tool-card details summary {
+            cursor: pointer;
+            user-select: none;
+            list-style: none;
+        }
+        .tool-card details summary::-webkit-details-marker { display: none; }
+        .tool-card details[open] summary .chevron-icon {
+            transform: rotate(90deg);
+        }
+        .tool-card .chevron-icon {
+            transition: transform 0.2s;
+            font-size: 14px;
+        }
+        .tool-card pre {
+            margin: 0;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+        .tool-connector {
+            width: 2px;
+            border-radius: 999px;
+            flex-shrink: 0;
+        }
+
         /* Citation styling */
         .citation {
             cursor: pointer;
@@ -377,8 +409,16 @@
             <!-- Center Panel: Chat Interface -->
             <div class="col-span-12 lg:col-span-6 flex flex-col bg-background-dark relative min-h-0">
                 <!-- Chat Header Gradient -->
-                <div class="absolute top-0 w-full z-10 bg-gradient-to-b from-background-dark via-background-dark/95 to-transparent px-4 md:px-6 py-3 pointer-events-none">
+                <div class="absolute top-0 w-full z-10 bg-gradient-to-b from-background-dark via-background-dark/95 to-transparent px-4 md:px-6 py-3 pointer-events-none flex items-center justify-between">
                     <h3 class="text-white/70 text-xs font-medium tracking-wide uppercase">Conversation Stream</h3>
+                    <div class="flex items-center gap-2.5 pointer-events-auto select-none" id="advancedModeToggle">
+                        <span class="text-[10px] font-medium uppercase tracking-wider transition-colors" id="advancedModeLabel" style="color: #64748b;">Advanced</span>
+                        <button class="w-10 h-[22px] rounded-full relative transition-all duration-300 border" id="advancedModeBtn"
+                                style="background: #334155; border-color: rgba(255,255,255,0.1);"
+                                title="Toggle advanced mode to see all agent outputs and tool calls">
+                            <span class="absolute top-[3px] left-[3px] w-4 h-4 rounded-full transition-all duration-300 shadow-sm" style="background: #94a3b8;"></span>
+                        </button>
+                    </div>
                 </div>
 
                 <!-- Messages Area -->

@@ -413,6 +413,20 @@ async def query_bioagents(request: QueryRequest):
                 full_audit.append(audit_entry)
                 yield f"data: {json.dumps({'type': 'audit', 'entries': full_audit})}\n\n"
 
+                # Send tool calls and tool results (consumed by advanced mode UI)
+                if "messages" in node_output:
+                    for m in node_output["messages"]:
+                        if isinstance(m, AIMessage) and getattr(m, "tool_calls", None):
+                            for tc in m.tool_calls:
+                                yield f"data: {json.dumps({'type': 'tool_call', 'agent': node_name, 'tool_name': tc.get('name', 'unknown'), 'arguments': tc.get('args', {})})}\n\n"
+                        elif isinstance(m, ToolMessage) and m.content:
+                            tc_content = m.content
+                            if isinstance(tc_content, list):
+                                tc_content = str(tc_content)
+                            tool_name = getattr(m, "name", "") or "tool"
+                            tc_content = tc_content[:3000] if isinstance(tc_content, str) else str(tc_content)[:3000]
+                            yield f"data: {json.dumps({'type': 'tool_result', 'agent': node_name, 'tool_name': tool_name, 'content': tc_content})}\n\n"
+
                 # Send code steps if available
                 if "code_steps" in node_output:
                     yield f"data: {json.dumps({'type': 'code_execution', 'agent': node_name, 'steps': node_output['code_steps']})}\n\n"
@@ -764,6 +778,35 @@ async def run_bioagents_streaming(
             }
             full_audit.append(audit_entry)
             await websocket.send_json({"type": "audit", "entries": full_audit})
+
+            # Send tool calls and tool results (consumed by advanced mode UI)
+            if "messages" in node_output:
+                for m in node_output["messages"]:
+                    if isinstance(m, AIMessage) and getattr(m, "tool_calls", None):
+                        for tc in m.tool_calls:
+                            await websocket.send_json(
+                                {
+                                    "type": "tool_call",
+                                    "agent": node_name,
+                                    "tool_name": tc.get("name", "unknown"),
+                                    "arguments": tc.get("args", {}),
+                                }
+                            )
+                    elif isinstance(m, ToolMessage) and m.content:
+                        tc_content = m.content
+                        if isinstance(tc_content, list):
+                            tc_content = str(tc_content)
+                        tool_name = getattr(m, "name", "") or "tool"
+                        await websocket.send_json(
+                            {
+                                "type": "tool_result",
+                                "agent": node_name,
+                                "tool_name": tool_name,
+                                "content": tc_content[:3000]
+                                if isinstance(tc_content, str)
+                                else str(tc_content)[:3000],
+                            }
+                        )
 
             # Send code steps if available (from coder, ml, or dl agents)
             if "code_steps" in node_output:
