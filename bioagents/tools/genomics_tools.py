@@ -1,8 +1,9 @@
 """Genomics tools for sequence analysis and BLAST searches."""
 
+import contextlib
 import json
 import time
-import xml.etree.ElementTree as ET
+import xml.etree.ElementTree as ET  # nosec B405
 
 import requests
 from langchain_core.tools import tool
@@ -137,7 +138,7 @@ def run_blast_search(
         if not rid:
             return "Error: Could not submit BLAST job — no RID returned."
 
-        for attempt in range(60):
+        for _attempt in range(60):
             time.sleep(10)
             check_params = {"CMD": "Get", "RID": rid, "FORMAT_OBJECT": "SearchInfo"}
             check_resp = requests.get(BLAST_API, params=check_params, timeout=HTTP_TIMEOUT)
@@ -152,7 +153,7 @@ def run_blast_search(
         get_resp = requests.get(BLAST_API, params=get_params, timeout=60)
         get_resp.raise_for_status()
 
-        root = ET.fromstring(get_resp.text)
+        root = ET.fromstring(get_resp.text)  # nosec B314
         hits = root.findall(".//Hit")
         results = []
         for hit in hits[:max_hits]:
@@ -165,10 +166,10 @@ def run_blast_search(
 
             pct_identity = ""
             if identity is not None and align_len is not None:
-                try:
-                    pct_identity = f"{(int(identity.text) / int(align_len.text)) * 100:.1f}%"
-                except (ValueError, ZeroDivisionError):
-                    pass
+                with contextlib.suppress(ValueError, ZeroDivisionError):
+                    pct_identity = (
+                        f"{(int(identity.text or '0') / int(align_len.text or '1')) * 100:.1f}%"
+                    )
 
             results.append(
                 {

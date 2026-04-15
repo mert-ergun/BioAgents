@@ -64,7 +64,7 @@ def check_installed_packages() -> str:
         sandbox = get_sandbox()
         result = sandbox.run_command("pip list --format=columns", timeout=30)
         if result["success"]:
-            return result["stdout"]
+            return str(result["stdout"])
         return f"Failed to list packages: {result['stderr']}"
     except Exception as e:
         return f"Error checking packages: {e}"

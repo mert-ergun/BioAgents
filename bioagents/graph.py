@@ -66,12 +66,12 @@ from bioagents.tools.structural_tools import (
     get_structural_tools,
 )
 from bioagents.tools.tool_builder_tools import get_tool_builder_tools
+from bioagents.tools.tool_policy import ToolPolicy, get_default_policy
 from bioagents.tools.tool_universe import tool_universe_call_tool, tool_universe_find_tools
 from bioagents.tools.transcriptomics_tools import get_transcriptomics_tools
 from bioagents.tools.visualization_tools import get_visualization_tools
 from bioagents.tools.web_tools import get_web_tools
-from bioagents.truncating_tool_node import make_approval_tool_node, make_truncating_tool_node
-from bioagents.tools.tool_policy import ToolPolicy, get_default_policy
+from bioagents.truncating_tool_node import make_approval_tool_node
 
 logger = logging.getLogger(__name__)
 
@@ -169,7 +169,9 @@ def _detect_consecutive_duplicate_calls(messages: list, agent_name: str) -> tupl
                 tool_name = tc.get("name", "")
                 tool_args = tc.get("args", {})
                 args_str = json.dumps(tool_args, sort_keys=True, default=str)
-                call_hash = hashlib.md5(f"{tool_name}:{args_str}".encode()).hexdigest()  # noqa: S324
+                call_hash = hashlib.md5(
+                    f"{tool_name}:{args_str}".encode(), usedforsecurity=False
+                ).hexdigest()
                 call_hashes.append(call_hash)
 
     if not call_hashes:
@@ -238,14 +240,11 @@ def agent_node(state, agent, name):
             return {"messages": [error_msg]}
 
     # Check for consecutive duplicate tool calls (loop detection)
-    is_loop, loop_desc = _detect_consecutive_duplicate_calls(
-        state.get("messages", []), name
-    )
+    is_loop, loop_desc = _detect_consecutive_duplicate_calls(state.get("messages", []), name)
     if is_loop:
         logger.warning("Loop detected for agent '%s': %s", name, loop_desc)
         error_msg = AIMessage(
-            content=f"[LOOP_DETECTED] {loop_desc} "
-            f"The supervisor should try a different approach.",
+            content=f"[LOOP_DETECTED] {loop_desc} The supervisor should try a different approach.",
             name=name,
         )
         return {"messages": [error_msg]}
@@ -306,7 +305,9 @@ def should_continue_to_tools(state: AgentState) -> Literal["tools", "supervisor"
         import time
 
         if time.monotonic() >= _workflow_deadline:
-            logger.warning("Workflow deadline reached — skipping tool execution, returning to supervisor.")
+            logger.warning(
+                "Workflow deadline reached — skipping tool execution, returning to supervisor."
+            )
             return "supervisor"
 
     messages = state["messages"]
@@ -355,7 +356,9 @@ ALL_MEMBERS = [
 ]
 
 
-def create_graph(_initialize_references: bool = True, checkpointer=None, policy: ToolPolicy | None = None):
+def create_graph(
+    _initialize_references: bool = True, checkpointer=None, policy: ToolPolicy | None = None
+):
     """Create and compile the multi-agent LangGraph workflow.
 
     The workflow uses a supervisor pattern where:

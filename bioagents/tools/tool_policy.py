@@ -9,11 +9,8 @@ from __future__ import annotations
 import logging
 import os
 import re
-from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Literal
-
-if TYPE_CHECKING:
-    from collections.abc import Callable
+from dataclasses import dataclass
+from typing import Any, Literal
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +26,7 @@ _EXTRA_CATS = frozenset(c.strip().lower() for c in _EXTRA_CATS_RAW.split(",") if
 # ---------------------------------------------------------------------------
 # Data classes
 # ---------------------------------------------------------------------------
+
 
 @dataclass(frozen=True)
 class ToolPolicyResult:
@@ -56,73 +54,170 @@ class ToolPolicyStats:
 # ---------------------------------------------------------------------------
 
 # ToolUniverse section names that are relevant to BioAgents
-BIO_RELEVANT_SECTIONS: frozenset[str] = frozenset({
-    "bioinformatics", "genomics", "proteomics", "structural biology",
-    "cheminformatics", "single cell", "drug discovery", "molecular docking",
-    "phylogenetics", "transcriptomics", "visualization", "scientific computing",
-    "literature", "machine learning", "protein design", "molecular dynamics",
-    "sequence analysis", "structural biology tools", "genomics tools",
-    "cheminformatics tools", "single cell tools", "bioinformatics core tools",
-    "packages tools",
-})
+BIO_RELEVANT_SECTIONS: frozenset[str] = frozenset(
+    {
+        "bioinformatics",
+        "genomics",
+        "proteomics",
+        "structural biology",
+        "cheminformatics",
+        "single cell",
+        "drug discovery",
+        "molecular docking",
+        "phylogenetics",
+        "transcriptomics",
+        "visualization",
+        "scientific computing",
+        "literature",
+        "machine learning",
+        "protein design",
+        "molecular dynamics",
+        "sequence analysis",
+        "structural biology tools",
+        "genomics tools",
+        "cheminformatics tools",
+        "single cell tools",
+        "bioinformatics core tools",
+        "packages tools",
+    }
+)
 
 # Keywords in tool names that indicate bio-relevance
-BIO_KEYWORDS_IN_NAME: frozenset[str] = frozenset({
-    "protein", "gene", "genome", "sequence", "alignment", "blast",
-    "pdb", "structure", "mol", "chem", "drug", "docking", "pharmac",
-    "bio", "uniprot", "alphafold", "pdb", "rcsb", "ensembl",
-    "phylo", "transcript", "rnaseq", "scRNA", "single_cell",
-    "cell", "mutation", "variant", "snp", "pathway", "metabol",
-    "neuro", "brain", "disease", "clinical", "phenotype",
-    "opentarget", "chembl", "pubchem", "drugbank",
-})
+BIO_KEYWORDS_IN_NAME: frozenset[str] = frozenset(
+    {
+        "protein",
+        "gene",
+        "genome",
+        "sequence",
+        "alignment",
+        "blast",
+        "pdb",
+        "structure",
+        "mol",
+        "chem",
+        "drug",
+        "docking",
+        "pharmac",
+        "bio",
+        "uniprot",
+        "alphafold",
+        "rcsb",
+        "ensembl",
+        "phylo",
+        "transcript",
+        "rnaseq",
+        "scRNA",
+        "single_cell",
+        "cell",
+        "mutation",
+        "variant",
+        "snp",
+        "pathway",
+        "metabol",
+        "neuro",
+        "brain",
+        "disease",
+        "clinical",
+        "phenotype",
+        "opentarget",
+        "chembl",
+        "pubchem",
+        "drugbank",
+    }
+)
 
 # Keywords that clearly indicate unrelated tools
-UNRELATED_KEYWORDS: frozenset[str] = frozenset({
-    "earthquake", "seismic", "weather", "climate", "geology",
-    "astronomy", "telescope", "nasa", "satellite", "orbit",
-    "stock", "finance", "trading", "cryptocurrency", "bitcoin",
-    "social_media", "twitter", "instagram", "facebook",
-    "game", "gaming", "sports", "recipe", "cooking",
-    "real_estate", "housing", "movie", "music_streaming",
-})
+UNRELATED_KEYWORDS: frozenset[str] = frozenset(
+    {
+        "earthquake",
+        "seismic",
+        "weather",
+        "climate",
+        "geology",
+        "astronomy",
+        "telescope",
+        "nasa",
+        "satellite",
+        "orbit",
+        "stock",
+        "finance",
+        "trading",
+        "cryptocurrency",
+        "bitcoin",
+        "social_media",
+        "twitter",
+        "instagram",
+        "facebook",
+        "game",
+        "gaming",
+        "sports",
+        "recipe",
+        "cooking",
+        "real_estate",
+        "housing",
+        "movie",
+        "music_streaming",
+    }
+)
 
 # Tool name patterns suggesting API key requirement
 API_KEY_PATTERNS: list[re.Pattern[str]] = [
     re.compile(p, re.IGNORECASE)
     for p in [
-        r"REST$", r"_API$", r"Cloud", r"Google", r"AWS",
-        r"Azure", r"OpenAI", r"Anthropic", r"Stripe",
-        r"SendGrid", r"Twilio", r"Slack",
+        r"REST$",
+        r"_API$",
+        r"Cloud",
+        r"Google",
+        r"AWS",
+        r"Azure",
+        r"OpenAI",
+        r"Anthropic",
+        r"Stripe",
+        r"SendGrid",
+        r"Twilio",
+        r"Slack",
     ]
 ]
 
 # Known services that require API keys
-API_KEY_SERVICES: frozenset[str] = frozenset({
-    "Google", "AWS", "Azure", "OpenAI", "Anthropic",
-    "Stripe", "SendGrid", "Twilio", "Slack",
-    "Firebase", "MongoDB_Atlas",
-})
+API_KEY_SERVICES: frozenset[str] = frozenset(
+    {
+        "Google",
+        "AWS",
+        "Azure",
+        "OpenAI",
+        "Anthropic",
+        "Stripe",
+        "SendGrid",
+        "Twilio",
+        "Slack",
+        "Firebase",
+        "MongoDB_Atlas",
+    }
+)
 
 # Tools that are always safe (local computation or search-only)
-ALWAYS_SAFE_TOOLS: frozenset[str] = frozenset({
-    "tool_universe_find_tools",
-    "fetch_uniprot_fasta",
-    "fetch_alphafold_structure",
-    "fetch_pdb_structure",
-    "download_structure_file",
-    "calculate_molecular_weight",
-    "analyze_amino_acid_composition",
-    "calculate_isoelectric_point",
-    "extract_pdf_text_spacy_layout",
-    "fetch_webpage_as_pdf_text",
-    "download_uniprot_flat_file",
-})
+ALWAYS_SAFE_TOOLS: frozenset[str] = frozenset(
+    {
+        "tool_universe_find_tools",
+        "fetch_uniprot_fasta",
+        "fetch_alphafold_structure",
+        "fetch_pdb_structure",
+        "download_structure_file",
+        "calculate_molecular_weight",
+        "analyze_amino_acid_composition",
+        "calculate_isoelectric_point",
+        "extract_pdf_text_spacy_layout",
+        "fetch_webpage_as_pdf_text",
+        "download_uniprot_flat_file",
+    }
+)
 
 
 # ---------------------------------------------------------------------------
 # ToolPolicy
 # ---------------------------------------------------------------------------
+
 
 class ToolPolicy:
     """Evaluates tool calls against safety and relevance rules.
@@ -143,7 +238,7 @@ class ToolPolicy:
         available_api_keys: set[str] | None = None,
         stats: ToolPolicyStats | None = None,
     ):
-        self.strictness = strictness or _STRICTNESS  # type: ignore[assignment]
+        self.strictness = strictness or _STRICTNESS
         self.extra_categories = extra_categories or _EXTRA_CATS
         self.available_api_keys = available_api_keys or set()
         self.stats = stats or ToolPolicyStats()
@@ -156,7 +251,7 @@ class ToolPolicy:
     def evaluate(
         self,
         tool_name: str,
-        arguments: dict[str, Any] | None = None,
+        arguments: dict[str, Any] | None = None,  # noqa: ARG002
     ) -> ToolPolicyResult:
         """Evaluate whether a tool call should be allowed.
 
@@ -281,7 +376,9 @@ class ToolPolicy:
     # Discovery filtering
     # ------------------------------------------------------------------
 
-    def filter_find_results(self, tools: list[dict[str, Any]], limit: int = 5) -> list[dict[str, Any]]:
+    def filter_find_results(
+        self, tools: list[dict[str, Any]], limit: int = 5
+    ) -> list[dict[str, Any]]:
         """Filter tool_universe_find_tools results by relevance.
 
         Removes clearly unrelated tools from discovery results so agents
@@ -301,7 +398,6 @@ class ToolPolicy:
             # Check if tool name contains unrelated keywords
             name_lower = name.lower()
             section_lower = section.lower()
-            desc_lower = description.lower()
 
             is_unrelated = False
 
@@ -355,16 +451,15 @@ class ToolPolicy:
         for service in API_KEY_SERVICES:
             if service.upper() in name_upper:
                 return True
-        for pattern in API_KEY_PATTERNS:
-            if pattern.search(tool_name):
-                return True
-        return False
+        return any(pattern.search(tool_name) for pattern in API_KEY_PATTERNS)
 
     def _check_api_key_available(self, tool_name: str) -> bool:
         """Check if the likely-required API key is configured."""
         service = self._extract_service_name(tool_name)
         if service == "Google":
-            return bool(self.available_api_keys & {"GOOGLE_API_KEY", "GCP_API_KEY", "GOOGLE_CLOUD_API_KEY"})
+            return bool(
+                self.available_api_keys & {"GOOGLE_API_KEY", "GCP_API_KEY", "GOOGLE_CLOUD_API_KEY"}
+            )
         if service == "AWS":
             return bool(self.available_api_keys & {"AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"})
         if service == "Azure":
@@ -388,7 +483,9 @@ class ToolPolicy:
                 return m.group().strip("_")
         return "unknown"
 
-    def _assess_relevance(self, tool_name: str, description: str = "") -> Literal["core", "related", "unrelated"]:
+    def _assess_relevance(
+        self, tool_name: str, description: str = ""
+    ) -> Literal["core", "related", "unrelated"]:
         """Assess how relevant a tool is to BioAgents.
 
         Returns:

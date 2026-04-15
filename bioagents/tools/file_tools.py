@@ -108,7 +108,7 @@ def get_file_info(file_path: str) -> str:
             try:
                 line_count = sum(1 for _ in fp.open())
                 info["line_count"] = line_count
-            except Exception:
+            except Exception:  # nosec B110
                 pass
 
         return json.dumps(info, indent=2)
@@ -118,11 +118,12 @@ def get_file_info(file_path: str) -> str:
 
 def _human_size(size_bytes: int) -> str:
     """Convert bytes to human-readable size string."""
+    size = float(size_bytes)
     for unit in ("B", "KB", "MB", "GB", "TB"):
-        if abs(size_bytes) < 1024.0:
-            return f"{size_bytes:.1f} {unit}"
-        size_bytes /= 1024.0
-    return f"{size_bytes:.1f} PB"
+        if abs(size) < 1024.0:
+            return f"{size:.1f} {unit}"
+        size /= 1024.0
+    return f"{size:.1f} PB"
 
 
 def get_file_tools() -> list:

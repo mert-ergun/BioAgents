@@ -53,7 +53,7 @@ def _truncate_content(content: Any, max_chars: int) -> Any:
             else:
                 s = str(block)
                 take = min(len(s), max_chars - used)
-                out.append(s[:take])
+                out.append(s[:take])  # type: ignore[arg-type]
                 used += take
         return out
     return str(content)[:max_chars] + "\n... [truncated by BioAgents: output size cap]"
@@ -108,6 +108,7 @@ def make_truncating_tool_node(tools: list) -> TruncatingToolRunnable:
 # Approval gate
 # ---------------------------------------------------------------------------
 
+
 class ApprovalToolRunnable(Runnable):
     """ToolNode wrapper that adds policy evaluation + truncation.
 
@@ -138,7 +139,11 @@ class ApprovalToolRunnable(Runnable):
 
         # Pre-check: evaluate policy for each tool call in the last AI message
         last_msg = messages[-1] if messages else None
-        if isinstance(last_msg, AIMessage) and hasattr(last_msg, "tool_calls") and last_msg.tool_calls:
+        if (
+            isinstance(last_msg, AIMessage)
+            and hasattr(last_msg, "tool_calls")
+            and last_msg.tool_calls
+        ):
             for tc in last_msg.tool_calls:
                 tool_name = tc.get("name", "unknown")
                 tool_args = tc.get("args", {})
@@ -149,7 +154,8 @@ class ApprovalToolRunnable(Runnable):
                     # Tool is blocked by policy
                     logger.warning(
                         "Policy blocked tool '%s': %s",
-                        tool_name, policy_result.reason,
+                        tool_name,
+                        policy_result.reason,
                     )
                     denial_msg = ToolMessage(
                         content=(
@@ -170,7 +176,9 @@ class ApprovalToolRunnable(Runnable):
                     request_id = str(uuid.uuid4())
                     logger.info(
                         "Tool '%s' requires approval (request_id=%s): %s",
-                        tool_name, request_id, policy_result.reason,
+                        tool_name,
+                        request_id,
+                        policy_result.reason,
                     )
                     denial_msg = ToolMessage(
                         content=(

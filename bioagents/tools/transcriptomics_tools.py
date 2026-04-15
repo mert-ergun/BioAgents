@@ -11,7 +11,7 @@ from bioagents.sandbox.sandbox_manager import get_sandbox
 def run_differential_expression(
     counts_file: str,
     metadata_file: str,
-    method: str = "auto",
+    method: str = "auto",  # noqa: ARG001
 ) -> str:
     """Run differential expression analysis on RNA-seq count data.
 
@@ -75,7 +75,7 @@ def run_differential_expression(
                 except Exception:
                     pval = 1.0
                 results.append({{'gene': gene, 'log2FoldChange': log2fc, 'pvalue': pval,
-                                 'mean_{cond1}': mean1, 'mean_{cond2}': mean2}})
+                                 'mean_{{cond1}}': mean1, 'mean_{{cond2}}': mean2}})
 
             df = pd.DataFrame(results)
             from statsmodels.stats.multitest import multipletests
@@ -103,7 +103,7 @@ def run_differential_expression(
         result = sandbox.run_command(f"python {script_path}", timeout=120)
 
         if result["success"]:
-            return result["stdout"]
+            return str(result["stdout"])
         return f"DE analysis failed:\n{result['stderr']}\n{result['stdout']}"
     except Exception as e:
         return f"Error running differential expression analysis: {e}"
@@ -171,7 +171,7 @@ def run_gene_set_enrichment(gene_list: str, database: str = "GO_Biological_Proce
         result = sandbox.run_command(f"python {script_path}", timeout=60)
 
         if result["success"]:
-            return result["stdout"]
+            return str(result["stdout"])
         return f"Enrichment analysis failed:\n{result['stderr']}\n{result['stdout']}"
     except Exception as e:
         return f"Error running gene set enrichment: {e}"
@@ -244,7 +244,7 @@ def normalize_expression_data(counts_file: str, method: str = "TPM") -> str:
         result = sandbox.run_command(f"python {script_path}", timeout=60)
 
         if result["success"]:
-            return result["stdout"]
+            return str(result["stdout"])
         return f"Normalization failed:\n{result['stderr']}\n{result['stdout']}"
     except Exception as e:
         return f"Error normalizing expression data: {e}"

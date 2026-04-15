@@ -4,6 +4,7 @@ FastAPI backend for the BioAgents UI
 """
 
 import asyncio
+import contextlib
 import json
 import logging
 import re
@@ -23,11 +24,11 @@ from pydantic import BaseModel
 
 from bioagents.graph import ALL_MEMBERS, create_graph
 from bioagents.graph_streaming import iter_graph_stream
+from bioagents.llms.llm_provider import set_api_keys_override
+from frontend.workflow_routes import include_workflow_routes
 
 # Graph agent nodes whose assistant output is streamed to the chat (excludes supervisor + *_tools).
 STREAM_UI_AGENTS = frozenset([*ALL_MEMBERS, "summary"])
-from bioagents.llms.llm_provider import set_api_keys_override
-from frontend.workflow_routes import include_workflow_routes
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -39,9 +40,7 @@ class _PollFilter(logging.Filter):
 
     def filter(self, record: logging.LogRecord) -> bool:
         msg = record.getMessage()
-        if "GET /api/experiments/runs?limit=" in msg and "200" in msg:
-            return False
-        return True
+        return not ("GET /api/experiments/runs?limit=" in msg and "200" in msg)
 
 
 logging.getLogger("uvicorn.access").addFilter(_PollFilter())
@@ -424,7 +423,11 @@ async def query_bioagents(request: QueryRequest):
                             if isinstance(tc_content, list):
                                 tc_content = str(tc_content)
                             tool_name = getattr(m, "name", "") or "tool"
-                            tc_content = tc_content[:3000] if isinstance(tc_content, str) else str(tc_content)[:3000]
+                            tc_content = (
+                                tc_content[:3000]
+                                if isinstance(tc_content, str)
+                                else str(tc_content)[:3000]
+                            )
                             yield f"data: {json.dumps({'type': 'tool_result', 'agent': node_name, 'tool_name': tool_name, 'content': tc_content})}\n\n"
 
                 # Send code steps if available
@@ -599,19 +602,22 @@ async def websocket_endpoint(websocket: WebSocket):
                     approval_queue: asyncio.Queue[dict] = asyncio.Queue()
 
                     # Start a concurrent reader that puts steering/approval messages on their queues
-                    async def _steering_reader() -> None:
+                    async def _steering_reader(
+                        _sq: asyncio.Queue[str] = steering_queue,
+                        _aq: asyncio.Queue[dict] = approval_queue,
+                    ) -> None:
                         try:
                             while True:
                                 msg = await websocket.receive_json()
                                 if msg.get("type") == "steer":
-                                    await steering_queue.put(msg.get("content", ""))
+                                    await _sq.put(msg.get("content", ""))
                                 elif msg.get("type") == "tool_approval_response":
-                                    await approval_queue.put(msg)
+                                    await _aq.put(msg)
                                 elif msg.get("type") == "ping":
                                     await websocket.send_json({"type": "pong"})
                         except WebSocketDisconnect:
                             raise
-                        except Exception:
+                        except Exception:  # nosec B110
                             pass  # Connection closed or other error
 
                     reader_task = asyncio.create_task(_steering_reader())
@@ -628,16 +634,12 @@ async def websocket_endpoint(websocket: WebSocket):
                         raise
                     except Exception as e:
                         logger.error(f"Query execution error: {e}")
-                        try:
+                        with contextlib.suppress(Exception):
                             await websocket.send_json({"type": "error", "message": str(e)})
-                        except Exception:
-                            pass
                     finally:
                         reader_task.cancel()
-                        try:
+                        with contextlib.suppress(asyncio.CancelledError):
                             await reader_task
-                        except asyncio.CancelledError:
-                            pass
 
             elif data.get("type") == "ping":
                 await websocket.send_json({"type": "pong"})
@@ -660,9 +662,10 @@ async def run_bioagents_streaming(
     """Execute BioAgents query with WebSocket streaming and optional steering/approval support."""
     import uuid
 
-    from bioagents.references.reference_manager import ReferenceManager
-    from bioagents.tools.tool_policy import ToolPolicy, ToolPolicyStats
     from langgraph.checkpoint.memory import MemorySaver
+
+    from bioagents.references.reference_manager import ReferenceManager
+    from bioagents.tools.tool_policy import ToolPolicy
 
     set_api_keys_override(api_keys)
 
@@ -870,10 +873,15 @@ async def run_bioagents_streaming(
                             if "[APPROVAL_REQUIRED]" in tc_content:
                                 # Extract request_id from message
                                 import re as _re
-                                req_match = _re.search(r"approval_request_id=([a-f0-9-]+)", tc_content)
+
+                                req_match = _re.search(
+                                    r"approval_request_id=([a-f0-9-]+)", tc_content
+                                )
                                 request_id = req_match.group(1) if req_match else str(uuid.uuid4())
                                 reason_match = _re.search(r"Reason: (.+?)\. Risk", tc_content)
-                                reason = reason_match.group(1) if reason_match else "External API tool"
+                                reason = (
+                                    reason_match.group(1) if reason_match else "External API tool"
+                                )
                                 risk_match = _re.search(r"Risk level: (\w+)", tc_content)
                                 risk_level = risk_match.group(1) if risk_match else "medium"
 
@@ -894,10 +902,15 @@ async def run_bioagents_streaming(
                                     while not approval_queue.empty():
                                         try:
                                             resp = approval_queue.get_nowait()
-                                            if resp.get("tool_name") == tool_name and resp.get("approved"):
+                                            if resp.get("tool_name") == tool_name and resp.get(
+                                                "approved"
+                                            ):
                                                 session_policy.mark_approved(tool_name)
                                                 await websocket.send_json(
-                                                    {"type": "log", "message": f"Tool '{tool_name}' approved for this session"}
+                                                    {
+                                                        "type": "log",
+                                                        "message": f"Tool '{tool_name}' approved for this session",
+                                                    }
                                                 )
                                         except asyncio.QueueEmpty:
                                             break
@@ -1034,9 +1047,7 @@ async def run_bioagents_streaming(
                     stream_config,
                     {"messages": [steering_msg]},
                 )
-                await websocket.send_json(
-                    {"type": "steering_received", "content": steering_text}
-                )
+                await websocket.send_json({"type": "steering_received", "content": steering_text})
                 logger.info(f"Steering message injected: {steering_text[:80]}")
 
             await asyncio.sleep(0.05)
@@ -1057,10 +1068,8 @@ async def run_bioagents_streaming(
         raise
     except Exception as e:
         logger.error(f"Streaming error: {e}")
-        try:
+        with contextlib.suppress(Exception):
             await websocket.send_json({"type": "error", "message": str(e)})
-        except Exception:
-            pass  # Connection already closed; error can't be delivered.
 
 
 # =====================================================

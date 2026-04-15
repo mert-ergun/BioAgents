@@ -4,7 +4,7 @@ import logging
 import re
 from typing import Any
 
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage, ToolMessage
 from langchain_core.tools import BaseTool
 
 logger = logging.getLogger(__name__)
@@ -248,7 +248,7 @@ def _truncate_content(content, max_length: int) -> str:
 
 def prepare_messages_for_agent(
     messages: list,
-    agent_name: str,
+    agent_name: str,  # noqa: ARG001
     max_messages: int = MAX_CONTEXT_MESSAGES,
     max_tool_result_len: int = MAX_TOOL_RESULT_LENGTH,
     max_ai_content_len: int = MAX_AI_CONTENT_LENGTH,
@@ -275,7 +275,7 @@ def prepare_messages_for_agent(
 
     first_human = None
     supervisor_tasks = []
-    recent = []
+    recent: list[BaseMessage] = []  # noqa: F841
 
     for msg in messages:
         if isinstance(msg, HumanMessage) and first_human is None:

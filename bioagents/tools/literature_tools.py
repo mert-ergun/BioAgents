@@ -1,7 +1,7 @@
 """Literature search tools for PubMed, arXiv, and bioRxiv."""
 
 import json
-import xml.etree.ElementTree as ET
+import xml.etree.ElementTree as ET  # nosec B405
 
 import requests
 from langchain_core.tools import tool
@@ -25,7 +25,7 @@ def search_pubmed(query: str, max_results: int = 10) -> str:
         max_results = min(max(max_results, 1), 50)
 
         search_url = f"{NCBI_BASE}/esearch.fcgi"
-        search_params = {
+        search_params: dict[str, str | int] = {
             "db": "pubmed",
             "term": query,
             "retmax": max_results,
@@ -41,7 +41,7 @@ def search_pubmed(query: str, max_results: int = 10) -> str:
             return f"No PubMed results found for: '{query}'"
 
         fetch_url = f"{NCBI_BASE}/efetch.fcgi"
-        fetch_params = {
+        fetch_params: dict[str, str] = {
             "db": "pubmed",
             "id": ",".join(id_list),
             "retmode": "xml",
@@ -49,7 +49,7 @@ def search_pubmed(query: str, max_results: int = 10) -> str:
         fetch_resp = requests.get(fetch_url, params=fetch_params, timeout=HTTP_TIMEOUT)
         fetch_resp.raise_for_status()
 
-        root = ET.fromstring(fetch_resp.text)
+        root = ET.fromstring(fetch_resp.text)  # nosec B314
         articles = []
         for article_elem in root.findall(".//PubmedArticle"):
             medline = article_elem.find(".//MedlineCitation")
@@ -121,7 +121,7 @@ def search_arxiv(query: str, max_results: int = 5) -> str:
     try:
         max_results = min(max(max_results, 1), 30)
         url = "http://export.arxiv.org/api/query"
-        params = {
+        params: dict[str, str | int] = {
             "search_query": f"all:{query}",
             "start": 0,
             "max_results": max_results,
@@ -132,7 +132,7 @@ def search_arxiv(query: str, max_results: int = 5) -> str:
         response.raise_for_status()
 
         ns = {"atom": "http://www.w3.org/2005/Atom"}
-        root = ET.fromstring(response.text)
+        root = ET.fromstring(response.text)  # nosec B314
         entries = root.findall("atom:entry", ns)
 
         results = []
@@ -156,10 +156,12 @@ def search_arxiv(query: str, max_results: int = 5) -> str:
 
             results.append(
                 {
-                    "title": (title.text or "").strip().replace("\n", " "),
+                    "title": (title.text or "").strip().replace("\n", " ")
+                    if title is not None
+                    else "",
                     "authors": authors[:5],
-                    "abstract": ((summary.text or "").strip()[:500]),
-                    "published": (published.text or "")[:10],
+                    "abstract": ((summary.text or "").strip()[:500]) if summary is not None else "",
+                    "published": (published.text or "")[:10] if published is not None else "",
                     "url": link.text if link is not None else "",
                     "categories": categories,
                 }

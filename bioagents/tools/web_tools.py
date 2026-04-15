@@ -1,8 +1,8 @@
 """Web tools for fetching URLs, searching, and downloading files."""
 
 import json
-import os
 import re
+from pathlib import Path
 from urllib.parse import urlparse
 
 import requests
@@ -69,7 +69,7 @@ def search_google_scholar(query: str, num_results: int = 5) -> str:
     try:
         num_results = min(max(num_results, 1), 20)
         url = "https://api.semanticscholar.org/graph/v1/paper/search"
-        params = {
+        params: dict[str, str | int] = {
             "query": query,
             "limit": num_results,
             "fields": "title,authors,year,citationCount,url,abstract,externalIds",
@@ -118,7 +118,7 @@ def download_file_from_url(url: str, output_path: str = "") -> str:
 
         if not output_path:
             parsed = urlparse(url)
-            output_path = os.path.basename(parsed.path) or "downloaded_file"
+            output_path = Path(parsed.path).name or "downloaded_file"
 
         result = sandbox.download_file(url, output_path)
         if result["success"]:

@@ -21,7 +21,7 @@ from threading import Lock
 
 from langchain_core.tools import tool
 
-from bioagents.tools.tool_policy import ToolPolicy, ToolPolicyResult, get_default_policy
+from bioagents.tools.tool_policy import ToolPolicy, get_default_policy
 
 logger = logging.getLogger(__name__)
 
@@ -181,13 +181,15 @@ class ToolUniverseWrapper:
                     }
                     if p.required:
                         required.append(p.name)
-                results.append({
-                    "name": tool_def.name,
-                    "description": tool_def.description,
-                    "parameter": {"type": "object", "properties": params},
-                    "required": required,
-                    "source": "custom_registry",
-                })
+                results.append(
+                    {
+                        "name": tool_def.name,
+                        "description": tool_def.description,
+                        "parameter": {"type": "object", "properties": params},
+                        "required": required,
+                        "source": "custom_registry",
+                    }
+                )
             return results
         except Exception as exc:
             logger.debug("Custom registry search failed (non-fatal): %s", exc)
@@ -207,11 +209,12 @@ class ToolUniverseWrapper:
             if func is None:
                 return True, {"error": f"Tool '{tool_name}' found but failed to load"}
 
-            from concurrent.futures import TimeoutError as FuturesTimeout
-            from bioagents.llms.timeout_llm import _workflow_deadline
             import time
+            from concurrent.futures import TimeoutError as FuturesTimeout
 
-            hard_cap = 30
+            from bioagents.llms.timeout_llm import _workflow_deadline
+
+            hard_cap: int | float = 30
             if _workflow_deadline is not None:
                 remaining = _workflow_deadline - time.monotonic()
                 hard_cap = max(5, min(hard_cap, remaining - 10))
@@ -221,9 +224,7 @@ class ToolUniverseWrapper:
                 try:
                     result = fut.result(timeout=hard_cap)
                 except FuturesTimeout:
-                    logger.warning(
-                        "Custom tool '%s' timed out after %.0fs", tool_name, hard_cap
-                    )
+                    logger.warning("Custom tool '%s' timed out after %.0fs", tool_name, hard_cap)
                     result = f"Tool '{tool_name}' timed out after {hard_cap:.0f}s — partial results unavailable."
 
             registry.record_usage(tool_name)
@@ -274,11 +275,11 @@ class ToolUniverseWrapper:
         try:
             asyncio.get_running_loop()
         except RuntimeError:
-            return asyncio.run(result)
+            return asyncio.run(result)  # type: ignore[arg-type]
         # Already inside an event loop (e.g. Jupyter kernel) — offload to a
         # background thread so we can call asyncio.run() without conflict.
         with ThreadPoolExecutor(max_workers=1) as pool:
-            return pool.submit(asyncio.run, result).result(timeout=60)
+            return pool.submit(asyncio.run, result).result(timeout=60)  # type: ignore[arg-type]
 
     @staticmethod
     def _format_response(payload: Any) -> str:
@@ -504,18 +505,18 @@ class ToolUniverseWrapper:
         # --- Policy gate ---
         policy_result = self._policy.evaluate(tool_name, parsed_args)
         if not policy_result.allowed:
-            logger.warning(
-                "Tool policy blocked tool '%s': %s", tool_name, policy_result.reason
+            logger.warning("Tool policy blocked tool '%s': %s", tool_name, policy_result.reason)
+            return self._format_response(
+                {
+                    "tool": tool_name,
+                    "error": f"Tool blocked by policy: {policy_result.reason}",
+                    "policy": {
+                        "allowed": False,
+                        "reason": policy_result.reason,
+                        "category": policy_result.category,
+                    },
+                }
             )
-            return self._format_response({
-                "tool": tool_name,
-                "error": f"Tool blocked by policy: {policy_result.reason}",
-                "policy": {
-                    "allowed": False,
-                    "reason": policy_result.reason,
-                    "category": policy_result.category,
-                },
-            })
 
         # If policy requires approval, note it in the response metadata.
         # The actual approval gate is handled at the tool-node level (see

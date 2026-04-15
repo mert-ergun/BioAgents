@@ -78,18 +78,16 @@ def _site_packages_roots() -> list[str]:
     us = site.getusersitepackages()
     if us:
         roots.append(us)
-    return [p for p in roots if p and os.path.isdir(p)]
+    return [p for p in roots if p and Path(p).is_dir()]
 
 
 def _prepend_nvidia_pip_libs_to_ld_path() -> None:
     """If nvidia-* wheels are installed, expose their lib/ dirs to the dynamic linker."""
     try:
-        import glob
-
         lib_dirs: list[str] = []
         for sp in _site_packages_roots():
-            lib_dirs.extend(glob.glob(os.path.join(sp, "nvidia", "*", "lib")))
-        lib_dirs = [p for p in lib_dirs if os.path.isdir(p)]
+            lib_dirs.extend(str(p) for p in Path(sp).glob("nvidia/*/lib"))
+        lib_dirs = [p for p in lib_dirs if Path(p).is_dir()]
         if not lib_dirs:
             return
         extra = os.pathsep.join(lib_dirs)
@@ -127,7 +125,7 @@ def _patch_json_numpy_serialization() -> None:
             pass
         return _original_default(self, obj)
 
-    json.JSONEncoder.default = _numpy_safe_default
+    json.JSONEncoder.default = _numpy_safe_default  # type: ignore[method-assign]
 
 
 def apply_local_executor_runtime_env() -> None:

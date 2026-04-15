@@ -18,7 +18,7 @@ def _env_int(name: str, default: int) -> int:
 
 
 # Max characters stored in ToolMessage content after any tool runs (graph state).
-# Prevents multi‑MB payloads from slowing serialization and downstream LLM calls.
+# Prevents multi-MB payloads from slowing serialization and downstream LLM calls.
 MAX_TOOL_OUTPUT_CHARS = max(1000, _env_int("BIOAGENTS_MAX_TOOL_OUTPUT_CHARS", 24_000))
 
 # Hard cap on a single LLM API invoke (HTTP timeout is separate). 0 = disabled.
@@ -30,7 +30,7 @@ MAX_TOOL_OUTPUT_CHARS = max(1000, _env_int("BIOAGENTS_MAX_TOOL_OUTPUT_CHARS", 24
 # or set to 0 to disable entirely.
 AGENT_LLM_INVOKE_TIMEOUT_SEC = _env_float("BIOAGENTS_AGENT_LLM_INVOKE_TIMEOUT_SEC", 600.0)
 
-# Max seconds to wait for a rate‑limit slot before failing fast (avoids “stuck” behind RPM).
+# Max seconds to wait for a rate-limit slot before failing fast (avoids “stuck” behind RPM).
 RATE_LIMIT_MAX_WAIT_SEC = _env_float("BIOAGENTS_RATE_LIMIT_MAX_WAIT_SEC", 120.0)
 
 # Total wall time for one graph.stream session (server / API). 0 = disabled.
@@ -52,9 +52,7 @@ MAX_CONSECUTIVE_IDENTICAL_TOOL_CALLS = max(
 )
 
 # Max total tool_universe_call_tool calls per agent invocation.
-MAX_TU_TOOL_CALLS_PER_AGENT = max(
-    1, _env_int("BIOAGENTS_MAX_TU_TOOL_CALLS_PER_AGENT", 3)
-)
+MAX_TU_TOOL_CALLS_PER_AGENT = max(1, _env_int("BIOAGENTS_MAX_TU_TOOL_CALLS_PER_AGENT", 3))
 
 # Seconds to wait for user approval before auto-rejecting.
 TOOL_APPROVAL_TIMEOUT_SEC = _env_float("BIOAGENTS_TOOL_APPROVAL_TIMEOUT_SEC", 120.0)
