@@ -70,7 +70,8 @@ from bioagents.tools.tool_universe import tool_universe_call_tool, tool_universe
 from bioagents.tools.transcriptomics_tools import get_transcriptomics_tools
 from bioagents.tools.visualization_tools import get_visualization_tools
 from bioagents.tools.web_tools import get_web_tools
-from bioagents.truncating_tool_node import make_truncating_tool_node
+from bioagents.truncating_tool_node import make_approval_tool_node, make_truncating_tool_node
+from bioagents.tools.tool_policy import ToolPolicy, get_default_policy
 
 logger = logging.getLogger(__name__)
 
@@ -142,11 +143,81 @@ def _count_agent_tool_rounds(messages: list, agent_name: str) -> int:
     return rounds
 
 
+def _detect_consecutive_duplicate_calls(messages: list, agent_name: str) -> tuple[bool, str]:
+    """Detect consecutive identical tool calls (same name + same args) by the same agent.
+
+    Returns (is_loop, description) where description explains the loop.
+    """
+    import hashlib
+    import json
+
+    from langchain_core.messages import AIMessage, HumanMessage
+
+    from bioagents.limits import MAX_CONSECUTIVE_IDENTICAL_TOOL_CALLS
+
+    call_hashes: list[str] = []
+    for msg in reversed(messages):
+        if isinstance(msg, HumanMessage):
+            break
+        if (
+            isinstance(msg, AIMessage)
+            and getattr(msg, "name", "") == agent_name
+            and hasattr(msg, "tool_calls")
+            and msg.tool_calls
+        ):
+            for tc in msg.tool_calls:
+                tool_name = tc.get("name", "")
+                tool_args = tc.get("args", {})
+                args_str = json.dumps(tool_args, sort_keys=True, default=str)
+                call_hash = hashlib.md5(f"{tool_name}:{args_str}".encode()).hexdigest()  # noqa: S324
+                call_hashes.append(call_hash)
+
+    if not call_hashes:
+        return False, ""
+
+    # Check for consecutive identical calls
+    consecutive = 1
+    for i in range(1, len(call_hashes)):
+        if call_hashes[i] == call_hashes[0]:
+            consecutive += 1
+        else:
+            break
+
+    if consecutive >= MAX_CONSECUTIVE_IDENTICAL_TOOL_CALLS:
+        return True, (
+            f"Agent '{agent_name}' made {consecutive} consecutive identical tool calls. "
+            f"Breaking loop (limit: {MAX_CONSECUTIVE_IDENTICAL_TOOL_CALLS})."
+        )
+
+    return False, ""
+
+
+def _count_tu_tool_calls(messages: list, agent_name: str) -> int:
+    """Count tool_universe_call_tool calls by this agent since last supervisor handoff."""
+    from langchain_core.messages import AIMessage, HumanMessage
+
+    count = 0
+    for msg in reversed(messages):
+        if isinstance(msg, HumanMessage):
+            break
+        if (
+            isinstance(msg, AIMessage)
+            and getattr(msg, "name", "") == agent_name
+            and hasattr(msg, "tool_calls")
+            and msg.tool_calls
+        ):
+            for tc in msg.tool_calls:
+                if tc.get("name") == "tool_universe_call_tool":
+                    count += 1
+
+    return count
+
+
 def agent_node(state, agent, name):
     """Wrapper for agent nodes that adds agent identification and ACE tracking."""
     from langchain_core.messages import AIMessage
 
-    from bioagents.limits import MAX_AGENT_TOOL_ROUNDS
+    from bioagents.limits import MAX_AGENT_TOOL_ROUNDS, MAX_TU_TOOL_CALLS_PER_AGENT
 
     if MAX_AGENT_TOOL_ROUNDS and MAX_AGENT_TOOL_ROUNDS > 0:
         rounds = _count_agent_tool_rounds(state.get("messages", []), name)
@@ -165,6 +236,37 @@ def agent_node(state, agent, name):
                 name=name,
             )
             return {"messages": [error_msg]}
+
+    # Check for consecutive duplicate tool calls (loop detection)
+    is_loop, loop_desc = _detect_consecutive_duplicate_calls(
+        state.get("messages", []), name
+    )
+    if is_loop:
+        logger.warning("Loop detected for agent '%s': %s", name, loop_desc)
+        error_msg = AIMessage(
+            content=f"[LOOP_DETECTED] {loop_desc} "
+            f"The supervisor should try a different approach.",
+            name=name,
+        )
+        return {"messages": [error_msg]}
+
+    # Check for excessive tool_universe_call_tool usage
+    tu_count = _count_tu_tool_calls(state.get("messages", []), name)
+    if tu_count >= MAX_TU_TOOL_CALLS_PER_AGENT:
+        logger.warning(
+            "Agent '%s' hit TU tool call limit (%d) — forcing return to supervisor.",
+            name,
+            MAX_TU_TOOL_CALLS_PER_AGENT,
+        )
+        error_msg = AIMessage(
+            content=(
+                f"[MAX_TU_CALLS] Agent '{name}' exceeded the ToolUniverse "
+                f"call limit ({MAX_TU_TOOL_CALLS_PER_AGENT}). The supervisor "
+                f"should proceed with available results or try a different approach."
+            ),
+            name=name,
+        )
+        return {"messages": [error_msg]}
 
     try:
         result = agent(state)
@@ -253,7 +355,7 @@ ALL_MEMBERS = [
 ]
 
 
-def create_graph(_initialize_references: bool = True, checkpointer=None):
+def create_graph(_initialize_references: bool = True, checkpointer=None, policy: ToolPolicy | None = None):
     """Create and compile the multi-agent LangGraph workflow.
 
     The workflow uses a supervisor pattern where:
@@ -266,6 +368,8 @@ def create_graph(_initialize_references: bool = True, checkpointer=None):
     Args:
         _initialize_references: Whether to initialize reference tracking.
         checkpointer: Optional LangGraph checkpointer for mid-execution state updates.
+        policy: Optional ToolPolicy instance. If provided, tool nodes use the
+            approval gate. If None, default policy is used (auto-approve everything).
     """
     # ---- existing tool lists ----
     research_tools = [
@@ -338,24 +442,25 @@ def create_graph(_initialize_references: bool = True, checkpointer=None):
 
     supervisor_agent = create_supervisor_agent(ALL_MEMBERS)
 
-    # ---- tool nodes ----
-    research_tool_node = make_truncating_tool_node(research_tools)
-    analysis_tool_node = make_truncating_tool_node(analysis_tools_list)
-    tool_builder_tool_node = make_truncating_tool_node(tb_tools)
-    protein_design_tool_node = make_truncating_tool_node(pd_tools)
-    literature_tool_node = make_truncating_tool_node(lit_tools)
-    web_browser_tool_node = make_truncating_tool_node(web_tools)
-    paper_replication_tool_node = make_truncating_tool_node(paper_rep_tools)
-    data_acquisition_tool_node = make_truncating_tool_node(data_acq_tools)
-    genomics_tool_node = make_truncating_tool_node(gen_tools)
-    transcriptomics_tool_node = make_truncating_tool_node(trans_tools)
-    structural_biology_tool_node = make_truncating_tool_node(struct_tools)
-    phylogenetics_tool_node = make_truncating_tool_node(phylo_tools)
-    tool_discovery_tool_node = make_truncating_tool_node(td_tools)
-    shell_tool_node = make_truncating_tool_node(sh_tools)
-    git_tool_node = make_truncating_tool_node(git_tools_list)
-    environment_tool_node = make_truncating_tool_node(env_tools)
-    visualization_tool_node = make_truncating_tool_node(viz_tools)
+    # ---- tool nodes (with approval gate when policy is provided) ----
+    active_policy = policy or get_default_policy()
+    research_tool_node = make_approval_tool_node(research_tools, policy=active_policy)
+    analysis_tool_node = make_approval_tool_node(analysis_tools_list, policy=active_policy)
+    tool_builder_tool_node = make_approval_tool_node(tb_tools, policy=active_policy)
+    protein_design_tool_node = make_approval_tool_node(pd_tools, policy=active_policy)
+    literature_tool_node = make_approval_tool_node(lit_tools, policy=active_policy)
+    web_browser_tool_node = make_approval_tool_node(web_tools, policy=active_policy)
+    paper_replication_tool_node = make_approval_tool_node(paper_rep_tools, policy=active_policy)
+    data_acquisition_tool_node = make_approval_tool_node(data_acq_tools, policy=active_policy)
+    genomics_tool_node = make_approval_tool_node(gen_tools, policy=active_policy)
+    transcriptomics_tool_node = make_approval_tool_node(trans_tools, policy=active_policy)
+    structural_biology_tool_node = make_approval_tool_node(struct_tools, policy=active_policy)
+    phylogenetics_tool_node = make_approval_tool_node(phylo_tools, policy=active_policy)
+    tool_discovery_tool_node = make_approval_tool_node(td_tools, policy=active_policy)
+    shell_tool_node = make_approval_tool_node(sh_tools, policy=active_policy)
+    git_tool_node = make_approval_tool_node(git_tools_list, policy=active_policy)
+    environment_tool_node = make_approval_tool_node(env_tools, policy=active_policy)
+    visualization_tool_node = make_approval_tool_node(viz_tools, policy=active_policy)
 
     # ---- build graph ----
     workflow = StateGraph(AgentState)

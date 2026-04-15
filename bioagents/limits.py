@@ -43,3 +43,30 @@ MAX_AGENT_TOOL_ROUNDS = _env_int("BIOAGENTS_MAX_AGENT_TOOL_ROUNDS", 5)
 
 # Default LangGraph recursion cap (also set per call in server).
 GRAPH_RECURSION_LIMIT = max(10, _env_int("BIOAGENTS_GRAPH_RECURSION_LIMIT", 100))
+
+# --- Tool Policy & Approval limits ---
+
+# Consecutive identical tool calls (same name + same args) before forced break.
+MAX_CONSECUTIVE_IDENTICAL_TOOL_CALLS = max(
+    1, _env_int("BIOAGENTS_MAX_CONSECUTIVE_IDENTICAL_TOOL_CALLS", 2)
+)
+
+# Max total tool_universe_call_tool calls per agent invocation.
+MAX_TU_TOOL_CALLS_PER_AGENT = max(
+    1, _env_int("BIOAGENTS_MAX_TU_TOOL_CALLS_PER_AGENT", 3)
+)
+
+# Seconds to wait for user approval before auto-rejecting.
+TOOL_APPROVAL_TIMEOUT_SEC = _env_float("BIOAGENTS_TOOL_APPROVAL_TIMEOUT_SEC", 120.0)
+
+# Whether to require approval for ALL tool_universe_call_tool calls.
+TOOL_APPROVAL_ALL_TU_CALLS = os.getenv("BIOAGENTS_TOOL_APPROVAL_ALL_TU_CALLS", "").lower() in (
+    "1",
+    "true",
+)
+
+# Policy strictness: "strict", "moderate", or "permissive".
+TOOL_POLICY_STRICTNESS = os.getenv("BIOAGENTS_TOOL_POLICY_STRICTNESS", "moderate").lower()
+
+# Comma-separated extra tool categories to allow beyond defaults.
+TOOL_POLICY_EXTRA_CATEGORIES = os.getenv("BIOAGENTS_TOOL_POLICY_EXTRA_CATEGORIES", "")

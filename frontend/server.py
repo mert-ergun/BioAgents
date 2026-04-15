@@ -595,13 +595,18 @@ async def websocket_endpoint(websocket: WebSocket):
                     # Create a steering queue for this query execution
                     steering_queue: asyncio.Queue[str] = asyncio.Queue()
 
-                    # Start a concurrent reader that puts steering messages on the queue
+                    # Create an approval response queue for tool approval flow
+                    approval_queue: asyncio.Queue[dict] = asyncio.Queue()
+
+                    # Start a concurrent reader that puts steering/approval messages on their queues
                     async def _steering_reader() -> None:
                         try:
                             while True:
                                 msg = await websocket.receive_json()
                                 if msg.get("type") == "steer":
                                     await steering_queue.put(msg.get("content", ""))
+                                elif msg.get("type") == "tool_approval_response":
+                                    await approval_queue.put(msg)
                                 elif msg.get("type") == "ping":
                                     await websocket.send_json({"type": "pong"})
                         except WebSocketDisconnect:
@@ -617,6 +622,7 @@ async def websocket_endpoint(websocket: WebSocket):
                             api_keys=api_keys,
                             session_id=session_id,
                             steering_queue=steering_queue,
+                            approval_queue=approval_queue,
                         )
                     except WebSocketDisconnect:
                         raise
@@ -649,18 +655,26 @@ async def run_bioagents_streaming(
     api_keys: dict[str, str] | None = None,
     session_id: str | None = None,
     steering_queue: asyncio.Queue[str] | None = None,
+    approval_queue: asyncio.Queue[dict] | None = None,
 ):
-    """Execute BioAgents query with WebSocket streaming and optional steering support."""
+    """Execute BioAgents query with WebSocket streaming and optional steering/approval support."""
     import uuid
 
     from bioagents.references.reference_manager import ReferenceManager
+    from bioagents.tools.tool_policy import ToolPolicy, ToolPolicyStats
     from langgraph.checkpoint.memory import MemorySaver
 
     set_api_keys_override(api_keys)
 
+    # Build a session-specific tool policy with available API keys
+    available_keys: set[str] = set()
+    if api_keys:
+        available_keys = {k for k, v in api_keys.items() if v}
+    session_policy = ToolPolicy(available_api_keys=available_keys)
+
     # Create graph with checkpointer to support mid-execution state updates (steering)
     checkpointer = MemorySaver()
-    graph = create_graph(checkpointer=checkpointer)
+    graph = create_graph(checkpointer=checkpointer, policy=session_policy)
 
     # Thread ID for checkpoint-based state updates
     thread_id = f"session_{session_id or uuid.uuid4().hex[:8]}"
@@ -850,6 +864,56 @@ async def run_bioagents_streaming(
                         if isinstance(tc_content, list):
                             tc_content = str(tc_content)
                         tool_name = getattr(m, "name", "") or "tool"
+
+                        # Check for approval-required or policy-blocked messages
+                        if isinstance(tc_content, str):
+                            if "[APPROVAL_REQUIRED]" in tc_content:
+                                # Extract request_id from message
+                                import re as _re
+                                req_match = _re.search(r"approval_request_id=([a-f0-9-]+)", tc_content)
+                                request_id = req_match.group(1) if req_match else str(uuid.uuid4())
+                                reason_match = _re.search(r"Reason: (.+?)\. Risk", tc_content)
+                                reason = reason_match.group(1) if reason_match else "External API tool"
+                                risk_match = _re.search(r"Risk level: (\w+)", tc_content)
+                                risk_level = risk_match.group(1) if risk_match else "medium"
+
+                                await websocket.send_json(
+                                    {
+                                        "type": "tool_approval_request",
+                                        "request_id": request_id,
+                                        "tool_name": tool_name,
+                                        "agent": node_name,
+                                        "reason": reason,
+                                        "risk_level": risk_level,
+                                        "content": tc_content[:3000],
+                                    }
+                                )
+
+                                # Drain any approval responses that arrived
+                                if approval_queue is not None:
+                                    while not approval_queue.empty():
+                                        try:
+                                            resp = approval_queue.get_nowait()
+                                            if resp.get("tool_name") == tool_name and resp.get("approved"):
+                                                session_policy.mark_approved(tool_name)
+                                                await websocket.send_json(
+                                                    {"type": "log", "message": f"Tool '{tool_name}' approved for this session"}
+                                                )
+                                        except asyncio.QueueEmpty:
+                                            break
+                                continue
+
+                            if "[POLICY_BLOCKED]" in tc_content:
+                                await websocket.send_json(
+                                    {
+                                        "type": "tool_policy_blocked",
+                                        "agent": node_name,
+                                        "tool_name": tool_name,
+                                        "content": tc_content[:3000],
+                                    }
+                                )
+                                continue
+
                         await websocket.send_json(
                             {
                                 "type": "tool_result",
@@ -870,6 +934,18 @@ async def run_bioagents_streaming(
                         "steps": node_output["code_steps"],
                     }
                 )
+
+            # Send tool policy stats periodically
+            stats = session_policy.stats
+            await websocket.send_json(
+                {
+                    "type": "tool_policy_stats",
+                    "auto_approved": stats.auto_approved,
+                    "user_approved": stats.user_approved,
+                    "blocked": stats.blocked,
+                    "filtered_at_discovery": stats.filtered_at_discovery,
+                }
+            )
 
             # Send messages from user-facing agents
             if node_name in STREAM_UI_AGENTS and "messages" in node_output:

@@ -860,6 +860,15 @@ function handleMessage(data) {
         case 'steering_received':
             updateSteeringBannerStatus(data.content);
             break;
+        case 'tool_approval_request':
+            showToolApprovalPanel(data);
+            break;
+        case 'tool_policy_blocked':
+            showToolBlockedNotification(data);
+            break;
+        case 'tool_policy_stats':
+            updateToolPolicyStats(data);
+            break;
     }
 }
 
@@ -1514,6 +1523,184 @@ function renderToolResultMessage(message) {
         </div>
     `;
     elements.chatMessages.insertAdjacentHTML('beforeend', html);
+}
+
+// ---------------------------------------------------------------------------
+// Tool Approval UI
+// ---------------------------------------------------------------------------
+
+function showToolApprovalPanel(data) {
+    const agent = AGENTS[data.agent] || { label: data.agent || 'Agent', icon: 'smart_toy', color: 'slate' };
+    const riskColors = {
+        none: { bg: 'rgba(52,211,153,0.08)', border: 'rgba(52,211,153,0.2)', text: 'rgba(52,211,153,0.9)' },
+        low: { bg: 'rgba(96,165,250,0.08)', border: 'rgba(96,165,250,0.2)', text: 'rgba(96,165,250,0.9)' },
+        medium: { bg: 'rgba(251,191,36,0.08)', border: 'rgba(251,191,36,0.2)', text: 'rgba(251,191,36,0.9)' },
+        high: { bg: 'rgba(251,113,133,0.08)', border: 'rgba(251,113,133,0.2)', text: 'rgba(251,113,133,0.9)' },
+    };
+    const risk = riskColors[data.risk_level] || riskColors.medium;
+    const riskLabel = (data.risk_level || 'medium').toUpperCase();
+
+    const panelId = `approval-${data.request_id}`;
+    const html = `
+        <div id="${panelId}" class="flex gap-2 animate-fadeIn ml-2 mr-2 my-3">
+            <div class="flex-1">
+                <div class="rounded-2xl border-2 overflow-hidden" style="background: ${risk.bg}; border-color: ${risk.border}">
+                    <!-- Header -->
+                    <div class="px-4 py-3 flex items-center gap-3 border-b" style="border-color: ${risk.border}">
+                        <div class="h-9 w-9 rounded-xl flex items-center justify-center" style="background: ${risk.border}">
+                            <span class="material-symbols-outlined text-[18px] text-white">verified_user</span>
+                        </div>
+                        <div class="flex-1">
+                            <div class="flex items-center gap-2">
+                                <span class="text-xs font-bold text-white/90">Tool Approval Required</span>
+                                <span class="text-[9px] font-bold px-2 py-0.5 rounded-full" style="background: ${risk.border}; color: white">${riskLabel} RISK</span>
+                            </div>
+                            <span class="text-[10px] text-slate-400">${escapeHtml(agent.label)} wants to call an external tool</span>
+                        </div>
+                        <div class="approval-pulse h-3 w-3 rounded-full animate-pulse" style="background: ${risk.text}"></div>
+                    </div>
+
+                    <!-- Tool info -->
+                    <div class="px-4 py-3 space-y-2.5">
+                        <div class="flex items-center gap-2">
+                            <span class="material-symbols-outlined text-[14px] text-slate-400">build</span>
+                            <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Tool</span>
+                            <span class="text-xs font-mono font-semibold text-white/90">${escapeHtml(data.tool_name)}</span>
+                        </div>
+
+                        <div class="flex items-start gap-2">
+                            <span class="material-symbols-outlined text-[14px] text-slate-400 mt-0.5">info</span>
+                            <div>
+                                <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Reason</span>
+                                <span class="text-xs text-white/70">${escapeHtml(data.reason || 'External API tool — requires user approval')}</span>
+                            </div>
+                        </div>
+
+                        <div class="bg-black/20 rounded-xl p-3 border border-white/5">
+                            <details>
+                                <summary class="flex items-center gap-1 text-[10px] text-slate-500 hover:text-slate-300 transition-colors cursor-pointer">
+                                    <span class="material-symbols-outlined chevron-icon text-[12px]">chevron_right</span>
+                                    <span>View full message</span>
+                                </summary>
+                                <pre class="mt-2 text-[10px] font-mono text-slate-400 whitespace-pre-wrap leading-relaxed">${escapeHtml(data.content || '')}</pre>
+                            </details>
+                        </div>
+                    </div>
+
+                    <!-- Actions -->
+                    <div class="px-4 py-3 flex items-center gap-2 border-t" style="border-color: ${risk.border}; background: rgba(0,0,0,0.15)">
+                        <button onclick="handleToolApproval('${data.request_id}', '${escapeHtml(data.tool_name)}', true)"
+                            class="flex-1 flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold transition-all hover:scale-[1.02] active:scale-[0.98]"
+                            style="background: rgba(52,211,153,0.15); color: rgba(52,211,153,0.95); border: 1px solid rgba(52,211,153,0.25)">
+                            <span class="material-symbols-outlined text-[16px]">check_circle</span>
+                            Approve
+                        </button>
+                        <button onclick="handleToolApproval('${data.request_id}', '${escapeHtml(data.tool_name)}', false)"
+                            class="flex-1 flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold transition-all hover:scale-[1.02] active:scale-[0.98]"
+                            style="background: rgba(251,113,133,0.15); color: rgba(251,113,133,0.95); border: 1px solid rgba(251,113,133,0.25)">
+                            <span class="material-symbols-outlined text-[16px]">cancel</span>
+                            Reject
+                        </button>
+                        <button onclick="handleToolApproval('${data.request_id}', '${escapeHtml(data.tool_name)}', true, true)"
+                            class="flex items-center justify-center gap-1 px-3 py-2 rounded-xl text-[10px] font-medium transition-all hover:scale-[1.02] active:scale-[0.98]"
+                            style="background: rgba(96,165,250,0.1); color: rgba(96,165,250,0.8); border: 1px solid rgba(96,165,250,0.2)"
+                            title="Approve this tool for the rest of the session">
+                            <span class="material-symbols-outlined text-[14px]">done_all</span>
+                            Always
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+    elements.chatMessages.insertAdjacentHTML('beforeend', html);
+    scrollToBottom();
+}
+
+function handleToolApproval(requestId, toolName, approved, alwaysApprove = false) {
+    // Send approval response to server
+    if (state.ws && state.ws.readyState === WebSocket.OPEN) {
+        state.ws.send(JSON.stringify({
+            type: 'tool_approval_response',
+            request_id: requestId,
+            tool_name: toolName,
+            approved: approved,
+            always: alwaysApprove,
+        }));
+    }
+
+    // Update the panel to show the response
+    const panel = document.getElementById(`approval-${requestId}`);
+    if (panel) {
+        const statusColor = approved ? 'rgba(52,211,153,0.15)' : 'rgba(251,113,133,0.15)';
+        const statusBorder = approved ? 'rgba(52,211,153,0.3)' : 'rgba(251,113,133,0.3)';
+        const statusText = approved ? 'Approved' : 'Rejected';
+        const statusIcon = approved ? 'check_circle' : 'cancel';
+        const statusTextColor = approved ? 'rgba(52,211,153,0.9)' : 'rgba(251,113,133,0.9)';
+
+        panel.innerHTML = `
+            <div class="flex-1">
+                <div class="rounded-2xl border px-4 py-3 flex items-center gap-3" style="background: ${statusColor}; border-color: ${statusBorder}">
+                    <span class="material-symbols-outlined text-[20px]" style="color: ${statusTextColor}">${statusIcon}</span>
+                    <span class="text-xs font-bold" style="color: ${statusTextColor}">${escapeHtml(toolName)} — ${statusText}</span>
+                    ${alwaysApprove && approved ? '<span class="text-[10px] text-blue-400 ml-2">Approved for this session</span>' : ''}
+                </div>
+            </div>
+        `;
+    }
+
+    if (approved) {
+        showToast(`Tool "${toolName}" approved`, 'success');
+    } else {
+        showToast(`Tool "${toolName}" rejected`, 'warning');
+    }
+}
+
+function showToolBlockedNotification(data) {
+    const toolName = data.tool_name || 'Unknown tool';
+    showToast(`Tool "${toolName}" blocked by safety policy`, 'error');
+
+    // Also render a subtle blocked indicator in chat
+    const html = `
+        <div class="flex gap-2 animate-fadeIn ml-6 my-1">
+            <div class="flex items-center gap-2 px-3 py-1.5 rounded-lg border" style="background: rgba(244,63,94,0.05); border-color: rgba(244,63,94,0.15)">
+                <span class="material-symbols-outlined text-[12px]" style="color: rgba(251,113,133,0.7)">block</span>
+                <span class="text-[10px] font-mono text-red-400/80">${escapeHtml(toolName)}</span>
+                <span class="text-[10px] text-red-400/50">blocked by policy</span>
+            </div>
+        </div>
+    `;
+    elements.chatMessages.insertAdjacentHTML('beforeend', html);
+    scrollToBottom();
+}
+
+// ---------------------------------------------------------------------------
+// Tool Policy Stats
+// ---------------------------------------------------------------------------
+
+function updateToolPolicyStats(data) {
+    const container = document.getElementById('toolPolicyStats');
+    if (!container) return;
+
+    const parts = [];
+    if (data.auto_approved > 0) parts.push(`<span class="text-emerald-400">${data.auto_approved}</span> auto`);
+    if (data.user_approved > 0) parts.push(`<span class="text-blue-400">${data.user_approved}</span> approved`);
+    if (data.blocked > 0) parts.push(`<span class="text-red-400">${data.blocked}</span> blocked`);
+    if (data.filtered_at_discovery > 0) parts.push(`<span class="text-amber-400">${data.filtered_at_discovery}</span> filtered`);
+
+    if (parts.length === 0) {
+        container.classList.add('hidden');
+        return;
+    }
+
+    container.classList.remove('hidden');
+    container.innerHTML = `
+        <div class="flex items-center gap-1.5 text-[9px]">
+            <span class="material-symbols-outlined text-[12px] text-slate-500">shield</span>
+            <span class="text-slate-500">Tool Policy:</span>
+            ${parts.join('<span class="text-slate-600">|</span>')}
+        </div>
+    `;
 }
 
 function renderAllMessages() {

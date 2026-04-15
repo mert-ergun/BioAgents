@@ -2,13 +2,18 @@
 
 from __future__ import annotations
 
+import logging
+import uuid
 from typing import Any
 
-from langchain_core.messages import ToolMessage
+from langchain_core.messages import AIMessage, ToolMessage
 from langchain_core.runnables import Runnable, RunnableConfig
 from langgraph.prebuilt import ToolNode
 
 from bioagents.limits import MAX_TOOL_OUTPUT_CHARS
+from bioagents.tools.tool_policy import ToolPolicy, get_default_policy
+
+logger = logging.getLogger(__name__)
 
 
 def _text_len(content: Any) -> int:
@@ -97,3 +102,102 @@ class TruncatingToolRunnable(Runnable):
 def make_truncating_tool_node(tools: list) -> TruncatingToolRunnable:
     """Build a ToolNode that caps every tool result before it is merged into graph state."""
     return TruncatingToolRunnable(tools)
+
+
+# ---------------------------------------------------------------------------
+# Approval gate
+# ---------------------------------------------------------------------------
+
+class ApprovalToolRunnable(Runnable):
+    """ToolNode wrapper that adds policy evaluation + truncation.
+
+    Policy check results are embedded in ToolMessage content so the frontend
+    can display approval requests.  Tools requiring approval are blocked on
+    first call (returning a denial message).  If the user approves the tool
+    via the frontend, it is added to the session's approved list and the
+    agent's next retry will succeed.
+    """
+
+    def __init__(
+        self,
+        tools: list,
+        policy: ToolPolicy | None = None,
+    ):
+        super().__init__()
+        self._inner = ToolNode(tools)
+        self._max_chars = MAX_TOOL_OUTPUT_CHARS
+        self._policy = policy or get_default_policy()
+
+    # ------------------------------------------------------------------
+    # Core invoke
+    # ------------------------------------------------------------------
+
+    def invoke(self, input: Any, config: RunnableConfig | None = None, **kwargs: Any) -> Any:
+        """Execute tools with policy check and truncation."""
+        messages = input.get("messages", []) if isinstance(input, dict) else []
+
+        # Pre-check: evaluate policy for each tool call in the last AI message
+        last_msg = messages[-1] if messages else None
+        if isinstance(last_msg, AIMessage) and hasattr(last_msg, "tool_calls") and last_msg.tool_calls:
+            for tc in last_msg.tool_calls:
+                tool_name = tc.get("name", "unknown")
+                tool_args = tc.get("args", {})
+
+                policy_result = self._policy.evaluate(tool_name, tool_args)
+
+                if not policy_result.allowed:
+                    # Tool is blocked by policy
+                    logger.warning(
+                        "Policy blocked tool '%s': %s",
+                        tool_name, policy_result.reason,
+                    )
+                    denial_msg = ToolMessage(
+                        content=(
+                            f"[POLICY_BLOCKED] Tool '{tool_name}' was blocked: "
+                            f"{policy_result.reason}. Try a different approach."
+                        ),
+                        tool_call_id=tc.get("id", str(uuid.uuid4())),
+                        name=tool_name,
+                        status="error",
+                    )
+                    return {"messages": [denial_msg]}
+
+                if policy_result.requires_approval:
+                    # Tool needs user approval — block it with a message that
+                    # includes the approval info so the frontend can show the
+                    # approval UI.  If the user approves, the tool is added to
+                    # the session approved list and the next retry will pass.
+                    request_id = str(uuid.uuid4())
+                    logger.info(
+                        "Tool '%s' requires approval (request_id=%s): %s",
+                        tool_name, request_id, policy_result.reason,
+                    )
+                    denial_msg = ToolMessage(
+                        content=(
+                            f"[APPROVAL_REQUIRED] Tool '{tool_name}' requires user approval. "
+                            f"Reason: {policy_result.reason}. "
+                            f"Risk level: {policy_result.risk_level}. "
+                            f"If approved, retry the tool call. "
+                            f"[approval_request_id={request_id}]"
+                        ),
+                        tool_call_id=tc.get("id", str(uuid.uuid4())),
+                        name=tool_name,
+                        status="error",
+                    )
+                    return {"messages": [denial_msg]}
+
+        # All checks passed — execute the tools normally
+        out = self._inner.invoke(input, config, **kwargs)
+        return truncate_tool_messages_payload(out, self._max_chars)
+
+    async def ainvoke(self, input: Any, config: RunnableConfig | None = None, **kwargs: Any) -> Any:
+        """Async version — delegates to sync invoke (ToolNode is sync internally)."""
+        return self.invoke(input, config, **kwargs)
+
+
+def make_approval_tool_node(
+    tools: list,
+    policy: ToolPolicy | None = None,
+) -> ApprovalToolRunnable:
+    """Build an ApprovalToolRunnable with policy gate + truncation."""
+    return ApprovalToolRunnable(tools, policy=policy)

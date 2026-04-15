@@ -21,6 +21,8 @@ from threading import Lock
 
 from langchain_core.tools import tool
 
+from bioagents.tools.tool_policy import ToolPolicy, ToolPolicyResult, get_default_policy
+
 logger = logging.getLogger(__name__)
 
 try:  # pragma: no cover - optional dependency
@@ -146,12 +148,14 @@ class ToolUniverseWrapper:
         self,
         tool_factory: Callable[[], Any] | None = _ToolUniverse,
         catalog: ToolUniverseCatalogue | None = None,
+        policy: ToolPolicy | None = None,
     ):
         self._tool_factory = tool_factory
         self._catalog = catalog or ToolUniverseCatalogue()
         self._client = None
         self._lock = Lock()
         self._default_finder = os.getenv("BIOAGENTS_TOOL_UNIVERSE_FINDER", "keyword").lower()
+        self._policy = policy or get_default_policy()
 
     # ------------------------------------------------------------------
     # Custom tool registry integration
@@ -453,6 +457,9 @@ class ToolUniverseWrapper:
                     merged.append(tool_entry)
             merged = merged[:limit]
 
+            # Apply policy filter to remove unrelated tools
+            merged = self._policy.filter_find_results(merged, limit=limit)
+
             return self._format_response(
                 {
                     "source": "sdk",
@@ -471,6 +478,9 @@ class ToolUniverseWrapper:
                 merged.append(hit)
         merged = merged[:limit]
 
+        # Apply policy filter to catalog fallback results too
+        merged = self._policy.filter_find_results(merged, limit=limit)
+
         return self._format_response(
             {
                 "source": "catalog",
@@ -483,13 +493,41 @@ class ToolUniverseWrapper:
 
     def execute_tool(self, tool_name: str, arguments: str | dict[str, Any] | None = None) -> str:
         """
-        Call a tool by name — checks the custom registry first, then the SDK.
+        Call a tool by name — checks policy first, then custom registry, then the SDK.
 
         Args:
             tool_name: Exact identifier of the tool to invoke.
             arguments: JSON string or dictionary of tool arguments.
         """
         parsed_args = self._parse_arguments(arguments)
+
+        # --- Policy gate ---
+        policy_result = self._policy.evaluate(tool_name, parsed_args)
+        if not policy_result.allowed:
+            logger.warning(
+                "Tool policy blocked tool '%s': %s", tool_name, policy_result.reason
+            )
+            return self._format_response({
+                "tool": tool_name,
+                "error": f"Tool blocked by policy: {policy_result.reason}",
+                "policy": {
+                    "allowed": False,
+                    "reason": policy_result.reason,
+                    "category": policy_result.category,
+                },
+            })
+
+        # If policy requires approval, note it in the response metadata.
+        # The actual approval gate is handled at the tool-node level (see
+        # truncating_tool_node.py) which can pause execution for user input.
+        # Here we just flag it so the caller knows.
+        if policy_result.requires_approval:
+            logger.info(
+                "Tool '%s' requires approval (risk: %s): %s",
+                tool_name,
+                policy_result.risk_level,
+                policy_result.reason,
+            )
 
         # Try custom registry first
         found, result = self._execute_custom_tool(tool_name, parsed_args)
