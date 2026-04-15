@@ -857,6 +857,9 @@ function handleMessage(data) {
         case 'code_execution':
             renderCodeExecution(data.steps, data.agent);
             break;
+        case 'steering_received':
+            updateSteeringBannerStatus(data.content);
+            break;
     }
 }
 
@@ -1010,7 +1013,13 @@ function initInputHandlers() {
 
 async function handleSubmit() {
     const query = elements.queryInput.value.trim();
-    if (!query || state.isProcessing) return;
+    if (!query) return;
+
+    // If agents are already processing, send as steering message instead
+    if (state.isProcessing) {
+        handleSteer(query);
+        return;
+    }
 
     elements.queryInput.value = '';
     autoResizeTextarea();
@@ -1043,6 +1052,23 @@ function getApiKeysPayload() {
     if (keys.openai?.trim()) payload.openai = keys.openai.trim();
     if (keys.gemini?.trim()) payload.gemini = keys.gemini.trim();
     return Object.keys(payload).length ? payload : undefined;
+}
+
+function handleSteer(steeringText) {
+    if (!steeringText || !state.isProcessing) return;
+
+    // Clear input
+    elements.queryInput.value = '';
+    autoResizeTextarea();
+
+    if (state.isConnected && state.ws?.readyState === WebSocket.OPEN) {
+        state.ws.send(JSON.stringify({ type: 'steer', content: steeringText }));
+        addSteeringBanner(steeringText);
+        logTerminal(`Steering: "${steeringText.substring(0, 50)}${steeringText.length > 50 ? '...' : ''}"`);
+    } else {
+        showToast('Steering requires a WebSocket connection. Reconnecting...', 'warning');
+        logTerminal('Steering failed — not connected via WebSocket');
+    }
 }
 
 async function sendQueryViaRest(query, apiKeys) {
@@ -1246,6 +1272,43 @@ function addUserMessage(content) {
     renderUserMessage(message);
     scrollToBottom();
     saveCurrentSession();
+}
+
+function addSteeringBanner(steeringText) {
+    const bannerId = 'steering-' + Date.now();
+    const time = new Date().toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    const html = `
+        <div id="${bannerId}" class="flex gap-3 animate-fadeIn steering-banner">
+            <div class="h-8 w-8 rounded-full bg-amber-900/60 flex-shrink-0 flex items-center justify-center border border-amber-600/40">
+                <span class="material-symbols-outlined text-amber-400 text-[16px]">navigation</span>
+            </div>
+            <div class="max-w-[80%] flex flex-col gap-1">
+                <div class="bg-amber-900/20 border border-amber-600/30 text-amber-100 px-4 py-2.5 rounded-2xl rounded-tl-none text-sm">
+                    <div class="flex items-center gap-2 mb-1">
+                        <span class="text-[10px] font-bold text-amber-400 uppercase tracking-wider">Steering</span>
+                        <span class="steering-status text-[10px] text-amber-500/70 italic">sending...</span>
+                    </div>
+                    <p class="whitespace-pre-wrap text-amber-50">${escapeHtml(steeringText)}</p>
+                </div>
+                <span class="text-[10px] text-slate-500 font-mono">${time}</span>
+            </div>
+        </div>
+    `;
+    elements.chatMessages.insertAdjacentHTML('beforeend', html);
+    scrollToBottom();
+    logTerminal('Steering prompt sent to agents');
+}
+
+function updateSteeringBannerStatus(content) {
+    const banners = document.querySelectorAll('.steering-banner .steering-status');
+    if (banners.length > 0) {
+        // Update the last banner (most recently sent)
+        const lastBanner = banners[banners.length - 1];
+        lastBanner.textContent = 'applied';
+        lastBanner.classList.remove('text-amber-500/70', 'italic');
+        lastBanner.classList.add('text-emerald-400', 'font-bold');
+    }
+    logTerminal('Steering prompt applied by agents');
 }
 
 function shouldShowMessage(message) {
@@ -2923,14 +2986,17 @@ function setProcessingState(isProcessing) {
     state.isProcessing = isProcessing;
 
     if (elements.submitBtn) {
-        elements.submitBtn.disabled = isProcessing;
+        elements.submitBtn.disabled = false; // Always enabled — acts as "Steer" during processing
         elements.submitBtn.innerHTML = isProcessing
-            ? '<span class="animate-spin material-symbols-outlined text-[18px]">progress_activity</span><span>Processing...</span>'
+            ? '<span class="material-symbols-outlined text-[18px]">navigation</span><span>Steer</span>'
             : '<span>Run Agent</span><span class="material-symbols-outlined text-[18px]">send</span>';
     }
 
     if (elements.queryInput) {
-        elements.queryInput.disabled = isProcessing;
+        elements.queryInput.disabled = false; // Keep input active for steering
+        elements.queryInput.placeholder = isProcessing
+            ? 'Steer agents \u2014 add context, redirect, or clarify...'
+            : 'Describe a protein, paste a FASTA sequence, or ask a research question...';
     }
 
     updateStatus(isProcessing ? 'processing' : 'ready');

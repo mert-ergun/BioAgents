@@ -253,7 +253,7 @@ ALL_MEMBERS = [
 ]
 
 
-def create_graph(_initialize_references: bool = True):
+def create_graph(_initialize_references: bool = True, checkpointer=None):
     """Create and compile the multi-agent LangGraph workflow.
 
     The workflow uses a supervisor pattern where:
@@ -262,6 +262,10 @@ def create_graph(_initialize_references: bool = True):
     3. Workflow continues until supervisor says FINISH
     4. 30 specialized agents covering research, computation, domain science,
        infrastructure, meta-cognition, and quality assurance
+
+    Args:
+        _initialize_references: Whether to initialize reference tracking.
+        checkpointer: Optional LangGraph checkpointer for mid-execution state updates.
     """
     # ---- existing tool lists ----
     research_tools = [
@@ -494,4 +498,4 @@ def create_graph(_initialize_references: bool = True):
     # ---- summary is terminal ----
     workflow.add_edge("summary", END)
 
-    return workflow.compile()
+    return workflow.compile(checkpointer=checkpointer)

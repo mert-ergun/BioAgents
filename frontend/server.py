@@ -580,7 +580,7 @@ async def clear_artifacts():
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
-    """WebSocket endpoint for real-time communication."""
+    """WebSocket endpoint for real-time communication with steering support."""
     await manager.connect(websocket)
 
     try:
@@ -592,18 +592,46 @@ async def websocket_endpoint(websocket: WebSocket):
                 api_keys = data.get("api_keys")
                 session_id = data.get("session_id")
                 if query:
+                    # Create a steering queue for this query execution
+                    steering_queue: asyncio.Queue[str] = asyncio.Queue()
+
+                    # Start a concurrent reader that puts steering messages on the queue
+                    async def _steering_reader() -> None:
+                        try:
+                            while True:
+                                msg = await websocket.receive_json()
+                                if msg.get("type") == "steer":
+                                    await steering_queue.put(msg.get("content", ""))
+                                elif msg.get("type") == "ping":
+                                    await websocket.send_json({"type": "pong"})
+                        except WebSocketDisconnect:
+                            raise
+                        except Exception:
+                            pass  # Connection closed or other error
+
+                    reader_task = asyncio.create_task(_steering_reader())
                     try:
                         await run_bioagents_streaming(
-                            query, websocket, api_keys=api_keys, session_id=session_id
+                            query,
+                            websocket,
+                            api_keys=api_keys,
+                            session_id=session_id,
+                            steering_queue=steering_queue,
                         )
                     except WebSocketDisconnect:
-                        raise  # Let the outer handler deal with the disconnect
+                        raise
                     except Exception as e:
                         logger.error(f"Query execution error: {e}")
                         try:
                             await websocket.send_json({"type": "error", "message": str(e)})
                         except Exception:
-                            pass  # Connection already closed.
+                            pass
+                    finally:
+                        reader_task.cancel()
+                        try:
+                            await reader_task
+                        except asyncio.CancelledError:
+                            pass
 
             elif data.get("type") == "ping":
                 await websocket.send_json({"type": "pong"})
@@ -620,32 +648,57 @@ async def run_bioagents_streaming(
     websocket: WebSocket,
     api_keys: dict[str, str] | None = None,
     session_id: str | None = None,
+    steering_queue: asyncio.Queue[str] | None = None,
 ):
-    """Execute BioAgents query with WebSocket streaming."""
+    """Execute BioAgents query with WebSocket streaming and optional steering support."""
+    import uuid
+
     from bioagents.references.reference_manager import ReferenceManager
+    from langgraph.checkpoint.memory import MemorySaver
 
     set_api_keys_override(api_keys)
-    graph = create_graph()
+
+    # Create graph with checkpointer to support mid-execution state updates (steering)
+    checkpointer = MemorySaver()
+    graph = create_graph(checkpointer=checkpointer)
+
+    # Thread ID for checkpoint-based state updates
+    thread_id = f"session_{session_id or uuid.uuid4().hex[:8]}"
+    stream_config: dict[str, Any] = {
+        "configurable": {"thread_id": thread_id},
+    }
 
     # Initialize with reference manager
     reference_manager = ReferenceManager()
-    initial_state = {
+    initial_state: dict[str, Any] = {
         "messages": [HumanMessage(content=query)],
         "references": reference_manager,
     }
 
-    full_audit = []
-    sent_artifacts = set()  # Track sent artifacts to prevent duplicates
-    sent_structures = set()  # Track sent PDB URLs/paths
-    sent_protein_ids = set()  # Track protein IDs to prevent duplicate structures
+    full_audit: list[dict[str, Any]] = []
+    sent_artifacts: set[str] = set()
+    sent_structures: set[str] = set()
+    sent_protein_ids: set[str] = set()
 
     def extract_protein_id(name_or_url: str) -> str | None:
         """Extract protein ID from filename or URL (e.g., AF-P01308-F1 -> P01308)"""
         match = re.search(r"([A-Z][A-Z0-9]{4,5})", name_or_url, re.IGNORECASE)
         return match.group(1).upper() if match else None
 
+    def _drain_steering_queue() -> list[str]:
+        """Non-blocking drain of all pending steering messages."""
+        messages: list[str] = []
+        if steering_queue is None:
+            return messages
+        while not steering_queue.empty():
+            try:
+                messages.append(steering_queue.get_nowait())
+            except asyncio.QueueEmpty:
+                break
+        return messages
+
     try:
-        for step in iter_graph_stream(graph, initial_state):
+        for step in iter_graph_stream(graph, initial_state, config=stream_config):
             node_name = next(iter(step))
             node_output = step[node_name]
 
@@ -896,6 +949,19 @@ async def run_bioagents_streaming(
                                     await websocket.send_json(
                                         {"type": "log", "message": f"Generated: {artifact['name']}"}
                                     )
+
+            # --- Steering injection: drain queue and inject into graph state ---
+            steering_texts = _drain_steering_queue()
+            for steering_text in steering_texts:
+                steering_msg = HumanMessage(content=f"[USER STEERING] {steering_text}")
+                graph.update_state(
+                    stream_config,
+                    {"messages": [steering_msg]},
+                )
+                await websocket.send_json(
+                    {"type": "steering_received", "content": steering_text}
+                )
+                logger.info(f"Steering message injected: {steering_text[:80]}")
 
             await asyncio.sleep(0.05)
 
