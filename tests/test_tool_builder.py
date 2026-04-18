@@ -384,10 +384,8 @@ class TestGraphIntegration:
     @patch("bioagents.graph.create_dl_agent")
     @patch("bioagents.graph.create_ml_agent")
     @patch("bioagents.graph.create_coder_agent")
-    @patch("bioagents.graph.create_rdkit_validator_agent")
     def test_graph_includes_tool_builder(
         self,
-        mock_rdkit_validator,
         mock_dl,
         mock_ml,
         mock_coder,
@@ -415,9 +413,6 @@ class TestGraphIntegration:
         mock_ml.return_value = MagicMock()
         mock_dl.return_value = MagicMock()
         mock_coder.return_value = MagicMock()
-        mock_ml.return_value = MagicMock()
-        mock_dl.return_value = MagicMock()
-        mock_rdkit_validator.return_value = MagicMock()
 
         # This should not raise an exception
         graph = create_graph()

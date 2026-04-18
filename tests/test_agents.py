@@ -51,11 +51,23 @@ class TestResearchAgent:
         """Test invoking the research agent."""
         mock_llm = Mock()
         mock_bound_llm = Mock()
-        mock_response = AIMessage(content="Research complete", name="Research")
+        sub_agent_response = AIMessage(content="Research complete", name="Research")
 
         mock_llm.bind_tools = Mock(return_value=mock_bound_llm)
-        mock_bound_llm.invoke = Mock(return_value=mock_response)
-        mock_get_llm.return_value = mock_llm
+        mock_bound_llm.invoke = Mock(return_value=sub_agent_response)
+
+        def get_llm_side_effect(prompt_name=None, **kwargs):
+            if prompt_name == "research_decomposer":
+                mock_decomposer = Mock()
+                mock_decomposer.invoke = Mock(return_value=Mock(content="1. Fetch protein P04637"))
+                return mock_decomposer
+            elif prompt_name == "research_merger":
+                mock_merger = Mock()
+                mock_merger.invoke = Mock(return_value=AIMessage(content="Research complete"))
+                return mock_merger
+            return mock_llm
+
+        mock_get_llm.side_effect = get_llm_side_effect
 
         tools = [Mock()]
         agent = create_research_agent(tools)
@@ -64,9 +76,9 @@ class TestResearchAgent:
         result = agent(state)
 
         assert "messages" in result
-        assert len(result["messages"]) == 1
-        assert result["messages"][0] == mock_response
-        mock_bound_llm.invoke.assert_called_once()
+        assert "data" in result
+        assert len(result["messages"]) >= 1
+        mock_bound_llm.invoke.assert_called()
 
     @patch("bioagents.agents.research_agent.get_llm")
     def test_research_agent_includes_system_message(self, mock_get_llm):
@@ -452,7 +464,9 @@ class TestSupervisorAgent:
             result = agent(state)
 
             assert result["next"] == "FINISH"
-            assert "routing" in result["reasoning"].lower() or "valid" in result["reasoning"].lower()
+            assert (
+                "routing" in result["reasoning"].lower() or "valid" in result["reasoning"].lower()
+            )
             assert mock_chain.invoke.call_count == 2
             assert len(result["messages"]) == 1
             assert "[SYSTEM]" in result["messages"][0].content
@@ -481,9 +495,9 @@ class TestAgentIntegration:
         mock_llm = Mock()
         mock_bound_llm = Mock()
 
-        # Create a response with tool calls
+        # Sub-agent returns a response with tool calls
         mock_response = AIMessage(
-            content="",
+            content="Fetching UniProt data",
             tool_calls=[
                 {
                     "name": "fetch_uniprot_fasta",
@@ -494,16 +508,19 @@ class TestAgentIntegration:
             ],
         )
 
-        final_ai = AIMessage(
-            content=(
-                '{"fetched_sequences":[],"literature_findings":"done","data_sources":[],'
-                '"completeness":"full","next_steps":"","status":"success","error":null}'
-            )
-        )
-
         mock_llm.bind_tools = Mock(return_value=mock_bound_llm)
-        mock_bound_llm.invoke = Mock(side_effect=[mock_response, final_ai])
-        mock_get_llm.return_value = mock_llm
+        mock_bound_llm.invoke = Mock(return_value=mock_response)
+
+        def get_llm_side_effect(prompt_name=None, **kwargs):
+            if prompt_name == "research_decomposer":
+                mock_decomposer = Mock()
+                mock_decomposer.invoke = Mock(
+                    return_value=Mock(content="1. Fetch protein P04637 from UniProt")
+                )
+                return mock_decomposer
+            return mock_llm
+
+        mock_get_llm.side_effect = get_llm_side_effect
 
         tools = [Mock(name="fetch_uniprot_fasta")]
         agent = create_research_agent(tools)
@@ -512,8 +529,6 @@ class TestAgentIntegration:
         result = agent(state)
 
         assert "messages" in result
-        assert len(result["messages"]) == 1
-        assert result["messages"][0] is final_ai
         assert "fetch_uniprot_fasta" in result["tool_calls"]
 
     @patch("bioagents.agents.supervisor_agent.get_llm")

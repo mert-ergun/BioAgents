@@ -62,34 +62,9 @@ def create_summary_agent():
 
     def summary_node(state):
         """Summary agent - generates final user output."""
-        try:
-            memory = state.get("memory", {}) or {}
-            messages = state.get("messages", []) or []
+        messages = state.get("messages", []) or []
 
-            # Find user message
-            user_message = None
-            for m in messages:
-                if isinstance(m, HumanMessage):
-                    user_message = m
-                    break
-
-            if user_message is None:
-                user_message = HumanMessage(content="")
-
-            mode, reasoning = analyze_execution_mode(messages)
-
-            if not has_results:
-                # Empty memory: answer directly
-                prompt = """
-You are a helpful assistant. Directly answer the user's question clearly.
-Do not mention agents, tools, or technical systems.
-"""
-                full_prompt = prompt
-            else:
-                # Has memory: synthesize findings
-                complexity = assess_execution_complexity(memory)
-                memory_context = format_memory_for_summary(memory)
-                full_prompt = f"""{SUMMARY_AGENT_SYSTEM_PROMPT}
+        mode, _reasoning = analyze_execution_mode(messages)
 
         mode_instruction = (
             "EXECUTION MODE: DIRECT ANSWER\n"

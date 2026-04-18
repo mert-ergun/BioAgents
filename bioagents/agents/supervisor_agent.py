@@ -1,9 +1,11 @@
 """Supervisor Agent for routing tasks to specialized agents."""
 
+import json
 import logging
+import uuid
 from typing import Literal
 
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from pydantic import BaseModel, Field
 
@@ -13,12 +15,15 @@ from bioagents.agents.supervisor_helpers import (
     check_coder_should_force_finish,
     check_finish_if_code_agent_substantive_repeat,
     check_for_empty_response_loop,
+    check_for_engagement_request,
     check_for_missing_tool,
     check_for_repeated_routing,
     check_for_research_failure,
+    check_query_ambiguity,
     check_tool_builder_execution_success,
     check_tool_builder_success,
     extract_original_query,
+    extract_steering_messages,
     get_all_created_tools,
 )
 from bioagents.llms.llm_provider import get_llm, get_structured_output_kwargs_for_routing
@@ -58,6 +63,7 @@ class RouteResponse(BaseModel):
         "git",
         "environment",
         "visualization",
+        "user_input",
         "FINISH",
     ]
     reasoning: str
@@ -113,6 +119,48 @@ def create_supervisor_agent(members: list[str]):
             A dict with next_agent and reasoning for routing
         """
         messages = state["messages"]
+
+        # Check for engagement requests from agents (they need user input)
+        has_engagement, engagement_data = check_for_engagement_request(messages)
+        if has_engagement and engagement_data is not None:
+            engagement_id = str(uuid.uuid4())[:8]
+            engagement_data["id"] = engagement_id
+            logger.info(
+                f"Agent requested user engagement: type={engagement_data.get('type')}, "
+                f"question={engagement_data.get('question', '')[:80]}"
+            )
+            # Store engagement data in a system message so the server can extract it
+            engagement_marker = SystemMessage(
+                content=f"[ENGAGEMENT_PENDING] {json.dumps(engagement_data)}"
+            )
+            return {
+                "next": "user_input",
+                "reasoning": f"Agent requested user input ({engagement_data.get('type')}): "
+                f"{engagement_data.get('question', '')[:100]}",
+                "messages": [engagement_marker],
+            }
+
+        # Check if initial query is too ambiguous — ask clarification before routing
+        ambiguity = check_query_ambiguity(messages)
+        if ambiguity:
+            engagement_id = str(uuid.uuid4())[:8]
+            clarification = {
+                "id": engagement_id,
+                "type": "clarification",
+                "question": ambiguity,
+                "options": [],
+                "context": "The original query lacks sufficient detail to route to the right agent.",
+                "agent": "Supervisor",
+            }
+            clarification_marker = SystemMessage(
+                content=f"[ENGAGEMENT_PENDING] {json.dumps(clarification)}"
+            )
+            logger.info(f"Query ambiguous, asking clarification: {ambiguity[:80]}")
+            return {
+                "next": "user_input",
+                "reasoning": f"Query needs clarification: {ambiguity}",
+                "messages": [clarification_marker],
+            }
 
         # FIRST: Check for tool builder execution success (only if not already handled)
         # Skip if SystemMessage already exists (already handled, let normal LLM routing decide next step)
@@ -327,8 +375,10 @@ def create_supervisor_agent(members: list[str]):
             _DATA_AGENTS = {"web_browser", "data_acquisition", "literature"}
             if looping_lower in _DATA_AGENTS:
                 escape_order = ["data_acquisition", "coder", "literature", "report", "research"]
+            elif looping_lower == "research":
+                escape_order = ["analysis", "coder", "report", "data_acquisition"]
             else:
-                escape_order = ["coder", "data_acquisition", "research", "report"]
+                escape_order = ["analysis", "coder", "data_acquisition", "research", "report"]
 
             alternatives = [
                 m
@@ -358,7 +408,7 @@ def create_supervisor_agent(members: list[str]):
                 }
             else:
                 best = extract_best_content(messages)
-                finish_messages = []
+                finish_messages: list[BaseMessage] = []
                 if best:
                     finish_messages.append(
                         AIMessage(
@@ -406,10 +456,18 @@ def create_supervisor_agent(members: list[str]):
 
         # Window messages for the routing LLM to avoid slow calls on large histories.
         # Keep the first message (user query) and the last 12 messages (recent context).
-        if len(messages) > 14:
-            routing_messages = messages[:1] + messages[-12:]
-        else:
-            routing_messages = messages
+        routing_messages = messages[:1] + messages[-12:] if len(messages) > 14 else messages
+
+        # Inject steering directives so the LLM respects real-time user guidance.
+        steering_texts = extract_steering_messages(messages)
+        if steering_texts:
+            steering_context = SystemMessage(
+                content="[USER STEERING DIRECTIVES] The user has sent updated instructions "
+                "during execution. You MUST adjust your routing and task assignments to "
+                "follow these directives. They override earlier context:\n"
+                + "\n".join(f"- {t}" for t in steering_texts)
+            )
+            routing_messages = [steering_context, *list(routing_messages)]
 
         # Normal LLM-based routing
         result = supervisor_chain.invoke({"messages": routing_messages})
@@ -453,9 +511,7 @@ def create_supervisor_agent(members: list[str]):
             # Extract original user query so the execution agent knows what to do
             original_query = ""
             for msg in messages:
-                if isinstance(msg, HumanMessage) and "[SUPERVISOR TASK]" not in str(
-                    msg.content
-                ):
+                if isinstance(msg, HumanMessage) and "[SUPERVISOR TASK]" not in str(msg.content):
                     original_query = str(msg.content)[:800]
                     break
             result.task_for_agent = (

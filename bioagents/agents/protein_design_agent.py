@@ -16,10 +16,9 @@ from __future__ import annotations
 
 import logging
 
-from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.messages import SystemMessage
 from langchain_core.tools import BaseTool
 
-from bioagents.agents.agent_executor import execute_agent_with_tools, safe_json_output
 from bioagents.agents.helpers import resolve_tool_name
 from bioagents.llms.llm_provider import get_llm
 from bioagents.prompts.prompt_loader import load_prompt

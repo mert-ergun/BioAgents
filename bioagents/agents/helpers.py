@@ -284,7 +284,7 @@ def prepare_messages_for_agent(
             supervisor_tasks.append(msg)
 
     if summary_mode:
-        kept = []
+        kept: list[BaseMessage] = []
         if first_human:
             kept.append(first_human)
         for msg in messages:
@@ -316,7 +316,7 @@ def prepare_messages_for_agent(
         if task_msg not in windowed:
             windowed.insert(1 if first_human else 0, task_msg)
 
-    result = []
+    result: list[BaseMessage] = []
     for msg in windowed:
         if isinstance(msg, ToolMessage):
             content = get_message_content(msg)
@@ -332,8 +332,8 @@ def prepare_messages_for_agent(
             else:
                 result.append(msg)
         elif isinstance(msg, AIMessage):
-            content = msg.content
-            cleaned = _strip_signature_blobs(content)
+            ai_content = msg.content
+            cleaned = _strip_signature_blobs(ai_content)
             text = get_content_text(cleaned)
             has_tool_calls = hasattr(msg, "tool_calls") and msg.tool_calls
             if len(text) > max_ai_content_len and not has_tool_calls:
@@ -342,7 +342,7 @@ def prepare_messages_for_agent(
                 if has_tool_calls:
                     new_msg.tool_calls = msg.tool_calls
                 result.append(new_msg)
-            elif cleaned != content:
+            elif cleaned != ai_content:
                 new_msg = AIMessage(
                     content=cleaned if isinstance(cleaned, str) else text,
                     name=getattr(msg, "name", ""),

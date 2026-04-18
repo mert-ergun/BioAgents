@@ -4,9 +4,10 @@ import logging
 from functools import partial
 from typing import Annotated, Literal
 
-from langchain_core.messages import BaseMessage
+from langchain_core.messages import BaseMessage, HumanMessage
 from langgraph.graph import END, StateGraph
 from langgraph.graph.message import add_messages
+from langgraph.types import interrupt
 
 from bioagents.agents.analysis_agent import create_analysis_agent
 from bioagents.agents.coder_agent import create_coder_agent, create_coder_node
@@ -215,6 +216,19 @@ def _count_tu_tool_calls(messages: list, agent_name: str) -> int:
     return count
 
 
+def _extract_best_agent_content(messages: list, agent_name: str) -> str:
+    """Extract the most substantive content from an agent's previous AIMessages."""
+    from langchain_core.messages import AIMessage
+
+    best = ""
+    for msg in reversed(messages):
+        if isinstance(msg, AIMessage) and getattr(msg, "name", "") == agent_name:
+            content = msg.content if isinstance(msg.content, str) else str(msg.content)
+            if content and len(content) > len(best) and len(content) > 50:
+                best = content
+    return best[:4000] if best else ""
+
+
 def agent_node(state, agent, name):
     """Wrapper for agent nodes that adds agent identification and ACE tracking."""
     from langchain_core.messages import AIMessage
@@ -229,14 +243,16 @@ def agent_node(state, agent, name):
                 name,
                 MAX_AGENT_TOOL_ROUNDS,
             )
-            error_msg = AIMessage(
-                content=(
+            partial = _extract_best_agent_content(state.get("messages", []), name)
+            if partial:
+                content = partial
+            else:
+                content = (
                     f"[MAX_TOOL_ROUNDS] Agent '{name}' reached the tool-round limit "
                     f"({MAX_AGENT_TOOL_ROUNDS}). The supervisor should proceed with "
                     f"available results or try a different approach."
-                ),
-                name=name,
-            )
+                )
+            error_msg = AIMessage(content=content, name=name)
             return {"messages": [error_msg]}
 
     # Check for consecutive duplicate tool calls (loop detection)
@@ -279,6 +295,8 @@ def agent_node(state, agent, name):
                 f"try a different agent or finish with available results.",
                 name=name,
             )
+            if name == "Supervisor":
+                return {"messages": [error_msg], "next": "FINISH"}
             return {"messages": [error_msg], "next": "supervisor"}
         raise
 
@@ -353,6 +371,7 @@ ALL_MEMBERS = [
     "git",
     "environment",
     "visualization",
+    "user_input",
 ]
 
 
@@ -420,7 +439,7 @@ def create_graph(
     dl_agent = create_dl_agent()
     dl_node_func = create_dl_node(dl_agent)
     tool_builder_agent = create_tool_builder_agent()
-    protein_design_agent = create_protein_design_agent()
+    protein_design_agent = create_protein_design_agent(pd_tools)
     critic_agent = create_critic_agent()
     summary_agent = create_summary_agent()
 
@@ -552,6 +571,58 @@ def create_graph(
 
     # ---- entry point ----
     workflow.set_entry_point("supervisor")
+
+    # ---- user_input node: pauses via LangGraph interrupt() for human input ----
+    # When the supervisor routes here, the node extracts engagement data from
+    # state and calls interrupt(). The stream pauses, the server sends the
+    # engagement request to the frontend, collects the response, then resumes
+    # the graph with Command(resume=response). The response becomes the return
+    # value of interrupt(), and the node returns it as a HumanMessage.
+    def user_input_node(state):
+        import json
+
+        messages = state.get("messages", [])
+        engagement_data = None
+
+        for msg in reversed(messages[-5:]):
+            content = getattr(msg, "content", "")
+            if not isinstance(content, str):
+                continue
+            marker = "[ENGAGEMENT_PENDING] "
+            idx = content.find(marker)
+            if idx != -1:
+                try:
+                    engagement_data = json.loads(content[idx + len(marker) :])
+                except json.JSONDecodeError:
+                    engagement_data = {
+                        "type": "clarification",
+                        "question": content[idx + len(marker) :],
+                    }
+                break
+
+        payload = engagement_data or {
+            "type": "clarification",
+            "question": "How would you like to proceed?",
+        }
+
+        response = interrupt(payload)
+
+        response_text = ""
+        if isinstance(response, dict):
+            response_text = response.get("content", "")
+            selected_option = response.get("selected_option")
+            if selected_option:
+                response_text = f"{selected_option}. {response_text}".strip()
+        elif isinstance(response, str):
+            response_text = response
+
+        if not response_text:
+            response_text = "Proceed with your best judgment."
+
+        return {"messages": [HumanMessage(content=f"[USER RESPONSE] {response_text}")]}
+
+    workflow.add_node("user_input", user_input_node)
+    workflow.add_edge("user_input", "supervisor")
 
     # ---- supervisor routing ----
     routing_map = {m: m for m in ALL_MEMBERS}

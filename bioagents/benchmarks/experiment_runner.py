@@ -85,24 +85,11 @@ def run_experiment(
     else:
         set_experiment_prompt_overrides(None)
 
-    # Cap per-LLM-call timeout so a single invoke cannot exceed the benchmark
-    # wall-clock budget.  This must happen BEFORE create_graph() because each
-    # TimeoutBoundLLM captures the limit at init time.
-    import bioagents.limits as _limits
-
-    _original_llm_timeout = _limits.AGENT_LLM_INVOKE_TIMEOUT_SEC
-    _original_tool_rounds = _limits.MAX_AGENT_TOOL_ROUNDS
-    if config.timeout and config.timeout > 0:
-        capped = min(_original_llm_timeout, float(config.timeout))
-        _limits.AGENT_LLM_INVOKE_TIMEOUT_SEC = capped
-        _limits.MAX_AGENT_TOOL_ROUNDS = min(_original_tool_rounds, 3)
-        logger.info(
-            "LLM invoke timeout capped to %.0fs, tool rounds capped to %d "
-            "(experiment timeout=%ds)",
-            capped,
-            _limits.MAX_AGENT_TOOL_ROUNDS,
-            config.timeout,
-        )
+    # The workflow deadline in timeout_llm.py dynamically shrinks per-LLM
+    # timeouts as the experiment budget depletes, so we don't need to
+    # statically cap AGENT_LLM_INVOKE_TIMEOUT_SEC.  Capping it too low causes
+    # cascading failures: agents near the deadline get sub-60s timeouts and
+    # can't complete a single LLM call.
 
     # Build graph once for the entire experiment (re-use across use cases)
     graph = create_graph()
@@ -172,10 +159,6 @@ def run_experiment(
 
     # Clear prompt overrides after run
     set_experiment_prompt_overrides(None)
-
-    # Restore original limits
-    _limits.AGENT_LLM_INVOKE_TIMEOUT_SEC = _original_llm_timeout
-    _limits.MAX_AGENT_TOOL_ROUNDS = _original_tool_rounds
 
     finished_at = datetime.now(tz=UTC)
 

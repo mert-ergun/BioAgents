@@ -95,11 +95,11 @@ def check_finish_if_code_agent_substantive_repeat(messages) -> tuple[bool, str]:
 
     count = 0
     for msg in messages[-14:]:
-        if isinstance(msg, AIMessage) or (
-            hasattr(msg, "__class__") and msg.__class__.__name__ == "AIMessage"
-        ):
-            if getattr(msg, "name", None) == name:
-                count += 1
+        if (
+            isinstance(msg, AIMessage)
+            or (hasattr(msg, "__class__") and msg.__class__.__name__ == "AIMessage")
+        ) and getattr(msg, "name", None) == name:
+            count += 1
     if count >= 2:
         return True, (
             f"Code agent '{name}' has already produced substantive output in multiple turns; "
@@ -284,9 +284,9 @@ def check_for_repeated_routing(messages) -> tuple[bool, str]:
                 find_tools_calls += 1
             elif name == "tool_universe_call_tool":
                 call_tool_calls += 1
-    # The research agent runs up to 4 sub-tasks in parallel, each making 1–2
+    # The research agent runs up to 4 sub-tasks in parallel, each making 1-2
     # tool_universe_find_tools calls before a tool_universe_call_tool call.
-    # Worst case before any actual execution: 4 sub-agents × 2 rounds = 8 searches.
+    # Worst case before any actual execution: 4 sub-agents x 2 rounds = 8 searches.
     # Only flag as a loop if we exceed that budget with zero executions.
     if find_tools_calls >= 9 and call_tool_calls == 0:
         logger.warning(
@@ -346,8 +346,8 @@ def check_for_research_failure(messages) -> tuple[bool, str]:
         content = get_message_content(msg)
         if _RESEARCH_FAILURE_PATTERNS.search(content):
             return True, (
-                f"Research agent already reported data-collection failure. "
-                f"Re-sending the same task will not produce different results."
+                "Research agent already reported data-collection failure. "
+                "Re-sending the same task will not produce different results."
             )
     return False, ""
 
@@ -672,6 +672,114 @@ def get_all_created_tools(messages) -> list[str]:
                 pass
 
     return created_tools
+
+
+def extract_steering_messages(messages) -> list[str]:
+    """Extract [USER STEERING] directives from conversation history.
+
+    Returns the cleaned steering text (prefix removed) for each steering message found.
+    """
+    steering_texts: list[str] = []
+    for msg in messages:
+        if not isinstance(msg, HumanMessage):
+            continue
+        content = get_message_content(msg)
+        if "[USER STEERING]" in content:
+            clean = content.replace("[USER STEERING]", "").strip()
+            if clean:
+                steering_texts.append(clean)
+    return steering_texts
+
+
+def check_for_engagement_request(messages) -> tuple[bool, dict | None]:
+    """Check if the last agent message contains an engagement request.
+
+    Agents signal they need user input by including [ENGAGEMENT_REQUEST] followed
+    by a JSON payload in their AIMessage content.
+
+    Returns (has_request, parsed_request_dict_or_None).
+    """
+    # Don't re-trigger if user already responded to an engagement
+    for m in messages:
+        content = get_message_content(m)
+        if isinstance(m, HumanMessage) and "[USER RESPONSE]" in content:
+            return False, None
+
+    for msg in reversed(messages[-5:]):
+        if not isinstance(msg, AIMessage):
+            continue
+        content = get_message_content(msg)
+        marker = "[ENGAGEMENT_REQUEST]"
+        idx = content.find(marker)
+        if idx == -1:
+            continue
+        json_text = content[idx + len(marker) :].strip()
+        try:
+            data = json.loads(json_text)
+            if isinstance(data, dict) and "type" in data and "question" in data:
+                return True, data
+        except json.JSONDecodeError:
+            # Try to find JSON block after the marker
+            json_match = re.search(r"\{[^{}]+\}", json_text, re.DOTALL)
+            if json_match:
+                try:
+                    data = json.loads(json_match.group())
+                    if isinstance(data, dict) and "type" in data and "question" in data:
+                        return True, data
+                except json.JSONDecodeError:
+                    pass
+        return False, None
+    return False, None
+
+
+def check_query_ambiguity(messages) -> str | None:
+    """Check if the initial user query is too ambiguous to route confidently.
+
+    Returns a description of what's missing, or None if the query is specific enough.
+    Only checks on the first supervisor call (when there's no agent output yet).
+    """
+    # Only check on first routing — if there are AIMessages, agents already responded
+    has_agent_output = any(isinstance(m, AIMessage) for m in messages)
+    if has_agent_output:
+        return None
+
+    # Don't re-ask if user already responded to a previous engagement
+    for m in messages:
+        content = get_message_content(m)
+        if isinstance(m, HumanMessage) and "[USER RESPONSE]" in content:
+            return None
+
+    original = extract_original_query(messages)
+    if not original:
+        return "No query provided."
+
+    original_lower = original.lower().strip()
+
+    # Too short / vague
+    if len(original_lower) < 10:
+        return "Query is too vague to route. Please provide more details about what you need."
+
+    # Check for common ambiguous patterns
+    ambiguous_patterns = [
+        (
+            r"^analyze\s+(?:this|a|the)\s+protein$",
+            "Please specify which protein (UniProt ID, PDB ID, or protein name).",
+        ),
+        (r"^analyze\s+$", "Please specify what to analyze and which protein/molecule."),
+        (
+            r"^help$",
+            "Please describe what you need help with — e.g., sequence analysis, structure prediction, literature search.",
+        ),
+        (
+            r"^run\s+(?:analysis|ml|dl)$",
+            "Please specify what data to use and what analysis to perform.",
+        ),
+    ]
+    for pattern, reason in ambiguous_patterns:
+        if re.search(pattern, original_lower):
+            return reason
+
+    return None
 
 
 def extract_original_query(messages) -> str | None:

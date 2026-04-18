@@ -59,7 +59,7 @@ class TestGetLLM:
             call_kwargs = mock_openai.call_args[1]
             assert call_kwargs["model"] == "gpt-5.1"
             assert call_kwargs["temperature"] == 0.0
-            assert call_kwargs["api_key"] == "test-key"
+            assert call_kwargs["api_key"].get_secret_value() == "test-key"
 
     @patch.dict(os.environ, {"OPENAI_API_KEY": "test-key"}, clear=True)
     def test_openai_provider_custom_model(self):
@@ -125,7 +125,7 @@ class TestGetLLM:
             assert call_kwargs["model"] == "qwen3:14b"
             assert call_kwargs["temperature"] == 0.0
             assert call_kwargs["base_url"] == "http://localhost:11434/v1"
-            assert call_kwargs["api_key"] == "ollama"
+            assert call_kwargs["api_key"].get_secret_value() == "ollama"
 
     @patch.dict(os.environ, {"OLLAMA_BASE_URL": "http://custom:8000/v1"}, clear=True)
     def test_ollama_provider_custom_base_url(self):
@@ -277,7 +277,7 @@ class TestBindPreservesTimeoutAndRateLimit:
         wrapped = TimeoutBoundLLM(inner, timeout_sec=0.15)
         br = wrapped.bind(stop=["x"])
         inner.bind.assert_called_once_with(stop=["x"])
-        with pytest.raises(TimeoutError, match="exceeded 0.15"):
+        with pytest.raises(TimeoutError, match=r"exceeded \d+s"):
             br.invoke([])
 
     @patch.dict(os.environ, {"OPENAI_API_KEY": "test-key", "OPENAI_RATE_LIMIT": "100"}, clear=True)

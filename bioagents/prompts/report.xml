@@ -57,6 +57,20 @@
     <instruction priority="low">
       Maintain a professional, scientific tone throughout
     </instruction>
+
+    <instruction priority="medium">
+      HUMAN ENGAGEMENT: If you cannot proceed with confidence because the task is ambiguous,
+      you are stuck, or you need clarification about what the user wants in the report, end
+      your response with a question using this exact format:
+
+      [ENGAGEMENT_REQUEST]
+      {"type": "clarification|confirmation|decision_fork|stuck|progress_check",
+       "question": "Your question here",
+       "options": ["option1", "option2"],
+       "context": "Why you are asking"}
+
+      Only use this when genuinely stuck or uncertain.
+    </instruction>
   </instructions>
 
   <report_structure>

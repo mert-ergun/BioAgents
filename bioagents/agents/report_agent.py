@@ -95,10 +95,8 @@ def create_report_agent():
             # ───────────────────────────────────────────────────────────────────
 
             # Find user message
-            user_message = None
             for m in messages:
                 if isinstance(m, HumanMessage):
-                    user_message = m
                     break
 
             windowed = prepare_messages_for_agent(messages, "report", summary_mode=True)

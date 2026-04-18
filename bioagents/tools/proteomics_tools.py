@@ -23,7 +23,7 @@ def fetch_uniprot_fasta_impl(protein_id: str, timeout: int = 10) -> str:
         response = requests.get(url, timeout=timeout)
         response.raise_for_status()
 
-        return response.text.strip()
+        return str(response.text.strip())
 
     except requests.exceptions.HTTPError as e:
         if e.response.status_code == 404:

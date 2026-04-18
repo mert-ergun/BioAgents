@@ -11,7 +11,7 @@ Provides a complete sandboxed execution environment with:
 import logging
 import os
 import shutil
-import subprocess
+import subprocess  # nosec B404
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -66,7 +66,7 @@ class SandboxManager:
         logger.info(f"Sandbox exec: {command[:200]}")
 
         try:
-            result = subprocess.run(
+            result = subprocess.run(  # nosec B602
                 command,
                 shell=True,
                 cwd=str(work_dir),
@@ -151,10 +151,7 @@ class SandboxManager:
             cmd = f"wget -q '{url}'"
         result = self.run_command(cmd)
         if not result["success"]:
-            if output_path:
-                cmd = f"curl -sL -o '{output_path}' '{url}'"
-            else:
-                cmd = f"curl -sLO '{url}'"
+            cmd = f"curl -sL -o '{output_path}' '{url}'" if output_path else f"curl -sLO '{url}'"
             result = self.run_command(cmd)
         return result
 

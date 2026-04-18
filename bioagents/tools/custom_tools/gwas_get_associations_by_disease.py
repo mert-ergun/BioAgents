@@ -78,7 +78,7 @@ def _fetch_pages(
     deadline: float | None = None,
 ) -> list[dict]:
     """Fetch pages from a GWAS Catalog HAL endpoint and return filtered rows."""
-    rows = []
+    rows: list[dict] = []
     page = 0
     while True:
         if deadline and time.monotonic() > deadline:
@@ -102,9 +102,7 @@ def _fetch_pages(
             break
 
         for assoc in associations:
-            pval = _compute_pvalue(
-                assoc.get("pvalueMantissa"), assoc.get("pvalueExponent")
-            )
+            pval = _compute_pvalue(assoc.get("pvalueMantissa"), assoc.get("pvalueExponent"))
             if pval is None or pval > p_threshold:
                 continue
             loci = assoc.get("loci", [])
@@ -193,7 +191,14 @@ def gwas_get_associations_by_disease(
         )
 
     out = io.StringIO()
-    fieldnames = ["GWAS_Locus_ID", "Mapped_Gene_Symbol", "P_value", "SNP_ID", "Risk_Allele", "Trait"]
+    fieldnames = [
+        "GWAS_Locus_ID",
+        "Mapped_Gene_Symbol",
+        "P_value",
+        "SNP_ID",
+        "Risk_Allele",
+        "Trait",
+    ]
     writer = csv.DictWriter(out, fieldnames=fieldnames, delimiter="\t")
     writer.writeheader()
     writer.writerows(rows)

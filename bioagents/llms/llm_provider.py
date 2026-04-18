@@ -6,6 +6,7 @@ from typing import Any, Literal
 
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_openai import ChatOpenAI
+from pydantic import SecretStr
 
 from bioagents.limits import AGENT_LLM_INVOKE_TIMEOUT_SEC
 from bioagents.llms.rate_limiter import RateLimitedLLM, RateLimiter
@@ -181,7 +182,7 @@ def get_llm(
         llm = ChatOpenAI(
             model=model,
             temperature=temperature,
-            api_key=api_key,
+            api_key=SecretStr(api_key),
             timeout=openai_timeout,
         )
         llm = _wrap_llm_with_invoke_timeout(llm)
@@ -207,7 +208,7 @@ def get_llm(
             model=model,
             temperature=temperature,
             base_url=base_url,
-            api_key="ollama",  # Ollama doesn't require a real API key
+            api_key=SecretStr("ollama"),  # Ollama doesn't require a real API key
             timeout=ollama_timeout,
         )
         llm = _wrap_llm_with_invoke_timeout(llm)

@@ -25,13 +25,18 @@ def set_workflow_deadline(deadline: float | None) -> None:
 
 
 def _effective_timeout(static_timeout: float) -> float:
-    """Return the tighter of *static_timeout* and the remaining workflow budget."""
+    """Return the tighter of *static_timeout* and the remaining workflow budget.
+
+    Enforces a minimum floor of 30s so that agents near the deadline still get
+    enough time for at least one LLM call instead of cascading failures from
+    sub-10s timeouts.
+    """
     if _workflow_deadline is None:
         return static_timeout
     remaining = _workflow_deadline - time.monotonic()
     if remaining <= 0:
         return 0.1  # will fire immediately
-    return min(static_timeout, remaining)
+    return max(30.0, min(static_timeout, remaining))
 
 
 class _TimeoutBoundRunnable:

@@ -167,7 +167,7 @@ def graph_from_json(raw: str) -> WorkflowGraph:
 
 
 def graph_to_yaml(graph: WorkflowGraph) -> str:
-    return yaml.safe_dump(graph.to_definition_dict(), sort_keys=False)
+    return str(yaml.safe_dump(graph.to_definition_dict(), sort_keys=False))
 
 
 def graph_from_yaml(raw: str) -> WorkflowGraph:

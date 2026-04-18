@@ -199,7 +199,6 @@ API_KEY_SERVICES: frozenset[str] = frozenset(
 # Tools that are always safe (local computation or search-only)
 ALWAYS_SAFE_TOOLS: frozenset[str] = frozenset(
     {
-        "tool_universe_find_tools",
         "fetch_uniprot_fasta",
         "fetch_alphafold_structure",
         "fetch_pdb_structure",
@@ -210,6 +209,13 @@ ALWAYS_SAFE_TOOLS: frozenset[str] = frozenset(
         "extract_pdf_text_spacy_layout",
         "fetch_webpage_as_pdf_text",
         "download_uniprot_flat_file",
+    }
+)
+
+# ToolUniverse tools that are safe for discovery but may need API keys internally
+TOOL_UNIVERSE_SAFE_TOOLS: frozenset[str] = frozenset(
+    {
+        "tool_universe_find_tools",
     }
 )
 
@@ -281,6 +287,18 @@ class ToolPolicy:
                 reason="Always-safe local tool",
                 requires_approval=False,
                 category="local",
+                risk_level="none",
+            )
+
+        # 1b. ToolUniverse discovery tools — always allowed but errors are
+        #     handled internally by the wrapper (falls back to catalog).
+        if tool_name in TOOL_UNIVERSE_SAFE_TOOLS:
+            self.stats.auto_approved += 1
+            return ToolPolicyResult(
+                allowed=True,
+                reason="ToolUniverse discovery tool (errors handled internally)",
+                requires_approval=False,
+                category="tool_universe",
                 risk_level="none",
             )
 

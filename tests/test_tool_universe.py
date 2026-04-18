@@ -3,8 +3,6 @@
 import json
 from pathlib import Path
 
-import pytest
-
 from bioagents.tools import tool_universe as tu_module
 from bioagents.tools.tool_universe import ToolUniverseCatalogue, ToolUniverseWrapper
 
@@ -90,11 +88,12 @@ def test_wrapper_execute_tool_invokes_sdk():
 
 
 def test_wrapper_execute_tool_without_sdk():
-    """An informative error should be raised when execute_tool is used without the SDK."""
+    """An informative error response is returned when execute_tool is used without the SDK."""
     wrapper = ToolUniverseWrapper(tool_factory=None, catalog=DummyCatalogue())
 
-    with pytest.raises(RuntimeError):
-        wrapper.execute_tool("ExampleTool", "{}")
+    response = json.loads(wrapper.execute_tool("ExampleTool", "{}"))
+    assert "error" in response
+    assert response["tool"] == "ExampleTool"
 
 
 def test_langchain_tool_functions_use_wrapper(monkeypatch):

@@ -1,6 +1,29 @@
-import requests, json
+import json
 
-genes = ['APOE', 'BIN1', 'TREM2', 'CLU', 'PICALM', 'ABCA7', 'CD33', 'MS4A6A', 'CR1', 'INPP5D', 'GFAP', 'NEFL', 'VGF', 'CHIT1', 'YKL40', 'TREM2', 'APP', 'MAPT', 'SOD1', 'PRNP']
+import requests
+
+genes = [
+    "APOE",
+    "BIN1",
+    "TREM2",
+    "CLU",
+    "PICALM",
+    "ABCA7",
+    "CD33",
+    "MS4A6A",
+    "CR1",
+    "INPP5D",
+    "GFAP",
+    "NEFL",
+    "VGF",
+    "CHIT1",
+    "YKL40",
+    "TREM2",
+    "APP",
+    "MAPT",
+    "SOD1",
+    "PRNP",
+]
 db = "KEGG_2021_Human"
 
 # Submit gene list to Enrichr
@@ -18,16 +41,18 @@ resp.raise_for_status()
 enrich_data = resp.json()
 
 results = []
-for lib_name, terms in enrich_data.items():
+for _lib_name, terms in enrich_data.items():
     for term in terms[:20]:
-        results.append({
-            "term": term[1],
-            "pvalue": term[2],
-            "adjusted_pvalue": term[6],
-            "odds_ratio": term[3],
-            "combined_score": term[4],
-            "overlapping_genes": term[5],
-        })
+        results.append(
+            {
+                "term": term[1],
+                "pvalue": term[2],
+                "adjusted_pvalue": term[6],
+                "odds_ratio": term[3],
+                "combined_score": term[4],
+                "overlapping_genes": term[5],
+            }
+        )
 
 results.sort(key=lambda x: x["pvalue"])
 print(json.dumps(results[:15], indent=2))

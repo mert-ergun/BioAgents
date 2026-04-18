@@ -130,7 +130,10 @@ def create_coder_node(agent: CodeAgent) -> Callable:
             # returns empty responses repeatedly. That message has no [CODER_STATUS:]
             # marker, so the supervisor won't know to stop and will re-delegate the
             # same task, causing a kernel-state RecursionError on the next run.
-            if "returned empty responses repeatedly" in str(result) and "[CODER_STATUS:" not in content:
+            if (
+                "returned empty responses repeatedly" in str(result)
+                and "[CODER_STATUS:" not in content
+            ):
                 content += (
                     "\n\n[CODER_STATUS: max_steps_reached] The coding agent ended in a "
                     "degraded state (LLM returned empty responses). The supervisor must "
@@ -182,7 +185,9 @@ def create_coder_node(agent: CodeAgent) -> Callable:
             if not is_timeout and not is_recursion:
                 cause = getattr(e, "__cause__", None) or getattr(e, "__context__", None)
                 while cause and not is_timeout:
-                    is_timeout = isinstance(cause, TimeoutError) or "Timeout" in type(cause).__name__
+                    is_timeout = (
+                        isinstance(cause, TimeoutError) or "Timeout" in type(cause).__name__
+                    )
                     cause = getattr(cause, "__cause__", None) or getattr(cause, "__context__", None)
 
             if is_recursion:
@@ -206,9 +211,9 @@ def create_coder_node(agent: CodeAgent) -> Callable:
                     )
                 else:
                     content = (
-                        f"The coding agent's LLM call timed out before producing any output.\n\n"
-                        f"[CODER_STATUS: max_steps_reached] The supervisor must choose FINISH "
-                        f"or report, not delegate the same execution task to a code agent again."
+                        "The coding agent's LLM call timed out before producing any output.\n\n"
+                        "[CODER_STATUS: max_steps_reached] The supervisor must choose FINISH "
+                        "or report, not delegate the same execution task to a code agent again."
                     )
                 logger.warning("Coder agent timed out (partial output: %s)", bool(partial_output))
             else:

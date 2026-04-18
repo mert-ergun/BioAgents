@@ -260,6 +260,20 @@
       Choose FINISH when the user's query has been fully addressed.
       Always provide clear reasoning for your routing decision.
     </instruction>
+
+    <instruction priority="critical">
+      STEERING: If the conversation contains messages prefixed with [USER STEERING], these are
+      real-time directives from the user sent during execution. You MUST adjust your routing and
+      task assignments to follow these directives immediately. They override earlier context and
+      change the current task direction.
+    </instruction>
+
+    <instruction priority="high">
+      ENGAGEMENT: If any agent's response contains [ENGAGEMENT_REQUEST], it means the agent needs
+      user input before proceeding. Route to "user_input" — the system will pause and wait for the
+      user's response. Once the user responds (marked as [USER RESPONSE]), use their answer to
+      inform your next routing decision.
+    </instruction>
   </instructions>
 
   <decision_guidelines>

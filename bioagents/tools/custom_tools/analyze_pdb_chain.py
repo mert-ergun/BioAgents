@@ -1,5 +1,5 @@
-import os
 import re
+from pathlib import Path
 from typing import Any
 
 # NumPy for distance calculation
@@ -74,18 +74,18 @@ def analyze_pdb_chain(
 
     # Initialize PDBList to download PDB files
     pdbl = PDBList()
-    pdb_file = None
     try:
         # Attempt to download PDB file. By default, it downloads to current directory.
         # We'll try to find it in the current directory or a 'pdb' subdirectory.
         pdb_file_path = pdbl.retrieve_pdb_file(pdb_id, pdir=".", file_format="pdb")
-        if not os.path.exists(pdb_file_path):
+        if not Path(pdb_file_path).exists():
             # Try .cif format if .pdb fails
             pdb_file_path = pdbl.retrieve_pdb_file(pdb_id, pdir=".", file_format="cif")
-            if not os.path.exists(pdb_file_path):
+            if not Path(pdb_file_path).exists():
                 raise RuntimeError(f"Could not download PDB or CIF file for {pdb_id}.")
 
         # Determine parser based on file extension
+        parser: PDBParser | MMCIFParser
         if pdb_file_path.endswith(".pdb"):
             parser = PDBParser(QUIET=True)
         elif pdb_file_path.endswith(".cif"):
@@ -95,9 +95,9 @@ def analyze_pdb_chain(
 
         structure = parser.get_structure(pdb_id, pdb_file_path)
     except PDBConstructionException as e:
-        raise RuntimeError(f"Error parsing PDB file {pdb_id}: {e}")
+        raise RuntimeError(f"Error parsing PDB file {pdb_id}: {e}") from e
     except Exception as e:
-        raise RuntimeError(f"Failed to retrieve or parse PDB file {pdb_id}: {e}")
+        raise RuntimeError(f"Failed to retrieve or parse PDB file {pdb_id}: {e}") from e
 
     val_count = 0
     trp_count = 0
@@ -169,12 +169,12 @@ def analyze_pdb_chain(
         )
 
     # Clean up downloaded PDB file
-    if pdb_file_path and os.path.exists(pdb_file_path):
-        os.remove(pdb_file_path)
+    if pdb_file_path and Path(pdb_file_path).exists():
+        Path(pdb_file_path).unlink()
         # Also remove the directory if it's empty and was created by PDBList
-        pdb_dir = os.path.dirname(pdb_file_path)
-        if pdb_dir and pdb_dir != "." and not os.listdir(pdb_dir):
-            os.rmdir(pdb_dir)
+        pdb_dir = Path(pdb_file_path).parent
+        if str(pdb_dir) != "." and not any(pdb_dir.iterdir()):
+            pdb_dir.rmdir()
 
     return {
         "val_count": val_count,

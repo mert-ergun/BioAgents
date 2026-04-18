@@ -435,40 +435,50 @@ class ToolUniverseWrapper:
         custom_hits = self._search_custom_registry(description, limit=limit)
 
         if self.client_available:
-            client = self._ensure_client()
+            try:
+                client = self._ensure_client()
 
-            logger.info(f"ToolUniverse search query: '{description}' (limit={limit})")
+                logger.info(f"ToolUniverse search query: '{description}' (limit={limit})")
 
-            payload = {
-                "name": self.FINDER_TO_TOOL[finder_mode],
-                "arguments": {
-                    "description": description,
-                    "limit": limit,
-                    "return_call_result": True,
-                },
-            }
-            result = self._resolve_result(client.run(payload))
-            normalized = self._normalize_find_tools_sdk_result(result)
-
-            # Merge: custom tools first, then SDK results (deduplicated)
-            seen_names = {h["name"] for h in custom_hits}
-            merged = list(custom_hits)
-            for tool_entry in normalized:
-                if tool_entry.get("name") not in seen_names:
-                    merged.append(tool_entry)
-            merged = merged[:limit]
-
-            # Apply policy filter to remove unrelated tools
-            merged = self._policy.filter_find_results(merged, limit=limit)
-
-            return self._format_response(
-                {
-                    "source": "sdk",
-                    "finder": finder_mode,
-                    "query": description,
-                    "result": merged,
+                payload = {
+                    "name": self.FINDER_TO_TOOL[finder_mode],
+                    "arguments": {
+                        "description": description,
+                        "limit": limit,
+                        "return_call_result": True,
+                    },
                 }
-            )
+                result = self._resolve_result(client.run(payload))
+                normalized = self._normalize_find_tools_sdk_result(result)
+            except Exception as exc:
+                logger.warning(
+                    "ToolUniverse SDK search failed (%s); falling back to catalog.",
+                    exc,
+                )
+                normalized = None
+
+            if normalized is not None:
+                # Merge: custom tools first, then SDK results (deduplicated)
+                seen_names = {h["name"] for h in custom_hits}
+                merged = list(custom_hits)
+                for tool_entry in normalized:
+                    if tool_entry.get("name") not in seen_names:
+                        merged.append(tool_entry)
+                merged = merged[:limit]
+
+                # Apply policy filter to remove unrelated tools
+                merged = self._policy.filter_find_results(merged, limit=limit)
+
+                return self._format_response(
+                    {
+                        "source": "sdk",
+                        "finder": finder_mode,
+                        "query": description,
+                        "result": merged,
+                    }
+                )
+
+            # SDK failed — fall through to catalog fallback
 
         fallback_hits = self._catalog.search(description, limit)
         # Merge custom tools with fallback catalog
@@ -536,12 +546,23 @@ class ToolUniverseWrapper:
             return self._format_response({"tool": tool_name, "result": result})
 
         # Fall back to ToolUniverse SDK
-        client = self._ensure_client()
-        payload = {
-            "name": tool_name,
-            "arguments": parsed_args,
-        }
-        result = self._resolve_result(client.run(payload))
+        try:
+            client = self._ensure_client()
+            payload = {
+                "name": tool_name,
+                "arguments": parsed_args,
+            }
+            result = self._resolve_result(client.run(payload))
+        except Exception as exc:
+            logger.warning("ToolUniverse SDK execution failed for '%s': %s", tool_name, exc)
+            return self._format_response(
+                {
+                    "tool": tool_name,
+                    "error": f"ToolUniverse SDK error: {exc}. "
+                    "The tool may require an API key that is not configured. "
+                    "Try using a different tool or approach.",
+                }
+            )
         return self._format_response({"tool": tool_name, "result": result})
 
 

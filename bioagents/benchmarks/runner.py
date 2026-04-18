@@ -538,6 +538,8 @@ def run_use_case(
             # the final step's output (e.g. from the coder agent) is
             # recorded when the timeout fires on the same iteration.
             step_messages: list[dict] = []
+            if node_state is None:
+                continue
             for msg in node_state.get("messages", []):
                 all_messages.append(msg)
                 msg_content = getattr(msg, "content", "")

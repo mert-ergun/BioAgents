@@ -23,7 +23,8 @@ from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from pydantic import BaseModel
 
 from bioagents.graph import ALL_MEMBERS, create_graph
-from bioagents.graph_streaming import iter_graph_stream
+from bioagents.graph_streaming import aiter_graph_stream, iter_graph_stream
+from bioagents.limits import TOOL_APPROVAL_TIMEOUT_SEC
 from bioagents.llms.llm_provider import set_api_keys_override
 from frontend.workflow_routes import include_workflow_routes
 
@@ -94,15 +95,22 @@ class QueryResponse(BaseModel):
 class ConnectionManager:
     def __init__(self):
         self.active_connections: list[WebSocket] = []
+        self._disconnected: set[WebSocket] = set()
 
     async def connect(self, websocket: WebSocket):
         await websocket.accept()
         self.active_connections.append(websocket)
+        self._disconnected.discard(websocket)
         logger.info(f"WebSocket connected. Total connections: {len(self.active_connections)}")
 
     def disconnect(self, websocket: WebSocket):
-        self.active_connections.remove(websocket)
+        self._disconnected.add(websocket)
+        if websocket in self.active_connections:
+            self.active_connections.remove(websocket)
         logger.info(f"WebSocket disconnected. Total connections: {len(self.active_connections)}")
+
+    def is_connected(self, websocket: WebSocket) -> bool:
+        return websocket not in self._disconnected
 
     async def send_json(self, websocket: WebSocket, data: dict):
         await websocket.send_json(data)
@@ -358,6 +366,9 @@ async def query_bioagents(request: QueryRequest):
                 node_name = next(iter(step))
                 node_output = step[node_name]
 
+                if node_output is None:
+                    node_output = {}
+
                 # Send agent update
                 yield f"data: {json.dumps({'type': 'agent_update', 'agent': node_name})}\n\n"
 
@@ -601,10 +612,14 @@ async def websocket_endpoint(websocket: WebSocket):
                     # Create an approval response queue for tool approval flow
                     approval_queue: asyncio.Queue[dict] = asyncio.Queue()
 
+                    # Create an engagement response queue for user engagement flow
+                    engagement_queue: asyncio.Queue[dict] = asyncio.Queue()
+
                     # Start a concurrent reader that puts steering/approval messages on their queues
                     async def _steering_reader(
                         _sq: asyncio.Queue[str] = steering_queue,
                         _aq: asyncio.Queue[dict] = approval_queue,
+                        _eq: asyncio.Queue[dict] = engagement_queue,
                     ) -> None:
                         try:
                             while True:
@@ -613,6 +628,8 @@ async def websocket_endpoint(websocket: WebSocket):
                                     await _sq.put(msg.get("content", ""))
                                 elif msg.get("type") == "tool_approval_response":
                                     await _aq.put(msg)
+                                elif msg.get("type") == "engagement_response":
+                                    await _eq.put(msg)
                                 elif msg.get("type") == "ping":
                                     await websocket.send_json({"type": "pong"})
                         except WebSocketDisconnect:
@@ -629,6 +646,7 @@ async def websocket_endpoint(websocket: WebSocket):
                             session_id=session_id,
                             steering_queue=steering_queue,
                             approval_queue=approval_queue,
+                            engagement_queue=engagement_queue,
                         )
                     except WebSocketDisconnect:
                         raise
@@ -658,12 +676,14 @@ async def run_bioagents_streaming(
     session_id: str | None = None,
     steering_queue: asyncio.Queue[str] | None = None,
     approval_queue: asyncio.Queue[dict] | None = None,
+    engagement_queue: asyncio.Queue[dict] | None = None,
 ):
     """Execute BioAgents query with WebSocket streaming and optional steering/approval support."""
     import uuid
 
     from langgraph.checkpoint.memory import MemorySaver
 
+    from bioagents.references.reference_extractor import extract_references_from_messages
     from bioagents.references.reference_manager import ReferenceManager
     from bioagents.tools.tool_policy import ToolPolicy
 
@@ -675,9 +695,29 @@ async def run_bioagents_streaming(
         available_keys = {k for k, v in api_keys.items() if v}
     session_policy = ToolPolicy(available_api_keys=available_keys)
 
+    # Track whether the client is still connected
+    _client_disconnected = False
+
+    async def safe_send(data: dict) -> bool:
+        """Send JSON to the WebSocket. Returns False if client is gone."""
+        nonlocal _client_disconnected
+        if _client_disconnected or not manager.is_connected(websocket):
+            _client_disconnected = True
+            return False
+        try:
+            await websocket.send_json(data)
+            return True
+        except WebSocketDisconnect:
+            _client_disconnected = True
+            return False
+        except Exception:
+            _client_disconnected = True
+            return False
+
     # Create graph with checkpointer to support mid-execution state updates (steering)
     checkpointer = MemorySaver()
-    graph = create_graph(checkpointer=checkpointer, policy=session_policy)
+    await safe_send({"type": "log", "message": "Initializing agents..."})
+    graph = await asyncio.to_thread(create_graph, checkpointer=checkpointer, policy=session_policy)
 
     # Thread ID for checkpoint-based state updates
     thread_id = f"session_{session_id or uuid.uuid4().hex[:8]}"
@@ -686,10 +726,12 @@ async def run_bioagents_streaming(
     }
 
     # Initialize with reference manager
+    # Note: ReferenceManager is NOT included in initial_state because MemorySaver
+    # uses msgpack serialization which can't handle arbitrary Python objects.
+    # References are extracted in the streaming loop instead.
     reference_manager = ReferenceManager()
     initial_state: dict[str, Any] = {
         "messages": [HumanMessage(content=query)],
-        "references": reference_manager,
     }
 
     full_audit: list[dict[str, Any]] = []
@@ -714,18 +756,102 @@ async def run_bioagents_streaming(
                 break
         return messages
 
-    try:
-        for step in iter_graph_stream(graph, initial_state, config=stream_config):
-            node_name = next(iter(step))
-            node_output = step[node_name]
+    def _extract_engagement_from_interrupt(
+        interrupt_value: Any,
+    ) -> dict[str, Any] | None:
+        """Convert an interrupt payload to a frontend-friendly engagement dict."""
+        if isinstance(interrupt_value, dict):
+            return {
+                "id": interrupt_value.get("id", "unknown"),
+                "engagement_type": interrupt_value.get("type", "clarification"),
+                "question": interrupt_value.get("question", ""),
+                "options": interrupt_value.get("options", []),
+                "context": interrupt_value.get("context", ""),
+                "agent": interrupt_value.get("agent", "Supervisor"),
+            }
+        return None
 
-            # Send agent update
-            await websocket.send_json({"type": "agent_update", "agent": node_name})
+    try:
+        from langgraph.types import Command
+
+        _stream_input = initial_state
+
+        while True:
+            resume_after_engagement = False
+
+            async for step in aiter_graph_stream(graph, _stream_input, config=stream_config):
+                # Detect LangGraph interrupt steps
+                if "__interrupt__" in step:
+                    interrupts = step["__interrupt__"]
+                    if interrupts:
+                        interrupt_value = (
+                            interrupts[0].value
+                            if hasattr(interrupts[0], "value")
+                            else interrupts[0]
+                        )
+                        engagement_data = _extract_engagement_from_interrupt(interrupt_value)
+                        if engagement_data:
+                            await safe_send({"type": "agent_update", "agent": "user_input"})
+                            if not await safe_send(
+                                {"type": "engagement_request", **engagement_data}
+                            ):
+                                break
+                            logger.info(
+                                f"Engagement request sent: type={engagement_data.get('engagement_type')}, "
+                                f"question={engagement_data.get('question', '')[:80]}"
+                            )
+                            try:
+                                response = await asyncio.wait_for(
+                                    engagement_queue.get()
+                                    if engagement_queue
+                                    else asyncio.Future(),
+                                    timeout=TOOL_APPROVAL_TIMEOUT_SEC,
+                                )
+                                resume_payload = {
+                                    "content": response.get("content", ""),
+                                    "selected_option": response.get("selected_option"),
+                                }
+                                if not await safe_send(
+                                    {
+                                        "type": "engagement_response_received",
+                                        "id": engagement_data.get("id"),
+                                    }
+                                ):
+                                    break
+                                logger.info(
+                                    f"Engagement response received: {resume_payload['content'][:80]}"
+                                )
+                            except TimeoutError:
+                                resume_payload = {"content": ""}
+                                if not await safe_send(
+                                    {
+                                        "type": "engagement_timeout",
+                                        "id": engagement_data.get("id"),
+                                    }
+                                ):
+                                    break
+                                logger.info("Engagement timed out, proceeding with best judgment")
+
+                            _stream_input = Command(resume=resume_payload)
+                            resume_after_engagement = True
+                    break  # Exit inner for-loop; outer while-loop will resume
+
+                node_name = next(iter(step))
+                node_output = step[node_name]
+
+                if node_output is None:
+                    node_output = {}
+
+            # Send agent update — bail out if client is gone
+            if not await safe_send({"type": "agent_update", "agent": node_name}):
+                break
 
             # Process messages
             step_messages = []
             if "messages" in node_output:
                 for m in node_output["messages"]:
+                    if _client_disconnected:
+                        break
                     msg_info = {
                         "type": m.__class__.__name__,
                         "content": m.content if hasattr(m, "content") else str(m),
@@ -747,13 +873,14 @@ async def run_bioagents_streaming(
                                 try:
                                     with path.open() as f:
                                         pdb_content = f.read()
-                                    await websocket.send_json(
+                                    if not await safe_send(
                                         {"type": "structure", "pdbContent": pdb_content}
-                                    )
+                                    ):
+                                        break
                                     artifact_key = path.name
                                     if artifact_key not in sent_artifacts:
                                         sent_artifacts.add(artifact_key)
-                                        await websocket.send_json(
+                                        if not await safe_send(
                                             {
                                                 "type": "artifact",
                                                 "artifact": {
@@ -763,13 +890,16 @@ async def run_bioagents_streaming(
                                                     "size": path.stat().st_size,
                                                 },
                                             }
-                                        )
+                                        ):
+                                            break
                                 except Exception as e:
                                     logger.error(f"Failed to load PDB: {e}")
 
                         # Check for PDB URLs (AlphaFold, RCSB, etc.)
                         url_matches = re.findall(r'(https?://[^\s\'"<>]+\.pdb)', content)
                         for url in url_matches:
+                            if _client_disconnected:
+                                break
                             # Extract protein ID to prevent duplicates
                             protein_id = extract_protein_id(url)
 
@@ -790,12 +920,13 @@ async def run_bioagents_streaming(
                                     pdb_content = resp.text
                                     # Extract filename from URL
                                     filename = url.split("/")[-1]
-                                    await websocket.send_json(
+                                    if not await safe_send(
                                         {"type": "structure", "pdbContent": pdb_content}
-                                    )
+                                    ):
+                                        break
                                     if filename not in sent_artifacts:
                                         sent_artifacts.add(filename)
-                                        await websocket.send_json(
+                                        if not await safe_send(
                                             {
                                                 "type": "artifact",
                                                 "artifact": {
@@ -805,13 +936,15 @@ async def run_bioagents_streaming(
                                                     "size": len(pdb_content),
                                                 },
                                             }
-                                        )
-                                        await websocket.send_json(
+                                        ):
+                                            break
+                                        if not await safe_send(
                                             {
                                                 "type": "log",
                                                 "message": f"Loaded 3D structure: {filename}",
                                             }
-                                        )
+                                        ):
+                                            break
                             except Exception as e:
                                 logger.error(f"Failed to fetch PDB from URL {url}: {e}")
 
@@ -826,18 +959,21 @@ async def run_bioagents_streaming(
                                 )
                                 for path_str in matches:
                                     path = Path(path_str)
-                                    if path.exists():
-                                        await websocket.send_json(
-                                            {
-                                                "type": "artifact",
-                                                "artifact": {
-                                                    "name": path.name,
-                                                    "path": str(path),
-                                                    "type": ext[1:],
-                                                    "size": path.stat().st_size,
-                                                },
-                                            }
-                                        )
+                                    if path.exists() and not await safe_send(
+                                        {
+                                            "type": "artifact",
+                                            "artifact": {
+                                                "name": path.name,
+                                                "path": str(path),
+                                                "type": ext[1:],
+                                                "size": path.stat().st_size,
+                                            },
+                                        }
+                                    ):
+                                        break
+
+            if _client_disconnected:
+                break
 
             # Build audit entry
             audit_entry = {
@@ -847,21 +983,32 @@ async def run_bioagents_streaming(
                 "messages": step_messages,
             }
             full_audit.append(audit_entry)
-            await websocket.send_json({"type": "audit", "entries": full_audit})
+            if not await safe_send({"type": "audit", "entries": full_audit}):
+                break
+
+            # Extract references from step messages (ReferenceManager is kept
+            # outside the graph state to avoid msgpack serialization errors).
+            if "messages" in node_output:
+                refs = extract_references_from_messages(node_output["messages"])
+                if refs:
+                    reference_manager.add_references(refs)
 
             # Send tool calls and tool results (consumed by advanced mode UI)
             if "messages" in node_output:
                 for m in node_output["messages"]:
+                    if _client_disconnected:
+                        break
                     if isinstance(m, AIMessage) and getattr(m, "tool_calls", None):
                         for tc in m.tool_calls:
-                            await websocket.send_json(
+                            if not await safe_send(
                                 {
                                     "type": "tool_call",
                                     "agent": node_name,
                                     "tool_name": tc.get("name", "unknown"),
                                     "arguments": tc.get("args", {}),
                                 }
-                            )
+                            ):
+                                break
                     elif isinstance(m, ToolMessage) and m.content:
                         tc_content = m.content
                         if isinstance(tc_content, list):
@@ -885,7 +1032,7 @@ async def run_bioagents_streaming(
                                 risk_match = _re.search(r"Risk level: (\w+)", tc_content)
                                 risk_level = risk_match.group(1) if risk_match else "medium"
 
-                                await websocket.send_json(
+                                if not await safe_send(
                                     {
                                         "type": "tool_approval_request",
                                         "request_id": request_id,
@@ -895,7 +1042,8 @@ async def run_bioagents_streaming(
                                         "risk_level": risk_level,
                                         "content": tc_content[:3000],
                                     }
-                                )
+                                ):
+                                    break
 
                                 # Drain any approval responses that arrived
                                 if approval_queue is not None:
@@ -906,7 +1054,7 @@ async def run_bioagents_streaming(
                                                 "approved"
                                             ):
                                                 session_policy.mark_approved(tool_name)
-                                                await websocket.send_json(
+                                                await safe_send(
                                                     {
                                                         "type": "log",
                                                         "message": f"Tool '{tool_name}' approved for this session",
@@ -917,17 +1065,18 @@ async def run_bioagents_streaming(
                                 continue
 
                             if "[POLICY_BLOCKED]" in tc_content:
-                                await websocket.send_json(
+                                if not await safe_send(
                                     {
                                         "type": "tool_policy_blocked",
                                         "agent": node_name,
                                         "tool_name": tool_name,
                                         "content": tc_content[:3000],
                                     }
-                                )
+                                ):
+                                    break
                                 continue
 
-                        await websocket.send_json(
+                        if not await safe_send(
                             {
                                 "type": "tool_result",
                                 "agent": node_name,
@@ -936,21 +1085,25 @@ async def run_bioagents_streaming(
                                 if isinstance(tc_content, str)
                                 else str(tc_content)[:3000],
                             }
-                        )
+                        ):
+                            break
+
+            if _client_disconnected:
+                break
 
             # Send code steps if available (from coder, ml, or dl agents)
-            if "code_steps" in node_output:
-                await websocket.send_json(
-                    {
-                        "type": "code_execution",
-                        "agent": node_name,
-                        "steps": node_output["code_steps"],
-                    }
-                )
+            if "code_steps" in node_output and not await safe_send(
+                {
+                    "type": "code_execution",
+                    "agent": node_name,
+                    "steps": node_output["code_steps"],
+                }
+            ):
+                break
 
             # Send tool policy stats periodically
             stats = session_policy.stats
-            await websocket.send_json(
+            if not await safe_send(
                 {
                     "type": "tool_policy_stats",
                     "auto_approved": stats.auto_approved,
@@ -958,11 +1111,14 @@ async def run_bioagents_streaming(
                     "blocked": stats.blocked,
                     "filtered_at_discovery": stats.filtered_at_discovery,
                 }
-            )
+            ):
+                break
 
             # Send messages from user-facing agents
             if node_name in STREAM_UI_AGENTS and "messages" in node_output:
                 for m in node_output["messages"]:
+                    if _client_disconnected:
+                        break
                     # Skip HumanMessages (usually handoffs) and ToolMessages
                     if (
                         hasattr(m, "content")
@@ -1013,31 +1169,41 @@ async def run_bioagents_streaming(
                                         reference_manager.add_reference(synth_ref)
                                         message_refs = [synth_ref.to_dict()]
 
-                            await websocket.send_json(
+                            if not await safe_send(
                                 {
                                     "type": "message",
                                     "agent": node_name,
                                     "content": content,
                                     "references": message_refs,
                                 }
-                            )
+                            ):
+                                break
 
                             # Extract metrics
                             metrics = extract_metrics_from_content(content)
-                            if metrics:
-                                await websocket.send_json({"type": "metrics", "metrics": metrics})
+                            if metrics and not await safe_send(
+                                {"type": "metrics", "metrics": metrics}
+                            ):
+                                break
 
                             # Extract and send artifacts from content (with deduplication)
                             extracted_artifacts = extract_artifacts_from_content(content, node_name)
                             for artifact in extracted_artifacts:
+                                if _client_disconnected:
+                                    break
                                 if artifact["name"] not in sent_artifacts:
                                     sent_artifacts.add(artifact["name"])
-                                    await websocket.send_json(
+                                    if not await safe_send(
                                         {"type": "artifact", "artifact": artifact}
-                                    )
-                                    await websocket.send_json(
+                                    ):
+                                        break
+                                    if not await safe_send(
                                         {"type": "log", "message": f"Generated: {artifact['name']}"}
-                                    )
+                                    ):
+                                        break
+
+            if _client_disconnected:
+                break
 
             # --- Steering injection: drain queue and inject into graph state ---
             steering_texts = _drain_steering_queue()
@@ -1047,29 +1213,41 @@ async def run_bioagents_streaming(
                     stream_config,
                     {"messages": [steering_msg]},
                 )
-                await websocket.send_json({"type": "steering_received", "content": steering_text})
+                if not await safe_send({"type": "steering_received", "content": steering_text}):
+                    break
                 logger.info(f"Steering message injected: {steering_text[:80]}")
 
             await asyncio.sleep(0.05)
 
-        # Persist references for this session
-        if session_id and reference_manager:
-            _session_references[session_id] = reference_manager
+            # If we broke out of the inner loop, stop the outer loop too
+            if _client_disconnected:
+                break
 
-        # Send completion with all references
-        completion_data = {"type": "complete", "artifacts": [], "audit_log": full_audit}
-        if reference_manager:
-            completion_data["all_references"] = reference_manager.to_dict()
+            # Persist references for this session
+            if session_id and reference_manager:
+                _session_references[session_id] = reference_manager
 
-        await websocket.send_json(completion_data)
+            # Send completion with all references (only if still connected)
+            if not _client_disconnected:
+                completion_data = {"type": "complete", "artifacts": [], "audit_log": full_audit}
+                if reference_manager:
+                    completion_data["all_references"] = reference_manager.to_dict()
+
+                await safe_send(completion_data)
+
+            # Continue outer while-loop if we broke out to resume after an interrupt
+            if resume_after_engagement and not _client_disconnected:
+                continue
+            break  # Normal stream completion — exit outer while-loop
 
     except WebSocketDisconnect:
         # Client disconnected cleanly during streaming — nothing to send back.
         raise
     except Exception as e:
         logger.error(f"Streaming error: {e}")
-        with contextlib.suppress(Exception):
-            await websocket.send_json({"type": "error", "message": str(e)})
+        if not _client_disconnected:
+            with contextlib.suppress(Exception):
+                await websocket.send_json({"type": "error", "message": str(e)})
 
 
 # =====================================================

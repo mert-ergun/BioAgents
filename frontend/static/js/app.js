@@ -47,6 +47,7 @@ const AGENTS = {
     git: { label: 'Git', icon: 'commit', color: 'orange', description: 'Managing repos...', category: 'Infrastructure' },
     environment: { label: 'Environment', icon: 'settings_applications', color: 'teal', description: 'Setting up environment...', category: 'Infrastructure' },
     visualization: { label: 'Visualizer', icon: 'bar_chart', color: 'fuchsia', description: 'Creating plots...', category: 'Infrastructure' },
+    user_input: { label: 'Awaiting Input', icon: 'person', color: 'cyan', description: 'Waiting for your response...', category: 'Core' },
 };
 
 // =====================================================
@@ -863,6 +864,15 @@ function handleMessage(data) {
         case 'tool_approval_request':
             showToolApprovalPanel(data);
             break;
+        case 'engagement_request':
+            showEngagementPanel(data);
+            break;
+        case 'engagement_response_received':
+            updateEngagementPanelStatus(data.id, 'received');
+            break;
+        case 'engagement_timeout':
+            updateEngagementPanelStatus(data.id, 'timeout');
+            break;
         case 'tool_policy_blocked':
             showToolBlockedNotification(data);
             break;
@@ -1653,6 +1663,203 @@ function handleToolApproval(requestId, toolName, approved, alwaysApprove = false
         showToast(`Tool "${toolName}" approved`, 'success');
     } else {
         showToast(`Tool "${toolName}" rejected`, 'warning');
+    }
+}
+
+// =====================================================
+// ENGAGEMENT PANELS — Agent asks user for input
+// =====================================================
+
+const ENGAGEMENT_COLORS = {
+    clarification: { bg: 'rgba(96,165,250,0.08)', border: 'rgba(96,165,250,0.25)', accent: 'rgba(96,165,250,0.9)', icon: 'help', label: 'CLARIFICATION' },
+    confirmation: { bg: 'rgba(251,191,36,0.08)', border: 'rgba(251,191,36,0.25)', accent: 'rgba(251,191,36,0.9)', icon: 'priority_high', label: 'CONFIRMATION' },
+    decision_fork: { bg: 'rgba(168,85,247,0.08)', border: 'rgba(168,85,247,0.25)', accent: 'rgba(168,85,247,0.9)', icon: 'call_split', label: 'DECISION' },
+    stuck: { bg: 'rgba(251,113,133,0.08)', border: 'rgba(251,113,133,0.25)', accent: 'rgba(251,113,133,0.9)', icon: 'error_outline', label: 'NEEDS HELP' },
+    progress_check: { bg: 'rgba(52,211,153,0.08)', border: 'rgba(52,211,153,0.25)', accent: 'rgba(52,211,153,0.9)', icon: 'flag', label: 'PROGRESS' },
+};
+
+function showEngagementPanel(data) {
+    const colors = ENGAGEMENT_COLORS[data.engagement_type] || ENGAGEMENT_COLORS.clarification;
+    const agent = AGENTS[data.agent] || AGENTS.user_input;
+    const panelId = `engagement-${data.id}`;
+    const optionsHtml = (data.options && data.options.length > 0)
+        ? data.options.map((opt, i) => `
+            <button onclick="selectEngagementOption('${panelId}', ${i}, '${escapeHtml(opt.replace(/'/g, "\\'"))}')"
+                class="engagement-option-${data.id} flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-medium transition-all hover:scale-[1.02] active:scale-[0.98] text-left"
+                style="background: rgba(255,255,255,0.04); color: rgba(255,255,255,0.8); border: 1px solid rgba(255,255,255,0.08)"
+                data-option="${escapeHtml(opt)}">
+                <span class="flex-shrink-0 h-5 w-5 rounded-full border-2 flex items-center justify-center text-[9px] font-bold"
+                    style="border-color: ${colors.accent}; color: ${colors.accent}">${i + 1}</span>
+                <span>${escapeHtml(opt)}</span>
+            </button>
+        `).join('')
+        : '';
+
+    const hasOptions = optionsHtml.length > 0;
+    const showFreeText = data.engagement_type === 'clarification' || data.engagement_type === 'stuck' || !hasOptions;
+
+    const html = `
+        <div id="${panelId}" class="flex gap-2 animate-fadeIn ml-2 mr-2 my-3">
+            <div class="flex-1">
+                <div class="rounded-2xl border-2 overflow-hidden engagement-panel" style="background: ${colors.bg}; border-color: ${colors.border}; animation: engagement-pulse 2s ease-in-out 3">
+                    <!-- Header -->
+                    <div class="px-4 py-3 flex items-center gap-3 border-b" style="border-color: ${colors.border}">
+                        <div class="h-9 w-9 rounded-xl flex items-center justify-center" style="background: ${colors.accent}">
+                            <span class="material-symbols-outlined text-[18px] text-white">${agent.icon}</span>
+                        </div>
+                        <div class="flex-1">
+                            <div class="flex items-center gap-2">
+                                <span class="text-xs font-bold text-white/90">${agent.label}</span>
+                                <span class="text-[9px] font-bold px-2 py-0.5 rounded-full" style="background: ${colors.accent}; color: white">${colors.label}</span>
+                            </div>
+                            <span class="text-[10px] text-slate-400">has a question for you</span>
+                        </div>
+                        <div class="h-3 w-3 rounded-full animate-pulse" style="background: ${colors.accent}"></div>
+                    </div>
+
+                    <!-- Question -->
+                    <div class="px-4 py-3 space-y-3">
+                        <div class="flex items-start gap-2.5">
+                            <span class="material-symbols-outlined text-[18px] mt-0.5" style="color: ${colors.accent}">${colors.icon}</span>
+                            <div>
+                                <p class="text-sm text-white/90 font-medium leading-relaxed">${escapeHtml(data.question)}</p>
+                                ${data.context ? `<p class="text-[11px] text-slate-400 mt-1.5">${escapeHtml(data.context)}</p>` : ''}
+                            </div>
+                        </div>
+
+                        ${hasOptions ? `
+                        <div class="space-y-1.5" id="engagement-options-${data.id}">
+                            ${optionsHtml}
+                        </div>
+                        ` : ''}
+
+                        ${showFreeText ? `
+                        <div class="relative">
+                            <textarea id="engagement-input-${data.id}"
+                                class="w-full bg-black/20 rounded-xl px-3 py-2.5 text-xs text-white/90 placeholder-slate-500 border border-white/5 focus:border-white/15 focus:outline-none resize-none transition-colors"
+                                rows="2"
+                                placeholder="${hasOptions ? 'Or type a custom response...' : 'Type your response...'}"></textarea>
+                        </div>
+                        ` : ''}
+                    </div>
+
+                    <!-- Actions -->
+                    <div class="px-4 py-3 flex items-center gap-2 border-t" style="border-color: ${colors.border}; background: rgba(0,0,0,0.1)">
+                        <button onclick="submitEngagementResponse('${panelId}', '${data.id}')"
+                            class="flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-bold transition-all hover:scale-[1.02] active:scale-[0.98]"
+                            style="background: ${colors.accent}20; color: ${colors.accent}; border: 1px solid ${colors.accent}40">
+                            <span class="material-symbols-outlined text-[16px]">send</span>
+                            Reply
+                        </button>
+                        <button onclick="submitEngagementResponse('${panelId}', '${data.id}', true)"
+                            class="flex items-center justify-center gap-1 px-3 py-2.5 rounded-xl text-[10px] font-medium transition-all hover:scale-[1.02] active:scale-[0.98]"
+                            style="background: rgba(255,255,255,0.04); color: rgba(255,255,255,0.4); border: 1px solid rgba(255,255,255,0.06)"
+                            title="Let the agent decide">
+                            <span class="material-symbols-outlined text-[14px]">auto_awesome</span>
+                            Auto
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+
+    elements.chatMessages.insertAdjacentHTML('beforeend', html);
+    scrollToBottom();
+
+    // Focus the input if present
+    const input = document.getElementById(`engagement-input-${data.id}`);
+    if (input) {
+        setTimeout(() => input.focus(), 100);
+    }
+}
+
+function selectEngagementOption(panelId, optionIndex, optionText) {
+    const panel = document.getElementById(panelId);
+    if (!panel) return;
+
+    // Clear previous selection
+    const allOptions = panel.querySelectorAll('[class*="engagement-option-"]');
+    allOptions.forEach(btn => {
+        btn.style.background = 'rgba(255,255,255,0.04)';
+        btn.style.borderColor = 'rgba(255,255,255,0.08)';
+    });
+
+    // Highlight selected
+    const selected = allOptions[optionIndex];
+    if (selected) {
+        selected.style.background = 'rgba(255,255,255,0.1)';
+        selected.style.borderColor = 'rgba(255,255,255,0.2)';
+        selected.dataset.selected = 'true';
+    }
+
+    // Store selection
+    panel.dataset.selectedOption = optionText;
+}
+
+function submitEngagementResponse(panelId, engagementId, autoDecide = false) {
+    const panel = document.getElementById(panelId);
+    if (!panel) return;
+
+    let content = '';
+    let selectedOption = null;
+
+    if (autoDecide) {
+        content = 'Proceed with your best judgment.';
+    } else {
+        // Check if an option was selected
+        selectedOption = panel.dataset.selectedOption || null;
+
+        // Check free-text input
+        const input = document.getElementById(`engagement-input-${engagementId}`);
+        const freeText = input ? input.value.trim() : '';
+
+        if (!selectedOption && !freeText) {
+            showToast('Please select an option or type a response', 'warning');
+            return;
+        }
+
+        content = freeText || selectedOption;
+    }
+
+    // Send response
+    if (state.ws && state.ws.readyState === WebSocket.OPEN) {
+        state.ws.send(JSON.stringify({
+            type: 'engagement_response',
+            engagement_id: engagementId,
+            content: content,
+            selected_option: selectedOption,
+        }));
+    }
+
+    // Update panel to show "sent" state
+    updateEngagementPanelStatus(engagementId, 'sent', content);
+}
+
+function updateEngagementPanelStatus(engagementId, status, userResponse = '') {
+    const panel = document.getElementById(`engagement-${engagementId}`);
+    if (!panel) return;
+
+    const statusConfig = {
+        sent: { icon: 'schedule', text: 'Response sent', color: 'rgba(96,165,250,0.8)', bg: 'rgba(96,165,250,0.08)' },
+        received: { icon: 'check_circle', text: userResponse ? `"${userResponse.substring(0, 60)}${userResponse.length > 60 ? '...' : ''}"` : 'Response applied', color: 'rgba(52,211,153,0.9)', bg: 'rgba(52,211,153,0.08)' },
+        timeout: { icon: 'timer_off', text: 'Timed out — agent proceeded with best judgment', color: 'rgba(251,191,36,0.8)', bg: 'rgba(251,191,36,0.08)' },
+    };
+
+    const cfg = statusConfig[status] || statusConfig.sent;
+
+    // Replace the entire panel content with a compact status
+    const innerPanel = panel.querySelector('.engagement-panel');
+    if (innerPanel) {
+        innerPanel.style.animation = 'none';
+        innerPanel.style.background = cfg.bg;
+        innerPanel.style.borderColor = cfg.color + '30';
+        innerPanel.innerHTML = `
+            <div class="px-4 py-3 flex items-center gap-3">
+                <span class="material-symbols-outlined text-[18px]" style="color: ${cfg.color}">${cfg.icon}</span>
+                <span class="text-xs font-medium" style="color: ${cfg.color}">${cfg.text}</span>
+            </div>
+        `;
     }
 }
 

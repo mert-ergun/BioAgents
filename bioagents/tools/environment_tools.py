@@ -64,9 +64,9 @@ def install_requirements(requirements: str) -> str:
             if len(output) > 3000:
                 lines = output.strip().split("\n")
                 installed = [
-                    l
-                    for l in lines
-                    if "Successfully installed" in l or "already satisfied" in l.lower()
+                    line
+                    for line in lines
+                    if "Successfully installed" in line or "already satisfied" in line.lower()
                 ]
                 output = "\n".join(installed) if installed else lines[-20:]
             return f"Installation successful.\n{output}"
