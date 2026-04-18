@@ -842,365 +842,378 @@ async def run_bioagents_streaming(
                 if node_output is None:
                     node_output = {}
 
-            # Send agent update — bail out if client is gone
-            if not await safe_send({"type": "agent_update", "agent": node_name}):
-                break
+                # Send agent update — bail out if client is gone
+                if not await safe_send({"type": "agent_update", "agent": node_name}):
+                    break
 
-            # Process messages
-            step_messages = []
-            if "messages" in node_output:
-                for m in node_output["messages"]:
-                    if _client_disconnected:
-                        break
-                    msg_info = {
-                        "type": m.__class__.__name__,
-                        "content": m.content if hasattr(m, "content") else str(m),
-                    }
-                    step_messages.append(msg_info)
+                # Process messages
+                step_messages = []
+                if "messages" in node_output:
+                    for m in node_output["messages"]:
+                        if _client_disconnected:
+                            break
+                        msg_info = {
+                            "type": m.__class__.__name__,
+                            "content": m.content if hasattr(m, "content") else str(m),
+                        }
+                        step_messages.append(msg_info)
 
-                    # Check for PDB files (local paths and URLs)
-                    content = msg_info["content"]
-                    if isinstance(content, str) and ".pdb" in content.lower():
-                        # Check for local file paths
-                        local_matches = re.findall(
-                            r'(/[^\s\'"]+\.pdb|(?:\.\/)?[^\s\'"]+\.pdb|(?:[a-zA-Z0-9_\-]+/)+[^\s\'"]+\.pdb)',
-                            content,
-                        )
-                        for path_str in local_matches:
-                            path = Path(path_str)
-                            if path.exists() and str(path) not in sent_structures:
-                                sent_structures.add(str(path))
-                                try:
-                                    with path.open() as f:
-                                        pdb_content = f.read()
-                                    if not await safe_send(
-                                        {"type": "structure", "pdbContent": pdb_content}
-                                    ):
-                                        break
-                                    artifact_key = path.name
-                                    if artifact_key not in sent_artifacts:
-                                        sent_artifacts.add(artifact_key)
+                        # Check for PDB files (local paths and URLs)
+                        content = msg_info["content"]
+                        if isinstance(content, str) and ".pdb" in content.lower():
+                            # Check for local file paths
+                            local_matches = re.findall(
+                                r'(/[^\s\'"]+\.pdb|(?:\.\/)?[^\s\'"]+\.pdb|(?:[a-zA-Z0-9_\-]+/)+[^\s\'"]+\.pdb)',
+                                content,
+                            )
+                            for path_str in local_matches:
+                                path = Path(path_str)
+                                if path.exists() and str(path) not in sent_structures:
+                                    sent_structures.add(str(path))
+                                    try:
+                                        with path.open() as f:
+                                            pdb_content = f.read()
                                         if not await safe_send(
+                                            {"type": "structure", "pdbContent": pdb_content}
+                                        ):
+                                            break
+                                        artifact_key = path.name
+                                        if artifact_key not in sent_artifacts:
+                                            sent_artifacts.add(artifact_key)
+                                            if not await safe_send(
+                                                {
+                                                    "type": "artifact",
+                                                    "artifact": {
+                                                        "name": path.name,
+                                                        "path": str(path),
+                                                        "type": "pdb",
+                                                        "size": path.stat().st_size,
+                                                    },
+                                                }
+                                            ):
+                                                break
+                                    except Exception as e:
+                                        logger.error(f"Failed to load PDB: {e}")
+
+                            # Check for PDB URLs (AlphaFold, RCSB, etc.)
+                            url_matches = re.findall(r'(https?://[^\s\'"<>]+\.pdb)', content)
+                            for url in url_matches:
+                                if _client_disconnected:
+                                    break
+                                # Extract protein ID to prevent duplicates
+                                protein_id = extract_protein_id(url)
+
+                                # Skip if we already sent this URL or protein
+                                if url in sent_structures:
+                                    continue
+                                if protein_id and protein_id in sent_protein_ids:
+                                    continue
+
+                                sent_structures.add(url)
+                                if protein_id:
+                                    sent_protein_ids.add(protein_id)
+
+                                try:
+                                    logger.info(f"Fetching PDB from URL: {url}")
+                                    resp = requests.get(url, timeout=30)
+                                    if resp.status_code == 200:
+                                        pdb_content = resp.text
+                                        # Extract filename from URL
+                                        filename = url.split("/")[-1]
+                                        if not await safe_send(
+                                            {"type": "structure", "pdbContent": pdb_content}
+                                        ):
+                                            break
+                                        if filename not in sent_artifacts:
+                                            sent_artifacts.add(filename)
+                                            if not await safe_send(
+                                                {
+                                                    "type": "artifact",
+                                                    "artifact": {
+                                                        "name": filename,
+                                                        "path": url,
+                                                        "type": "pdb",
+                                                        "size": len(pdb_content),
+                                                    },
+                                                }
+                                            ):
+                                                break
+                                            if not await safe_send(
+                                                {
+                                                    "type": "log",
+                                                    "message": f"Loaded 3D structure: {filename}",
+                                                }
+                                            ):
+                                                break
+                                except Exception as e:
+                                    logger.error(f"Failed to fetch PDB from URL {url}: {e}")
+
+                        # Check for other artifacts
+                        if isinstance(content, str):
+                            for ext in [".csv", ".png", ".jpg", ".json", ".pdf"]:
+                                if ext in content.lower():
+                                    matches = re.findall(
+                                        rf'(/[^\s\'"]+{ext}|(?:\.\/)?[^\s\'"]+{ext}|(?:[a-zA-Z0-9_\-]+/)+[^\s\'"]+{ext})',
+                                        content,
+                                        re.IGNORECASE,
+                                    )
+                                    for path_str in matches:
+                                        path = Path(path_str)
+                                        if path.exists() and not await safe_send(
                                             {
                                                 "type": "artifact",
                                                 "artifact": {
                                                     "name": path.name,
                                                     "path": str(path),
-                                                    "type": "pdb",
+                                                    "type": ext[1:],
                                                     "size": path.stat().st_size,
                                                 },
                                             }
                                         ):
                                             break
-                                except Exception as e:
-                                    logger.error(f"Failed to load PDB: {e}")
 
-                        # Check for PDB URLs (AlphaFold, RCSB, etc.)
-                        url_matches = re.findall(r'(https?://[^\s\'"<>]+\.pdb)', content)
-                        for url in url_matches:
-                            if _client_disconnected:
-                                break
-                            # Extract protein ID to prevent duplicates
-                            protein_id = extract_protein_id(url)
+                if _client_disconnected:
+                    break
 
-                            # Skip if we already sent this URL or protein
-                            if url in sent_structures:
-                                continue
-                            if protein_id and protein_id in sent_protein_ids:
-                                continue
+                # Build audit entry
+                audit_entry = {
+                    "agent": node_name,
+                    "decision": node_output.get("next", "Continue"),
+                    "reasoning": node_output.get("reasoning", ""),
+                    "messages": step_messages,
+                }
+                full_audit.append(audit_entry)
+                if not await safe_send({"type": "audit", "entries": full_audit}):
+                    break
 
-                            sent_structures.add(url)
-                            if protein_id:
-                                sent_protein_ids.add(protein_id)
+                # Extract references from step messages (ReferenceManager is kept
+                # outside the graph state to avoid msgpack serialization errors).
+                if "messages" in node_output:
+                    refs = extract_references_from_messages(node_output["messages"])
+                    if refs:
+                        reference_manager.add_references(refs)
 
-                            try:
-                                logger.info(f"Fetching PDB from URL: {url}")
-                                resp = requests.get(url, timeout=30)
-                                if resp.status_code == 200:
-                                    pdb_content = resp.text
-                                    # Extract filename from URL
-                                    filename = url.split("/")[-1]
+                # Send tool calls and tool results (consumed by advanced mode UI)
+                if "messages" in node_output:
+                    for m in node_output["messages"]:
+                        if _client_disconnected:
+                            break
+                        if isinstance(m, AIMessage) and getattr(m, "tool_calls", None):
+                            for tc in m.tool_calls:
+                                if not await safe_send(
+                                    {
+                                        "type": "tool_call",
+                                        "agent": node_name,
+                                        "tool_name": tc.get("name", "unknown"),
+                                        "arguments": tc.get("args", {}),
+                                    }
+                                ):
+                                    break
+                        elif isinstance(m, ToolMessage) and m.content:
+                            tc_content = m.content
+                            if isinstance(tc_content, list):
+                                tc_content = str(tc_content)
+                            tool_name = getattr(m, "name", "") or "tool"
+
+                            # Check for approval-required or policy-blocked messages
+                            if isinstance(tc_content, str):
+                                if "[APPROVAL_REQUIRED]" in tc_content:
+                                    # Extract request_id from message
+                                    import re as _re
+
+                                    req_match = _re.search(
+                                        r"approval_request_id=([a-f0-9-]+)", tc_content
+                                    )
+                                    request_id = (
+                                        req_match.group(1) if req_match else str(uuid.uuid4())
+                                    )
+                                    reason_match = _re.search(r"Reason: (.+?)\. Risk", tc_content)
+                                    reason = (
+                                        reason_match.group(1)
+                                        if reason_match
+                                        else "External API tool"
+                                    )
+                                    risk_match = _re.search(r"Risk level: (\w+)", tc_content)
+                                    risk_level = risk_match.group(1) if risk_match else "medium"
+
                                     if not await safe_send(
-                                        {"type": "structure", "pdbContent": pdb_content}
+                                        {
+                                            "type": "tool_approval_request",
+                                            "request_id": request_id,
+                                            "tool_name": tool_name,
+                                            "agent": node_name,
+                                            "reason": reason,
+                                            "risk_level": risk_level,
+                                            "content": tc_content[:3000],
+                                        }
                                     ):
                                         break
-                                    if filename not in sent_artifacts:
-                                        sent_artifacts.add(filename)
+
+                                    # Drain any approval responses that arrived
+                                    if approval_queue is not None:
+                                        while not approval_queue.empty():
+                                            try:
+                                                resp = approval_queue.get_nowait()
+                                                if resp.get("tool_name") == tool_name and resp.get(
+                                                    "approved"
+                                                ):
+                                                    session_policy.mark_approved(tool_name)
+                                                    await safe_send(
+                                                        {
+                                                            "type": "log",
+                                                            "message": f"Tool '{tool_name}' approved for this session",
+                                                        }
+                                                    )
+                                            except asyncio.QueueEmpty:
+                                                break
+                                    continue
+
+                                if "[POLICY_BLOCKED]" in tc_content:
+                                    if not await safe_send(
+                                        {
+                                            "type": "tool_policy_blocked",
+                                            "agent": node_name,
+                                            "tool_name": tool_name,
+                                            "content": tc_content[:3000],
+                                        }
+                                    ):
+                                        break
+                                    continue
+
+                            if not await safe_send(
+                                {
+                                    "type": "tool_result",
+                                    "agent": node_name,
+                                    "tool_name": tool_name,
+                                    "content": tc_content[:3000]
+                                    if isinstance(tc_content, str)
+                                    else str(tc_content)[:3000],
+                                }
+                            ):
+                                break
+
+                if _client_disconnected:
+                    break
+
+                # Send code steps if available (from coder, ml, or dl agents)
+                if "code_steps" in node_output and not await safe_send(
+                    {
+                        "type": "code_execution",
+                        "agent": node_name,
+                        "steps": node_output["code_steps"],
+                    }
+                ):
+                    break
+
+                # Send tool policy stats periodically
+                stats = session_policy.stats
+                if not await safe_send(
+                    {
+                        "type": "tool_policy_stats",
+                        "auto_approved": stats.auto_approved,
+                        "user_approved": stats.user_approved,
+                        "blocked": stats.blocked,
+                        "filtered_at_discovery": stats.filtered_at_discovery,
+                    }
+                ):
+                    break
+
+                # Send messages from user-facing agents
+                if node_name in STREAM_UI_AGENTS and "messages" in node_output:
+                    for m in node_output["messages"]:
+                        if _client_disconnected:
+                            break
+                        # Skip HumanMessages (usually handoffs) and ToolMessages
+                        if (
+                            hasattr(m, "content")
+                            and m.content
+                            and not isinstance(m, (HumanMessage, ToolMessage))
+                            and getattr(m, "additional_kwargs", {}).get("show_ui", True)
+                            is not False
+                        ):
+                            content = m.content
+                            if isinstance(content, list):
+                                text_parts = [
+                                    item if isinstance(item, str) else item.get("text", "")
+                                    for item in content
+                                    if isinstance(item, (str, dict))
+                                ]
+                                content = "\n\n".join(text_parts)
+                            if content:
+                                # Get references for this message if available
+                                message_refs = []
+                                if reference_manager:
+                                    all_refs = reference_manager.get_all_references()
+                                    if len(all_refs) > 0:
+                                        message_refs = [ref.to_dict() for ref in all_refs]
+                                    else:
+                                        # If no references but this looks like a research report, create a synthetic one
+                                        if (
+                                            node_name in ["report", "research"]
+                                            and len(content) > 500
+                                        ):
+                                            # Extract year mentions
+                                            import uuid
+
+                                            from bioagents.references.reference_types import (
+                                                PaperReference,
+                                            )
+
+                                            years = re.findall(r"\b(20\d{2})\b", content)
+                                            year_str = (
+                                                f" ({min(years)}-{max(years)})"
+                                                if len(years) > 1
+                                                else f" ({years[0]})"
+                                                if years
+                                                else ""
+                                            )
+
+                                            synth_ref = PaperReference(
+                                                id=f"ref_{uuid.uuid4().hex[:8]}",
+                                                title=f"Scientific Literature Review{year_str}",
+                                                abstract="This response synthesizes information from peer-reviewed literature and scientific databases.",
+                                                url=None,
+                                            )
+                                            reference_manager.add_reference(synth_ref)
+                                            message_refs = [synth_ref.to_dict()]
+
+                                if not await safe_send(
+                                    {
+                                        "type": "message",
+                                        "agent": node_name,
+                                        "content": content,
+                                        "references": message_refs,
+                                    }
+                                ):
+                                    break
+
+                                # Extract metrics
+                                metrics = extract_metrics_from_content(content)
+                                if metrics and not await safe_send(
+                                    {"type": "metrics", "metrics": metrics}
+                                ):
+                                    break
+
+                                # Extract and send artifacts from content (with deduplication)
+                                extracted_artifacts = extract_artifacts_from_content(
+                                    content, node_name
+                                )
+                                for artifact in extracted_artifacts:
+                                    if _client_disconnected:
+                                        break
+                                    if artifact["name"] not in sent_artifacts:
+                                        sent_artifacts.add(artifact["name"])
                                         if not await safe_send(
-                                            {
-                                                "type": "artifact",
-                                                "artifact": {
-                                                    "name": filename,
-                                                    "path": url,
-                                                    "type": "pdb",
-                                                    "size": len(pdb_content),
-                                                },
-                                            }
+                                            {"type": "artifact", "artifact": artifact}
                                         ):
                                             break
                                         if not await safe_send(
                                             {
                                                 "type": "log",
-                                                "message": f"Loaded 3D structure: {filename}",
+                                                "message": f"Generated: {artifact['name']}",
                                             }
                                         ):
                                             break
-                            except Exception as e:
-                                logger.error(f"Failed to fetch PDB from URL {url}: {e}")
-
-                    # Check for other artifacts
-                    if isinstance(content, str):
-                        for ext in [".csv", ".png", ".jpg", ".json", ".pdf"]:
-                            if ext in content.lower():
-                                matches = re.findall(
-                                    rf'(/[^\s\'"]+{ext}|(?:\.\/)?[^\s\'"]+{ext}|(?:[a-zA-Z0-9_\-]+/)+[^\s\'"]+{ext})',
-                                    content,
-                                    re.IGNORECASE,
-                                )
-                                for path_str in matches:
-                                    path = Path(path_str)
-                                    if path.exists() and not await safe_send(
-                                        {
-                                            "type": "artifact",
-                                            "artifact": {
-                                                "name": path.name,
-                                                "path": str(path),
-                                                "type": ext[1:],
-                                                "size": path.stat().st_size,
-                                            },
-                                        }
-                                    ):
-                                        break
-
-            if _client_disconnected:
-                break
-
-            # Build audit entry
-            audit_entry = {
-                "agent": node_name,
-                "decision": node_output.get("next", "Continue"),
-                "reasoning": node_output.get("reasoning", ""),
-                "messages": step_messages,
-            }
-            full_audit.append(audit_entry)
-            if not await safe_send({"type": "audit", "entries": full_audit}):
-                break
-
-            # Extract references from step messages (ReferenceManager is kept
-            # outside the graph state to avoid msgpack serialization errors).
-            if "messages" in node_output:
-                refs = extract_references_from_messages(node_output["messages"])
-                if refs:
-                    reference_manager.add_references(refs)
-
-            # Send tool calls and tool results (consumed by advanced mode UI)
-            if "messages" in node_output:
-                for m in node_output["messages"]:
-                    if _client_disconnected:
-                        break
-                    if isinstance(m, AIMessage) and getattr(m, "tool_calls", None):
-                        for tc in m.tool_calls:
-                            if not await safe_send(
-                                {
-                                    "type": "tool_call",
-                                    "agent": node_name,
-                                    "tool_name": tc.get("name", "unknown"),
-                                    "arguments": tc.get("args", {}),
-                                }
-                            ):
-                                break
-                    elif isinstance(m, ToolMessage) and m.content:
-                        tc_content = m.content
-                        if isinstance(tc_content, list):
-                            tc_content = str(tc_content)
-                        tool_name = getattr(m, "name", "") or "tool"
-
-                        # Check for approval-required or policy-blocked messages
-                        if isinstance(tc_content, str):
-                            if "[APPROVAL_REQUIRED]" in tc_content:
-                                # Extract request_id from message
-                                import re as _re
-
-                                req_match = _re.search(
-                                    r"approval_request_id=([a-f0-9-]+)", tc_content
-                                )
-                                request_id = req_match.group(1) if req_match else str(uuid.uuid4())
-                                reason_match = _re.search(r"Reason: (.+?)\. Risk", tc_content)
-                                reason = (
-                                    reason_match.group(1) if reason_match else "External API tool"
-                                )
-                                risk_match = _re.search(r"Risk level: (\w+)", tc_content)
-                                risk_level = risk_match.group(1) if risk_match else "medium"
-
-                                if not await safe_send(
-                                    {
-                                        "type": "tool_approval_request",
-                                        "request_id": request_id,
-                                        "tool_name": tool_name,
-                                        "agent": node_name,
-                                        "reason": reason,
-                                        "risk_level": risk_level,
-                                        "content": tc_content[:3000],
-                                    }
-                                ):
-                                    break
-
-                                # Drain any approval responses that arrived
-                                if approval_queue is not None:
-                                    while not approval_queue.empty():
-                                        try:
-                                            resp = approval_queue.get_nowait()
-                                            if resp.get("tool_name") == tool_name and resp.get(
-                                                "approved"
-                                            ):
-                                                session_policy.mark_approved(tool_name)
-                                                await safe_send(
-                                                    {
-                                                        "type": "log",
-                                                        "message": f"Tool '{tool_name}' approved for this session",
-                                                    }
-                                                )
-                                        except asyncio.QueueEmpty:
-                                            break
-                                continue
-
-                            if "[POLICY_BLOCKED]" in tc_content:
-                                if not await safe_send(
-                                    {
-                                        "type": "tool_policy_blocked",
-                                        "agent": node_name,
-                                        "tool_name": tool_name,
-                                        "content": tc_content[:3000],
-                                    }
-                                ):
-                                    break
-                                continue
-
-                        if not await safe_send(
-                            {
-                                "type": "tool_result",
-                                "agent": node_name,
-                                "tool_name": tool_name,
-                                "content": tc_content[:3000]
-                                if isinstance(tc_content, str)
-                                else str(tc_content)[:3000],
-                            }
-                        ):
-                            break
-
-            if _client_disconnected:
-                break
-
-            # Send code steps if available (from coder, ml, or dl agents)
-            if "code_steps" in node_output and not await safe_send(
-                {
-                    "type": "code_execution",
-                    "agent": node_name,
-                    "steps": node_output["code_steps"],
-                }
-            ):
-                break
-
-            # Send tool policy stats periodically
-            stats = session_policy.stats
-            if not await safe_send(
-                {
-                    "type": "tool_policy_stats",
-                    "auto_approved": stats.auto_approved,
-                    "user_approved": stats.user_approved,
-                    "blocked": stats.blocked,
-                    "filtered_at_discovery": stats.filtered_at_discovery,
-                }
-            ):
-                break
-
-            # Send messages from user-facing agents
-            if node_name in STREAM_UI_AGENTS and "messages" in node_output:
-                for m in node_output["messages"]:
-                    if _client_disconnected:
-                        break
-                    # Skip HumanMessages (usually handoffs) and ToolMessages
-                    if (
-                        hasattr(m, "content")
-                        and m.content
-                        and not isinstance(m, (HumanMessage, ToolMessage))
-                        and getattr(m, "additional_kwargs", {}).get("show_ui", True) is not False
-                    ):
-                        content = m.content
-                        if isinstance(content, list):
-                            text_parts = [
-                                item if isinstance(item, str) else item.get("text", "")
-                                for item in content
-                                if isinstance(item, (str, dict))
-                            ]
-                            content = "\n\n".join(text_parts)
-                        if content:
-                            # Get references for this message if available
-                            message_refs = []
-                            if reference_manager:
-                                all_refs = reference_manager.get_all_references()
-                                if len(all_refs) > 0:
-                                    message_refs = [ref.to_dict() for ref in all_refs]
-                                else:
-                                    # If no references but this looks like a research report, create a synthetic one
-                                    if node_name in ["report", "research"] and len(content) > 500:
-                                        # Extract year mentions
-                                        import uuid
-
-                                        from bioagents.references.reference_types import (
-                                            PaperReference,
-                                        )
-
-                                        years = re.findall(r"\b(20\d{2})\b", content)
-                                        year_str = (
-                                            f" ({min(years)}-{max(years)})"
-                                            if len(years) > 1
-                                            else f" ({years[0]})"
-                                            if years
-                                            else ""
-                                        )
-
-                                        synth_ref = PaperReference(
-                                            id=f"ref_{uuid.uuid4().hex[:8]}",
-                                            title=f"Scientific Literature Review{year_str}",
-                                            abstract="This response synthesizes information from peer-reviewed literature and scientific databases.",
-                                            url=None,
-                                        )
-                                        reference_manager.add_reference(synth_ref)
-                                        message_refs = [synth_ref.to_dict()]
-
-                            if not await safe_send(
-                                {
-                                    "type": "message",
-                                    "agent": node_name,
-                                    "content": content,
-                                    "references": message_refs,
-                                }
-                            ):
-                                break
-
-                            # Extract metrics
-                            metrics = extract_metrics_from_content(content)
-                            if metrics and not await safe_send(
-                                {"type": "metrics", "metrics": metrics}
-                            ):
-                                break
-
-                            # Extract and send artifacts from content (with deduplication)
-                            extracted_artifacts = extract_artifacts_from_content(content, node_name)
-                            for artifact in extracted_artifacts:
-                                if _client_disconnected:
-                                    break
-                                if artifact["name"] not in sent_artifacts:
-                                    sent_artifacts.add(artifact["name"])
-                                    if not await safe_send(
-                                        {"type": "artifact", "artifact": artifact}
-                                    ):
-                                        break
-                                    if not await safe_send(
-                                        {"type": "log", "message": f"Generated: {artifact['name']}"}
-                                    ):
-                                        break
 
             if _client_disconnected:
                 break

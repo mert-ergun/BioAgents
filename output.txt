@@ -1,7 +1,3 @@
-   Building bioagents @ file:///home/mert/dev/BioAgents
-      Built bioagents @ file:///home/mert/dev/BioAgents
-Uninstalled 1 package in 0.20ms
-Installed 1 package in 0.58ms
 <frozen abc>:106: LangGraphDeprecatedSinceV10: AgentStatePydantic has been moved to `langchain.agents`. Please update your import to `from langchain.agents import AgentStatePydantic`. Deprecated in LangGraph V1.0 to be removed in V2.0.
 ⚙️  Running in WANDB offline mode
 
@@ -18,13 +14,31 @@ Installed 1 package in 0.58ms
   warnings.warn(  # deprecated in 14.0 - 2024-11-09
 /home/mert/dev/BioAgents/.venv/lib/python3.12/site-packages/uvicorn/protocols/websockets/websockets_impl.py:17: DeprecationWarning: websockets.server.WebSocketServerProtocol is deprecated
   from websockets.server import WebSocketServerProtocol
-INFO:     Started server process [7422]
+INFO:     Started server process [59283]
 INFO:     Waiting for application startup.
 INFO:     Application startup complete.
 INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
 /home/mert/dev/BioAgents/.venv/lib/python3.12/site-packages/websockets/legacy/server.py:1178: DeprecationWarning: remove second argument of ws_handler
   warnings.warn("remove second argument of ws_handler", DeprecationWarning)
-INFO:     127.0.0.1:58786 - "WebSocket /ws" [accepted]
+INFO:     127.0.0.1:46128 - "WebSocket /ws" [accepted]
+INFO:frontend.server:WebSocket connected. Total connections: 1
+INFO:     connection open
+INFO:frontend.server:WebSocket disconnected. Total connections: 0
+INFO:     connection closed
+INFO:     127.0.0.1:46134 - "GET / HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46140 - "WebSocket /ws" [accepted]
+INFO:frontend.server:WebSocket connected. Total connections: 1
+INFO:     connection open
+INFO:frontend.server:WebSocket disconnected. Total connections: 0
+INFO:     connection closed
+INFO:     127.0.0.1:46134 - "GET / HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46148 - "WebSocket /ws" [accepted]
+INFO:frontend.server:WebSocket connected. Total connections: 1
+INFO:     connection open
+INFO:frontend.server:WebSocket disconnected. Total connections: 0
+INFO:     connection closed
+INFO:     127.0.0.1:46134 - "GET / HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46156 - "WebSocket /ws" [accepted]
 INFO:frontend.server:WebSocket connected. Total connections: 1
 INFO:     connection open
 INFO:bioagents.agents.research_agent:Research agent tools: ['fetch_uniprot_fasta', 'tool_universe_find_tools', 'tool_universe_call_tool', 'fetch_webpage_as_pdf_text', 'extract_pdf_text_spacy_layout', 'fetch_alphafold_structure', 'fetch_pdb_structure', 'download_structure_file']
@@ -32,70 +46,62 @@ INFO:bioagents.agents.analysis_agent:Analysis agent tools: ['calculate_molecular
 Gemini rate limiting active: 100 requests/minute
 Initializing executor, hold on[33m...[0m
 Using existing Docker image: bioagents-coder
-Starting container on [1;92m127.0.0.1[0m:[1;36m8888[0m[33m...[0m
+Starting container on [1;92m127.0.0.1[0m:[1;36m8897[0m[33m...[0m
 Container status: created, waiting[33m...[0m
-Container 1b277a21cc13 is running with kernel [93m65911d9d-7902-4719-ab0c-8c18895e7806[0m
+Container 15d939aecc99 is running with kernel [93m81f53c70-e07b-44c6-8b36-0d3149243f17[0m
 Caution: you set an authorization for all imports, meaning your agent can decide to import any package it deems necessary. This
 might raise issues if the package is not installed in your environment.
 Initializing executor, hold on[33m...[0m
 Using existing Docker image: bioagents-ml
-Starting container on [1;92m127.0.0.1[0m:[1;36m8889[0m[33m...[0m
+Starting container on [1;92m127.0.0.1[0m:[1;36m8898[0m[33m...[0m
 Container status: created, waiting[33m...[0m
-Container 21f9721ac59a is running with kernel [93m3936f5ea-51ee-4358-b62e-f169caa72b0d[0m
+Container 335f4cb1df37 is running with kernel [93m64619fa2-2e94-4e36-8528-e73e8cb1a735[0m
 Caution: you set an authorization for all imports, meaning your agent can decide to import any package it deems necessary. This
 might raise issues if the package is not installed in your environment.
 Initializing executor, hold on[33m...[0m
 Using existing Docker image: bioagents-dl
-Starting container on [1;92m127.0.0.1[0m:[1;36m8890[0m[33m...[0m
+Starting container on [1;92m127.0.0.1[0m:[1;36m8899[0m[33m...[0m
 Container status: created, waiting[33m...[0m
-Container 3b950b36ede3 is running with kernel [93m00da6382-7eff-44a7-b626-ccfaf7fe9d9c[0m
+Container 6f7eb1f58ac6 is running with kernel [93mb2313b00-2365-4cff-a72b-59705742897b[0m
 Caution: you set an authorization for all imports, meaning your agent can decide to import any package it deems necessary. This
 might raise issues if the package is not installed in your environment.
 INFO:bioagents.agents.protein_design_agent:Protein design agent tools: ['fetch_alphafold_structure', 'fetch_pdb_structure', 'search_pdb_complexes', 'get_pdb_polymer_entities', 'download_structure_file', 'analyze_interface_contacts', 'compute_interface_metrics', 'design_binders_bindcraft', 'generate_binder_backbones', 'design_binder_sequences', 'predict_complex_structure', 'compute_binding_metrics', 'rank_binder_designs']
-INFO:bioagents.agents.supervisor_agent:Query ambiguous, asking clarification: Please specify which protein (UniProt ID, PDB ID, or protein name).
-INFO:frontend.server:Engagement request sent: type=clarification, question=Please specify which protein (UniProt ID, PDB ID, or protein name).
-INFO:frontend.server:Engagement response received: p53
 INFO:google_genai.models:AFC is enabled with max remote calls: 10.
 INFO:httpx:HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent "HTTP/1.1 200 OK"
-INFO:bioagents.agents.supervisor_agent:Supervisor handoff to planner: Create a comprehensive plan to analyze the human p53 protein. The plan should include: 1) Fetching sequence and functional annotations from UniProt. 2) Identifying key structural domains and fetching representative PDB structures. 3) Summarizing major post-translational modifications and known mutations related to cancer. 4) Performing a basic biochemical property analysis of the sequence.
+INFO:bioagents.agents.supervisor_agent:Supervisor handoff to planner: Create a step-by-step execution plan to analyze the human p53 protein (P04637). The plan should include: 1) Fetching the protein sequence from UniProt using the research agent. 2) Downloading the AlphaFold structure using the structural_biology or data_acquisition agent. 3) Performing biochemical analysis (e.g., pI, molecular weight, hydrophobicity) using the analysis agent. 4) Synthesizing the findings into a final report.
 INFO:google_genai.models:AFC is enabled with max remote calls: 10.
 INFO:httpx:HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent "HTTP/1.1 200 OK"
 INFO:google_genai.models:AFC is enabled with max remote calls: 10.
 INFO:httpx:HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent "HTTP/1.1 200 OK"
-INFO:bioagents.agents.supervisor_agent:Supervisor handoff to research: Fetch the protein sequence in FASTA format and the full functional annotations (including domains, PTMs, and known variants) for human p53 (UniProt ID: P04637) from UniProt.
+INFO:bioagents.agents.supervisor_agent:Supervisor handoff to research: Fetch the primary amino acid sequence in FASTA format and the metadata (including domain locations and post-translational modification sites) for human p53 protein (UniProt: P04637).
 INFO:bioagents.agents.research_agent:Research Agent: Entering Decompose & Parallel Phase
 INFO:google_genai.models:AFC is enabled with max remote calls: 10.
 INFO:httpx:HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent "HTTP/1.1 200 OK"
-INFO:bioagents.agents.research_agent:Research Agent: Running 4 sub-tasks in parallel
-INFO:bioagents.agents.helpers:Invoking LLM for Research Sub-agent (attempt 1/3)
+INFO:bioagents.agents.research_agent:Research Agent: Running 3 sub-tasks in parallel
 INFO:bioagents.agents.helpers:Invoking LLM for Research Sub-agent (attempt 1/3)
 INFO:bioagents.agents.helpers:Invoking LLM for Research Sub-agent (attempt 1/3)
 INFO:bioagents.agents.helpers:Invoking LLM for Research Sub-agent (attempt 1/3)
 INFO:httpx:HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent "HTTP/1.1 200 OK"
 INFO:httpx:HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent "HTTP/1.1 200 OK"
 INFO:httpx:HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent "HTTP/1.1 200 OK"
-INFO:httpx:HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent "HTTP/1.1 200 OK"
+INFO:bioagents.agents.research_agent:Research Agent: Skipping duplicate tool call 'download_structure_file'.
+INFO:bioagents.agents.research_agent:Research Agent: Skipping duplicate tool call 'fetch_uniprot_fasta'.
+INFO:bioagents.agents.research_agent:Research Agent: Skipping duplicate tool call 'download_structure_file'.
 INFO:bioagents.tools.tool_registry:Loaded 2 tools from registry
 INFO:bioagents.tools.tool_universe:Loading ToolUniverse SDK (this may take a moment)...
-INFO:bioagents.tools.tool_registry:Loaded 2 tools from registry
-INFO:bioagents.tools.tool_universe:ToolUniverse search query: 'search for protein domains, motifs, and post-translational modifications in InterPro, Pfam, SMART, or PhosphoSitePlus' (limit=10)
-INFO:bioagents.tools.tool_registry:Loaded 2 tools from registry
-INFO:bioagents.tools.tool_universe:ToolUniverse search query: 'search for protein-protein interactions, biological pathways, and cellular localization (STRING, Gene Ontology, UniProt)' (limit=10)
-INFO:bioagents.tools.tool_registry:Loaded 2 tools from registry
-INFO:bioagents.tools.tool_universe:ToolUniverse search query: 'search for protein structure alignment and binding pocket prediction tools' (limit=10)
 ℹ️  Number of tools after load tools: 617
 ⚠️
-Missing API keys: EXPERT_FEEDBACK_MCP_SERVER_URL, TXAGENT_MCP_SERVER_HOST, HF_TOKEN, USPTO_MCP_SERVER_HOST, USPTO_API_KEY, BOLTZ_MCP_SERVER_HOST
+Missing API keys: USPTO_API_KEY, USPTO_MCP_SERVER_HOST, TXAGENT_MCP_SERVER_HOST, HF_TOKEN, EXPERT_FEEDBACK_MCP_SERVER_URL, BOLTZ_MCP_SERVER_HOST
 ℹ️  Generating .env.template file with missing API keys...
 ℹ️  Generated API key template: .env.template
 ℹ️  Copy this file to .env and fill in your API keys
-INFO:bioagents.tools.tool_universe:ToolUniverse search query: 'retrieve protein sequence and physicochemical properties from UniProt' (limit=5)
+INFO:bioagents.tools.tool_universe:ToolUniverse search query: 'get uniprot protein features domains and modifications' (limit=5)
+INFO:bioagents.tools.tool_universe:ToolUniverse search query: 'search for biochemical properties of p53 protein including pI, stability, and binding affinity for DNA and MDM2' (limit=5)
+INFO:frontend.server:Fetching PDB from URL: https://alphafold.ebi.ac.uk/files/AF-P04637-F1-model_v6.pdb
 INFO:bioagents.agents.research_agent:Research Agent: Continuing parallel sub-agents
 INFO:bioagents.agents.helpers:Invoking LLM for Research Sub-agent 1 (Continue) (attempt 1/3)
 INFO:bioagents.agents.helpers:Invoking LLM for Research Sub-agent 2 (Continue) (attempt 1/3)
 INFO:bioagents.agents.helpers:Invoking LLM for Research Sub-agent 3 (Continue) (attempt 1/3)
-INFO:bioagents.agents.helpers:Invoking LLM for Research Sub-agent 4 (Continue) (attempt 1/3)
-INFO:httpx:HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent "HTTP/1.1 200 OK"
 INFO:httpx:HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent "HTTP/1.1 200 OK"
 INFO:httpx:HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent "HTTP/1.1 200 OK"
 INFO:httpx:HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent "HTTP/1.1 200 OK"
@@ -108,53 +114,126 @@ INFO:google_genai.models:AFC is enabled with max remote calls: 10.
 INFO:httpx:HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent "HTTP/1.1 200 OK"
 INFO:google_genai.models:AFC is enabled with max remote calls: 10.
 INFO:httpx:HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent "HTTP/1.1 200 OK"
-INFO:     127.0.0.1:39414 - "POST /api/clear-artifacts HTTP/1.1" 200 OK
-INFO:frontend.server:WebSocket disconnected. Total connections: 0
-INFO:     connection closed
-INFO:     127.0.0.1:57992 - "GET / HTTP/1.1" 200 OK
-INFO:     127.0.0.1:58002 - "WebSocket /ws" [accepted]
-INFO:frontend.server:WebSocket connected. Total connections: 1
-INFO:     connection open
+INFO:     127.0.0.1:36054 - "POST /api/clear-artifacts HTTP/1.1" 200 OK
 INFO:bioagents.agents.research_agent:Research agent tools: ['fetch_uniprot_fasta', 'tool_universe_find_tools', 'tool_universe_call_tool', 'fetch_webpage_as_pdf_text', 'extract_pdf_text_spacy_layout', 'fetch_alphafold_structure', 'fetch_pdb_structure', 'download_structure_file']
 INFO:bioagents.agents.analysis_agent:Analysis agent tools: ['calculate_molecular_weight', 'analyze_amino_acid_composition', 'calculate_isoelectric_point']
 Initializing executor, hold on[33m...[0m
 Using existing Docker image: bioagents-coder
-Starting container on [1;92m127.0.0.1[0m:[1;36m8891[0m[33m...[0m
+Starting container on [1;92m127.0.0.1[0m:[1;36m8900[0m[33m...[0m
 Container status: created, waiting[33m...[0m
-Container 8514ad134bc2 is running with kernel [93mfdca9a5b-6873-46d9-b59a-33cdfca3ca5a[0m
+Container 156cb8f3888b is running with kernel [93mdb45b5ff-d02b-4bec-a7a2-e9499a986702[0m
 Caution: you set an authorization for all imports, meaning your agent can decide to import any package it deems necessary. This
 might raise issues if the package is not installed in your environment.
 Initializing executor, hold on[33m...[0m
 Using existing Docker image: bioagents-ml
-Starting container on [1;92m127.0.0.1[0m:[1;36m8892[0m[33m...[0m
+Starting container on [1;92m127.0.0.1[0m:[1;36m8901[0m[33m...[0m
 Container status: created, waiting[33m...[0m
-Container 83a4bfae0792 is running with kernel [93m58b41565-3cc7-4f4a-8fb1-0551d967586d[0m
+Container ea798a85bd7b is running with kernel [93m27e7be58-5a9f-4bdf-b0a2-0d59ed8b6452[0m
 Caution: you set an authorization for all imports, meaning your agent can decide to import any package it deems necessary. This
 might raise issues if the package is not installed in your environment.
 Initializing executor, hold on[33m...[0m
 Using existing Docker image: bioagents-dl
-Starting container on [1;92m127.0.0.1[0m:[1;36m8893[0m[33m...[0m
+Starting container on [1;92m127.0.0.1[0m:[1;36m8902[0m[33m...[0m
 Container status: created, waiting[33m...[0m
-Container a3f183d50d07 is running with kernel [93m3b53bc66-5113-492d-a10a-2121360413aa[0m
+Container 7dc01f814b6f is running with kernel [93md1ef2842-148c-469f-bab4-ad03b2711a1c[0m
 Caution: you set an authorization for all imports, meaning your agent can decide to import any package it deems necessary. This
 might raise issues if the package is not installed in your environment.
 INFO:bioagents.agents.protein_design_agent:Protein design agent tools: ['fetch_alphafold_structure', 'fetch_pdb_structure', 'search_pdb_complexes', 'get_pdb_polymer_entities', 'download_structure_file', 'analyze_interface_contacts', 'compute_interface_metrics', 'design_binders_bindcraft', 'generate_binder_backbones', 'design_binder_sequences', 'predict_complex_structure', 'compute_binding_metrics', 'rank_binder_designs']
 INFO:google_genai.models:AFC is enabled with max remote calls: 10.
 INFO:httpx:HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent "HTTP/1.1 200 OK"
-INFO:bioagents.agents.supervisor_agent:Supervisor handoff to structural_biology: Analyze the protein sequence 'MKFLILLFNIL' to find structural data. Perform a search against structural databases like PDB or use structure prediction tools to identify potential folds, domains, or structural homologs for this sequence.
-INFO:bioagents.agents.helpers:Invoking LLM for StructuralBiology (attempt 1/3)
+INFO:bioagents.agents.supervisor_agent:Supervisor handoff to user_input: Please ask the user to provide the name, UniProt ID, or PDB ID of the protein they would like to visualize.
+INFO:frontend.server:Engagement request sent: type=clarification, question=How would you like to proceed?
+INFO:frontend.server:Engagement response received: Human insulin
+INFO:google_genai.models:AFC is enabled with max remote calls: 10.
 INFO:httpx:HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent "HTTP/1.1 200 OK"
-ERROR:bioagents.tools.structural_tools:Error fetching AlphaFold structure: 400 Client Error: Bad Request for url: https://alphafold.ebi.ac.uk/api/prediction/MKFLILLFNIL
-INFO:bioagents.agents.helpers:Invoking LLM for StructuralBiology (attempt 1/3)
+INFO:bioagents.agents.supervisor_agent:Supervisor handoff to research: Search for the 3D structure of 'Human insulin'. Identify the most relevant PDB ID (e.g., 1ZNI or 3I40) and fetch the structural data or metadata required for visualization.
+INFO:bioagents.agents.research_agent:Research Agent: Entering Decompose & Parallel Phase
+INFO:google_genai.models:AFC is enabled with max remote calls: 10.
 INFO:httpx:HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent "HTTP/1.1 200 OK"
-INFO:bioagents.agents.helpers:Invoking LLM for StructuralBiology (attempt 1/3)
+INFO:bioagents.agents.research_agent:Research Agent: Running 3 sub-tasks in parallel
+INFO:bioagents.agents.helpers:Invoking LLM for Research Sub-agent (attempt 1/3)
+INFO:bioagents.agents.helpers:Invoking LLM for Research Sub-agent (attempt 1/3)
+INFO:bioagents.agents.helpers:Invoking LLM for Research Sub-agent (attempt 1/3)
 INFO:httpx:HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent "HTTP/1.1 200 OK"
-INFO:bioagents.tools.structural_tools:PDB not found, trying CIF format
-ERROR:bioagents.tools.structural_tools:Error downloading structure: 404 Client Error: Not Found for url: https://alphafold.ebi.ac.uk/files/AF-MKFLILLFNIL-F1-model_v6.cif
-INFO:bioagents.agents.helpers:Invoking LLM for StructuralBiology (attempt 1/3)
+INFO:httpx:HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent "HTTP/1.1 200 OK"
+INFO:httpx:HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent "HTTP/1.1 200 OK"
+INFO:bioagents.tools.tool_universe:ToolUniverse search query: 'search for protein identifiers by name or sequence' (limit=5)
+INFO:bioagents.tools.tool_universe:ToolUniverse search query: 'fetch protein structure from PDB or AlphaFold' (limit=5)
+INFO:bioagents.tools.tool_universe:ToolUniverse search query: 'fetch protein structure data from PDB or AlphaFold' (limit=5)
+INFO:bioagents.agents.research_agent:Research Agent: Continuing parallel sub-agents
+INFO:bioagents.agents.helpers:Invoking LLM for Research Sub-agent 1 (Continue) (attempt 1/3)
+INFO:bioagents.agents.helpers:Invoking LLM for Research Sub-agent 2 (Continue) (attempt 1/3)
+INFO:bioagents.agents.helpers:Invoking LLM for Research Sub-agent 3 (Continue) (attempt 1/3)
+INFO:httpx:HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent "HTTP/1.1 200 OK"
+INFO:httpx:HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent "HTTP/1.1 200 OK"
+INFO:httpx:HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent "HTTP/1.1 200 OK"
+INFO:bioagents.agents.research_agent:Research Agent: Reached max parallel rounds (1). Forcing merge.
+INFO:bioagents.agents.research_agent:Research Agent: Entering Merge Phase
+INFO:bioagents.agents.helpers:Invoking LLM for Research Merger (attempt 1/3)
+INFO:google_genai.models:AFC is enabled with max remote calls: 10.
 INFO:httpx:HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent "HTTP/1.1 200 OK"
 INFO:google_genai.models:AFC is enabled with max remote calls: 10.
 INFO:httpx:HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent "HTTP/1.1 200 OK"
-INFO:bioagents.agents.supervisor_agent:Supervisor handoff to genomics: Perform a BLASTp search for the peptide sequence 'MKFLILLFNIL' against the non-redundant (nr) protein database. Identify the top protein hits and their organisms. Report the UniProt IDs or Accession numbers of the full-length proteins containing this sequence.
-INFO:bioagents.agents.helpers:Invoking LLM for Genomics (attempt 1/3)
+INFO:google_genai.models:AFC is enabled with max remote calls: 10.
+INFO:httpx:HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent "HTTP/1.1 200 OK"
+INFO:bioagents.agents.research_agent:Research agent tools: ['fetch_uniprot_fasta', 'tool_universe_find_tools', 'tool_universe_call_tool', 'fetch_webpage_as_pdf_text', 'extract_pdf_text_spacy_layout', 'fetch_alphafold_structure', 'fetch_pdb_structure', 'download_structure_file']
+INFO:bioagents.agents.analysis_agent:Analysis agent tools: ['calculate_molecular_weight', 'analyze_amino_acid_composition', 'calculate_isoelectric_point']
+Initializing executor, hold on[33m...[0m
+Using existing Docker image: bioagents-coder
+Starting container on [1;92m127.0.0.1[0m:[1;36m8903[0m[33m...[0m
+Container status: created, waiting[33m...[0m
+Container a475284c40a3 is running with kernel [93mc0d6c36c-4bb6-4dd2-9f4f-f5b0ba418058[0m
+Caution: you set an authorization for all imports, meaning your agent can decide to import any package it deems necessary. This
+might raise issues if the package is not installed in your environment.
+Initializing executor, hold on[33m...[0m
+Using existing Docker image: bioagents-ml
+Starting container on [1;92m127.0.0.1[0m:[1;36m8904[0m[33m...[0m
+Container status: created, waiting[33m...[0m
+Container d994973e9f55 is running with kernel [93mf101ffd1-5c06-4d13-9832-b949cbf709c7[0m
+Caution: you set an authorization for all imports, meaning your agent can decide to import any package it deems necessary. This
+might raise issues if the package is not installed in your environment.
+Initializing executor, hold on[33m...[0m
+Using existing Docker image: bioagents-dl
+Starting container on [1;92m127.0.0.1[0m:[1;36m8905[0m[33m...[0m
+Container status: created, waiting[33m...[0m
+Container 95f2464ef417 is running with kernel [93m653a47df-a7a8-4ec8-a6ca-9a2f01fc5722[0m
+Caution: you set an authorization for all imports, meaning your agent can decide to import any package it deems necessary. This
+might raise issues if the package is not installed in your environment.
+INFO:bioagents.agents.protein_design_agent:Protein design agent tools: ['fetch_alphafold_structure', 'fetch_pdb_structure', 'search_pdb_complexes', 'get_pdb_polymer_entities', 'download_structure_file', 'analyze_interface_contacts', 'compute_interface_metrics', 'design_binders_bindcraft', 'generate_binder_backbones', 'design_binder_sequences', 'predict_complex_structure', 'compute_binding_metrics', 'rank_binder_designs']
+INFO:google_genai.models:AFC is enabled with max remote calls: 10.
+INFO:httpx:HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent "HTTP/1.1 200 OK"
+INFO:bioagents.agents.supervisor_agent:Supervisor handoff to user_input: [ENGAGEMENT_REQUEST] Please ask the user which protein structure they would like to download. Request a specific identifier like a PDB ID (e.g., '1A8M') or a protein name/organism.
+INFO:frontend.server:Engagement request sent: type=clarification, question=How would you like to proceed?
+INFO:frontend.server:Engagement response received: Human insulin
+INFO:google_genai.models:AFC is enabled with max remote calls: 10.
+INFO:httpx:HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent "HTTP/1.1 200 OK"
+INFO:bioagents.agents.supervisor_agent:Supervisor handoff to research: Search for and retrieve the PDB identifiers and structural data for Human Insulin. Identify the most representative high-resolution structure if multiple exist.
+INFO:bioagents.agents.research_agent:Research Agent: Entering Decompose & Parallel Phase
+INFO:google_genai.models:AFC is enabled with max remote calls: 10.
+INFO:httpx:HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent "HTTP/1.1 200 OK"
+INFO:bioagents.agents.research_agent:Research Agent: Running 3 sub-tasks in parallel
+INFO:bioagents.agents.helpers:Invoking LLM for Research Sub-agent (attempt 1/3)
+INFO:bioagents.agents.helpers:Invoking LLM for Research Sub-agent (attempt 1/3)
+INFO:bioagents.agents.helpers:Invoking LLM for Research Sub-agent (attempt 1/3)
+INFO:httpx:HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent "HTTP/1.1 200 OK"
+INFO:httpx:HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent "HTTP/1.1 200 OK"
+INFO:httpx:HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent "HTTP/1.1 200 OK"
+INFO:bioagents.tools.tool_universe:ToolUniverse search query: 'search for protein structure or UniProt information by name' (limit=5)
+INFO:bioagents.tools.tool_universe:ToolUniverse search query: 'search for protein structures in PDB by name or keyword' (limit=5)
+INFO:bioagents.tools.tool_universe:ToolUniverse search query: 'search for protein structures or UniProt IDs by name' (limit=5)
+INFO:bioagents.agents.research_agent:Research Agent: Continuing parallel sub-agents
+INFO:bioagents.agents.helpers:Invoking LLM for Research Sub-agent 1 (Continue) (attempt 1/3)
+INFO:bioagents.agents.helpers:Invoking LLM for Research Sub-agent 2 (Continue) (attempt 1/3)
+INFO:bioagents.agents.helpers:Invoking LLM for Research Sub-agent 3 (Continue) (attempt 1/3)
+INFO:httpx:HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent "HTTP/1.1 200 OK"
+INFO:httpx:HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent "HTTP/1.1 200 OK"
+INFO:httpx:HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent "HTTP/1.1 200 OK"
+INFO:bioagents.agents.research_agent:Research Agent: Reached max parallel rounds (1). Forcing merge.
+INFO:bioagents.agents.research_agent:Research Agent: Entering Merge Phase
+INFO:bioagents.agents.helpers:Invoking LLM for Research Merger (attempt 1/3)
+INFO:google_genai.models:AFC is enabled with max remote calls: 10.
+INFO:httpx:HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent "HTTP/1.1 200 OK"
+INFO:google_genai.models:AFC is enabled with max remote calls: 10.
+INFO:httpx:HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent "HTTP/1.1 200 OK"
+INFO:google_genai.models:AFC is enabled with max remote calls: 10.
 INFO:httpx:HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent "HTTP/1.1 200 OK"
