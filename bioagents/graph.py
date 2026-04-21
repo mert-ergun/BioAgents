@@ -37,6 +37,7 @@ from bioagents.tools.pdf_tools import (
 )
 from bioagents.tools.protein_design_tools import get_all_protein_design_tools
 from bioagents.tools.proteomics_tools import fetch_uniprot_fasta
+from bioagents.tools.rdkit_tools import get_rdkit_analysis_tools
 from bioagents.tools.structural_tools import (
     download_structure_file,
     fetch_alphafold_structure,
@@ -271,6 +272,7 @@ def create_graph(_initialize_references: bool = True):
         calculate_molecular_weight,
         analyze_amino_acid_composition,
         calculate_isoelectric_point,
+        *get_rdkit_analysis_tools(),
     ]
     tool_builder_tools = get_tool_builder_tools()
     protein_design_tools = get_all_protein_design_tools()

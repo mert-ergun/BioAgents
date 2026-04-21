@@ -43,6 +43,14 @@
         <tool>generate_binder_backbones</tool>
         <tool>design_binder_sequences</tool>
         <tool>predict_complex_structure</tool>
+        <tool>design_small_molecule_binder</tool>
+      </tools>
+    </capability>
+
+    <capability name="Small Molecule Binder Design">
+      <description>Design protein binders for small molecules using cheminformatics</description>
+      <tools>
+        <tool>design_small_molecule_binder</tool>
       </tools>
     </capability>
 
@@ -199,6 +207,15 @@
       5. Example workflow:
          - download_structure_file(pdb_id="1YCR", file_format="pdb") → saves to "data/1YCR.pdb"
          - generate_binder_backbones(target_pdb_path="data/1YCR.pdb", ...)
+    </instruction>
+
+    <instruction priority="high">
+      For small molecule binder design:
+      1. Use design_small_molecule_binder with the provided SMILES string
+      2. The tool handles molecular property calculation and generates basic binder designs
+      3. Note that this is a simplified implementation - full design requires specialized tools
+      4. Always validate the SMILES first (should be done by rdkit_validator)
+      5. Report molecular properties and design results clearly
     </instruction>
   </instructions>
 

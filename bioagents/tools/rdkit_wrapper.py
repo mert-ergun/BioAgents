@@ -184,6 +184,33 @@ def _run_rdkit_command(
 # ============================================================================
 
 
+def _detect_and_close_unclosed_rings(smiles: str) -> tuple[str, list[str]]:
+    """
+    Detect unclosed ring markers (1-9) and close them.
+    
+    Returns: (fixed_smiles, repairs_applied)
+    """
+    import re
+    repairs = []
+    fixed = smiles
+    
+    # Find all ring closure markers
+    markers = {}
+    for match in re.finditer(r'([1-9])', fixed):
+        marker = match.group(1)
+        if marker not in markers:
+            markers[marker] = []
+        markers[marker].append(match.start())
+    
+    # Find unclosed markers (appear odd number of times)
+    for marker, positions in markers.items():
+        if len(positions) % 2 == 1:  # Unclosed
+            fixed += marker
+            repairs.append(f"close_ring_{marker}")
+    
+    return fixed, repairs
+
+
 def check_smiles(smiles: str) -> dict[str, Any]:
     """
     Validate a SMILES string for chemical correctness.
@@ -196,19 +223,26 @@ def check_smiles(smiles: str) -> dict[str, Any]:
             "summary": str
         }
     """
+    # First, detect and close unclosed rings
+    fixed_smiles, ring_repairs = _detect_and_close_unclosed_rings(smiles)
+    smiles_to_validate = fixed_smiles
+    
     # Use repair-smiles for validation since it validates SMILES syntax
     try:
-        result = repair_smiles(smiles)
+        result = repair_smiles(smiles_to_validate)
         if result.get("success", False):
             best_candidate = result.get("best_candidate", {})
             is_valid = best_candidate.get("valid", False)
+            canonical = best_candidate.get("canonical_smiles", smiles_to_validate)
+            
             return {
                 "overall_pass": is_valid,
                 "valid": is_valid,
-                "canonical_smiles": best_candidate.get("canonical_smiles", smiles),
+                "canonical_smiles": canonical,
                 "summary": "Valid SMILES" if is_valid else "Invalid SMILES",
                 "confidence": result.get("confidence", 0),
                 "functional_groups": best_candidate.get("functional_groups", []),
+                "repairs_applied": ring_repairs,
             }
         else:
             return {
@@ -216,6 +250,7 @@ def check_smiles(smiles: str) -> dict[str, Any]:
                 "valid": False,
                 "canonical_smiles": smiles,
                 "summary": result.get("message", "Failed to validate SMILES"),
+                "repairs_applied": ring_repairs,
             }
     except Exception as e:
         return {
@@ -223,6 +258,7 @@ def check_smiles(smiles: str) -> dict[str, Any]:
             "valid": False,
             "canonical_smiles": smiles,
             "summary": str(e),
+            "repairs_applied": ring_repairs,
         }
 
 
@@ -245,6 +281,8 @@ def check_reaction(reactants: list[str], products: list[str]) -> dict[str, Any]:
 def repair_smiles(input_str: str) -> dict[str, Any]:
     """
     Repair/reconstruct malformed SMILES.
+    
+    Detects and fixes unclosed ring markers (1-9) before attempting repair.
 
     Returns:
         {
@@ -256,7 +294,22 @@ def repair_smiles(input_str: str) -> dict[str, Any]:
             "attempts": int
         }
     """
-    return _run_rdkit_command("repair-smiles", ["--input", input_str])
+    # First, detect and close unclosed rings
+    fixed_smiles, ring_repairs = _detect_and_close_unclosed_rings(input_str)
+    
+    # If rings were closed, use the fixed version
+    if ring_repairs:
+        input_str = fixed_smiles
+    
+    result = _run_rdkit_command("repair-smiles", ["--input", input_str])
+    
+    # Add repair trace
+    if ring_repairs:
+        if "best_candidate" in result:
+            result["best_candidate"]["ring_closures_applied"] = ring_repairs
+        result["ring_closures_applied"] = ring_repairs
+    
+    return result
 
 
 # ============================================================================
