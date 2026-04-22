@@ -7,10 +7,39 @@ from langchain_core.messages import AIMessage, HumanMessage
 
 from bioagents.graph import create_graph
 
+_NEW_AGENT_PATCHES = [
+    "bioagents.graph.create_web_browser_agent",
+    "bioagents.graph.create_literature_agent",
+    "bioagents.graph.create_paper_replication_agent",
+    "bioagents.graph.create_data_acquisition_agent",
+    "bioagents.graph.create_genomics_agent",
+    "bioagents.graph.create_transcriptomics_agent",
+    "bioagents.graph.create_structural_biology_agent",
+    "bioagents.graph.create_phylogenetics_agent",
+    "bioagents.graph.create_docking_agent",
+    "bioagents.graph.create_planner_agent",
+    "bioagents.graph.create_tool_validator_agent",
+    "bioagents.graph.create_tool_discovery_agent",
+    "bioagents.graph.create_prompt_optimizer_agent",
+    "bioagents.graph.create_result_checker_agent",
+    "bioagents.graph.create_shell_agent",
+    "bioagents.graph.create_git_agent",
+    "bioagents.graph.create_environment_agent",
+    "bioagents.graph.create_visualization_agent",
+]
+
+
+def _apply_new_agent_patches(func):
+    """Apply patches for all 18 new agents to a test function."""
+    for target in _NEW_AGENT_PATCHES:
+        func = patch(target, return_value=Mock())(func)
+    return func
+
 
 class TestBasicWorkflow:
     """Integration tests for basic workflow scenarios."""
 
+    @_apply_new_agent_patches
     @patch("bioagents.graph.create_summary_agent")
     @patch("bioagents.graph.create_supervisor_agent")
     @patch("bioagents.graph.create_research_agent")
@@ -35,6 +64,7 @@ class TestBasicWorkflow:
         mock_research,
         mock_supervisor,
         mock_summary,
+        *new_agent_mocks,
     ):
         """Test that graph can be created with all components."""
         # Setup all mocks
@@ -155,6 +185,7 @@ class TestMultiAgentWorkflow:
 class TestEndToEndWorkflow:
     """End-to-end integration tests simulating real workflows."""
 
+    @_apply_new_agent_patches
     @patch("bioagents.graph.create_summary_agent")
     @patch("bioagents.graph.create_supervisor_agent")
     @patch("bioagents.graph.create_research_agent")
@@ -179,6 +210,7 @@ class TestEndToEndWorkflow:
         mock_research,
         mock_supervisor,
         mock_summary,
+        *new_agent_mocks,
     ):
         """Test a simple query workflow."""
         # Mock supervisor routing: research -> FINISH
@@ -220,6 +252,7 @@ class TestEndToEndWorkflow:
             # Some exceptions are expected in mocked scenarios
             pass
 
+    @_apply_new_agent_patches
     @patch("bioagents.graph.create_summary_agent")
     @patch("bioagents.graph.create_supervisor_agent")
     @patch("bioagents.graph.create_research_agent")
@@ -244,6 +277,7 @@ class TestEndToEndWorkflow:
         mock_research,
         mock_supervisor,
         mock_summary,
+        *new_agent_mocks,
     ):
         """Test a multi-step workflow: research -> analysis -> report -> finish."""
         # Mock supervisor routing through all agents

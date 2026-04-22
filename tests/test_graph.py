@@ -167,9 +167,39 @@ class TestRouteSupervisor:
         assert result == "summary"  # Default to summary when next is missing
 
 
+_NEW_AGENT_PATCHES = [
+    "bioagents.graph.create_web_browser_agent",
+    "bioagents.graph.create_literature_agent",
+    "bioagents.graph.create_paper_replication_agent",
+    "bioagents.graph.create_data_acquisition_agent",
+    "bioagents.graph.create_genomics_agent",
+    "bioagents.graph.create_transcriptomics_agent",
+    "bioagents.graph.create_structural_biology_agent",
+    "bioagents.graph.create_phylogenetics_agent",
+    "bioagents.graph.create_docking_agent",
+    "bioagents.graph.create_planner_agent",
+    "bioagents.graph.create_tool_validator_agent",
+    "bioagents.graph.create_tool_discovery_agent",
+    "bioagents.graph.create_prompt_optimizer_agent",
+    "bioagents.graph.create_result_checker_agent",
+    "bioagents.graph.create_shell_agent",
+    "bioagents.graph.create_git_agent",
+    "bioagents.graph.create_environment_agent",
+    "bioagents.graph.create_visualization_agent",
+]
+
+
+def _apply_new_agent_patches(func):
+    """Apply patches for all 18 new agents to a test function."""
+    for target in _NEW_AGENT_PATCHES:
+        func = patch(target, return_value=Mock())(func)
+    return func
+
+
 class TestCreateGraph:
     """Tests for create_graph function."""
 
+    @_apply_new_agent_patches
     @patch("bioagents.graph.create_summary_agent")
     @patch("bioagents.graph.create_supervisor_agent")
     @patch("bioagents.graph.create_research_agent")
@@ -194,6 +224,7 @@ class TestCreateGraph:
         mock_research,
         mock_supervisor,
         mock_summary,
+        *new_agent_mocks,
     ):
         """Test basic graph creation."""
         # Setup mocks
@@ -219,6 +250,7 @@ class TestCreateGraph:
         mock_analysis.assert_called_once()
         mock_report.assert_called_once()
 
+    @_apply_new_agent_patches
     @patch("bioagents.graph.create_summary_agent")
     @patch("bioagents.graph.create_supervisor_agent")
     @patch("bioagents.graph.create_research_agent")
@@ -243,6 +275,7 @@ class TestCreateGraph:
         mock_research,
         mock_supervisor,
         mock_summary,
+        *new_agent_mocks,
     ):
         """Test that agents are created with correct tools."""
         mock_summary.return_value = Mock()
@@ -286,6 +319,7 @@ class TestCreateGraph:
         assert "ml" in supervisor_call_args
         assert "dl" in supervisor_call_args
 
+    @_apply_new_agent_patches
     @patch("bioagents.graph.create_summary_agent")
     @patch("bioagents.graph.create_supervisor_agent")
     @patch("bioagents.graph.create_research_agent")
@@ -310,6 +344,7 @@ class TestCreateGraph:
         mock_research,
         mock_supervisor,
         mock_summary,
+        *new_agent_mocks,
     ):
         """Test that create_graph returns a compiled graph."""
         mock_summary.return_value = Mock()
@@ -331,35 +366,6 @@ class TestCreateGraph:
         # Compiled graph should have invoke and stream methods
         assert hasattr(graph, "invoke")
         assert hasattr(graph, "stream")
-
-
-_NEW_AGENT_PATCHES = [
-    "bioagents.graph.create_web_browser_agent",
-    "bioagents.graph.create_literature_agent",
-    "bioagents.graph.create_paper_replication_agent",
-    "bioagents.graph.create_data_acquisition_agent",
-    "bioagents.graph.create_genomics_agent",
-    "bioagents.graph.create_transcriptomics_agent",
-    "bioagents.graph.create_structural_biology_agent",
-    "bioagents.graph.create_phylogenetics_agent",
-    "bioagents.graph.create_docking_agent",
-    "bioagents.graph.create_planner_agent",
-    "bioagents.graph.create_tool_validator_agent",
-    "bioagents.graph.create_tool_discovery_agent",
-    "bioagents.graph.create_prompt_optimizer_agent",
-    "bioagents.graph.create_result_checker_agent",
-    "bioagents.graph.create_shell_agent",
-    "bioagents.graph.create_git_agent",
-    "bioagents.graph.create_environment_agent",
-    "bioagents.graph.create_visualization_agent",
-]
-
-
-def _apply_new_agent_patches(func):
-    """Apply patches for all 18 new agents to a test function."""
-    for target in _NEW_AGENT_PATCHES:
-        func = patch(target, return_value=Mock())(func)
-    return func
 
 
 class TestGraphWorkflow:

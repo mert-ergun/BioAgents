@@ -436,7 +436,11 @@ class TestSupervisorAgent:
             members = ["research", "analysis", "report"]
             agent = create_supervisor_agent(members)
 
-            state = {"messages": [HumanMessage(content="Done")]}
+            state = {
+                "messages": [
+                    HumanMessage(content="All planned tasks are complete, please finalize now.")
+                ]
+            }
             result = agent(state)
 
             assert result["next"] == "FINISH"
@@ -559,18 +563,26 @@ class TestAgentIntegration:
             agent = create_supervisor_agent(members)
 
             # Simulate multiple calls
-            state1 = {"messages": [HumanMessage(content="Start")]}
+            state1 = {
+                "messages": [HumanMessage(content="Please fetch protein data for UniProt P04637.")]
+            }
             result1 = agent(state1)
             assert result1["next"] == "research"
 
-            state2 = {"messages": [HumanMessage(content="Continue")]}
+            state2 = {
+                "messages": [HumanMessage(content="Please fetch protein data for UniProt P04637.")]
+            }
             result2 = agent(state2)
             assert result2["next"] == "analysis"
 
-            state3 = {"messages": [HumanMessage(content="Continue")]}
+            state3 = {
+                "messages": [HumanMessage(content="Please fetch protein data for UniProt P04637.")]
+            }
             result3 = agent(state3)
             assert result3["next"] == "report"
 
-            state4 = {"messages": [HumanMessage(content="Continue")]}
+            state4 = {
+                "messages": [HumanMessage(content="Please fetch protein data for UniProt P04637.")]
+            }
             result4 = agent(state4)
             assert result4["next"] == "FINISH"
