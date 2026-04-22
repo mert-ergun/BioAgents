@@ -418,11 +418,11 @@ def execute_ml_code(
         Execution results including stdout, stderr, and information about generated files
     """
     try:
-        import docker
+        from docker.client import from_env as docker_from_env
         from docker.errors import DockerException, ImageNotFound
 
         try:
-            client = docker.from_env()
+            client = docker_from_env()
             client.ping()
         except DockerException as e:
             return (
