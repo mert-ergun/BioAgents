@@ -5,6 +5,11 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any
 
+from bioagents.workflows.drug_discovery.scenarios import (
+    SCENARIO_INFO,
+    SCENARIO_OPTIONS_HELP,
+    SCENARIO_SOURCE_SPECS,
+)
 from bioagents.workflows.esm_models import ALLOWED_ESM2_MODEL_NAMES, DEFAULT_ESM2_MODEL_NAME
 from bioagents.workflows.graph import WorkflowGraph
 from bioagents.workflows.nodes.dummy_embedder import DummyEmbedderNode
@@ -395,15 +400,33 @@ def _build_uniprot_dummy_embedding_export(_opts: dict[str, Any]) -> WorkflowGrap
 PresetBuilder = Callable[[dict[str, Any]], WorkflowGraph]
 
 
+_DEFAULT_INPUT_DESCRIPTIONS: dict[str, str] = {
+    "protein_id": "UniProt accession (e.g. P04637)",
+    "pdb_id": "PDB ID (e.g. 1YCR or 1ycr)",
+    "uniprot_id": "UniProt accession (e.g. P04637)",
+    "disease_id": "EFO disease identifier (e.g. EFO_0000311)",
+    "target_uniprot": "Target UniProt accession",
+    "smiles": "Small-molecule SMILES string",
+    "seed_smiles": "List of seed SMILES (comma-separated)",
+    "primary_id": "Primary entry id",
+}
+
+
+def _describe_input(key: str) -> str:
+    return _DEFAULT_INPUT_DESCRIPTIONS.get(key, key)
+
+
 class PresetEntry:
     __slots__ = (
         "builder",
+        "category",
         "description",
         "id",
         "name",
         "options_help",
         "source_input_key",
         "source_node_id",
+        "source_spec",
     )
 
     def __init__(
@@ -415,6 +438,9 @@ class PresetEntry:
         source_input_key: str,
         options_help: dict[str, Any],
         builder: PresetBuilder,
+        *,
+        source_spec: list[dict[str, Any]] | None = None,
+        category: str = "protein",
     ) -> None:
         self.id = id
         self.name = name
@@ -423,21 +449,42 @@ class PresetEntry:
         self.source_input_key = source_input_key
         self.options_help = options_help
         self.builder = builder
+        # source_spec: optional extended multi-source description used by
+        # drug-discovery scenarios. Each entry is a dict with keys:
+        #   node_id, input_key, label (human readable).
+        self.source_spec = source_spec
+        self.category = category
 
     def to_api_dict(self) -> dict[str, Any]:
+        if self.source_spec:
+            inputs: dict[str, str] = {}
+            source_specs: list[dict[str, Any]] = []
+            for spec in self.source_spec:
+                nid = spec["node_id"]
+                key = spec["input_key"]
+                label = spec.get("label") or _describe_input(key)
+                inputs[key] = label
+                source_specs.append({"node_id": nid, "input_key": key, "label": label})
+            return {
+                "id": self.id,
+                "name": self.name,
+                "description": self.description,
+                "source_node_id": self.source_node_id,
+                "source_spec": source_specs,
+                "inputs": inputs,
+                "options": self.options_help,
+                "category": self.category,
+            }
         return {
             "id": self.id,
             "name": self.name,
             "description": self.description,
             "source_node_id": self.source_node_id,
             "inputs": {
-                self.source_input_key: (
-                    "UniProt accession (e.g. P04637)"
-                    if self.source_input_key == "protein_id"
-                    else "PDB ID (e.g. 1YCR or 1ycr)"
-                ),
+                self.source_input_key: _describe_input(self.source_input_key),
             },
             "options": self.options_help,
+            "category": self.category,
         }
 
 
@@ -726,6 +773,20 @@ WORKFLOW_PRESETS: tuple[PresetEntry, ...] = (
         {},
         _build_pdb_rcsb_summary,
     ),
+    *(
+        PresetEntry(
+            id=_sid,
+            name=_info["name"],
+            description=_info["description"],
+            source_node_id=SCENARIO_SOURCE_SPECS[_sid][0]["node_id"],
+            source_input_key=SCENARIO_SOURCE_SPECS[_sid][0]["input_key"],
+            options_help=SCENARIO_OPTIONS_HELP[_sid],
+            builder=_info["builder"],
+            source_spec=SCENARIO_SOURCE_SPECS[_sid],
+            category="drug_discovery",
+        )
+        for _sid, _info in SCENARIO_INFO.items()
+    ),
 )
 
 
@@ -762,3 +823,43 @@ def initial_inputs_for_preset(preset_id: str, primary_id: str) -> dict[str, dict
         if len(val) >= 4:
             val = val[:4]
     return {sid: {key: val}}
+
+
+def is_drug_discovery_preset(preset_id: str) -> bool:
+    entry = PRESET_BY_ID.get(preset_id)
+    return bool(entry and entry.category == "drug_discovery")
+
+
+def initial_inputs_for_scenario(
+    preset_id: str, user_inputs: dict[str, str]
+) -> dict[str, dict[str, Any]]:
+    """Build ``{node_id: {input_key: value}}`` from a scenario's multi-source spec.
+
+    ``user_inputs`` is a flat mapping of ``input_key → raw string``. For
+    ``seed_smiles``, comma-separated strings are split into a list; missing
+    inputs are silently dropped so scenarios can degrade gracefully when the
+    user only provides the primary id.
+    """
+    entry = PRESET_BY_ID[preset_id]
+    if not entry.source_spec:
+        raise ValueError(f"Preset {preset_id!r} has no source_spec for scenarios.")
+    out: dict[str, dict[str, Any]] = {}
+    for spec in entry.source_spec:
+        nid = spec["node_id"]
+        key = spec["input_key"]
+        raw = user_inputs.get(key)
+        if raw is None:
+            continue
+        if key == "seed_smiles":
+            if isinstance(raw, list):
+                value: Any = [str(s).strip() for s in raw if str(s).strip()]
+            else:
+                value = [s.strip() for s in str(raw).replace(";", ",").split(",") if s.strip()]
+        elif key in {"uniprot_id", "target_uniprot"}:
+            value = str(raw).strip().upper()
+        elif key == "pdb_id":
+            value = str(raw).strip().upper().replace(" ", "")[:4]
+        else:
+            value = str(raw).strip()
+        out.setdefault(nid, {})[key] = value
+    return out

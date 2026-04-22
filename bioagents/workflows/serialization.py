@@ -12,6 +12,14 @@ from bioagents.workflows.graph import WorkflowGraph, WorkflowGraphError
 
 if TYPE_CHECKING:
     from bioagents.workflows.node import WorkflowNode
+from bioagents.workflows.drug_discovery.admet_nodes import ADMET_NODES
+from bioagents.workflows.drug_discovery.design_nodes import DESIGN_NODES
+from bioagents.workflows.drug_discovery.fetch_nodes import FETCH_NODES as DD_FETCH_NODES
+from bioagents.workflows.drug_discovery.gate_nodes import GATE_NODES
+from bioagents.workflows.drug_discovery.ligand_nodes import LIGAND_NODES
+from bioagents.workflows.drug_discovery.offtarget_nodes import OFFTARGET_NODES
+from bioagents.workflows.drug_discovery.retrosynth_nodes import RETROSYNTH_NODES
+from bioagents.workflows.drug_discovery.structure_nodes import STRUCTURE_NODES
 from bioagents.workflows.nodes.bioinformatics_fetch_nodes import BIOINFORMATICS_FETCH_NODES
 from bioagents.workflows.nodes.bioinformatics_nodes import BIOINFORMATICS_COMPUTE_NODES
 from bioagents.workflows.nodes.dummy_embedder import DummyEmbedderNode
@@ -77,6 +85,14 @@ _NODE_TYPES: list[type[WorkflowNode]] = [
     CompactBiochemRecordNode,
     *BIOINFORMATICS_COMPUTE_NODES,
     *BIOINFORMATICS_FETCH_NODES,
+    *DD_FETCH_NODES,
+    *LIGAND_NODES,
+    *DESIGN_NODES,
+    *STRUCTURE_NODES,
+    *OFFTARGET_NODES,
+    *ADMET_NODES,
+    *RETROSYNTH_NODES,
+    *GATE_NODES,
 ]
 
 NODE_REGISTRY: dict[str, type[WorkflowNode]] = {cls.workflow_type_id: cls for cls in _NODE_TYPES}

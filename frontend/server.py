@@ -26,6 +26,7 @@ from bioagents.graph import ALL_MEMBERS, create_graph
 from bioagents.graph_streaming import aiter_graph_stream, iter_graph_stream
 from bioagents.limits import TOOL_APPROVAL_TIMEOUT_SEC
 from bioagents.llms.llm_provider import set_api_keys_override
+from frontend.drug_discovery_routes import include_drug_discovery_routes
 from frontend.workflow_routes import include_workflow_routes
 
 # Graph agent nodes whose assistant output is streamed to the chat (excludes supervisor + *_tools).
@@ -69,6 +70,7 @@ app.add_middleware(
 FRONTEND_DIR = Path(__file__).parent
 app.mount("/static", StaticFiles(directory=FRONTEND_DIR / "static"), name="static")
 include_workflow_routes(app)
+include_drug_discovery_routes(app)
 
 # =====================================================
 # MODELS
@@ -332,8 +334,31 @@ def extract_metrics_from_content(content: str) -> dict | None:
 
 @app.get("/")
 async def root():
-    """Serve the main UI."""
-    return FileResponse(FRONTEND_DIR / "index.html")
+    """Serve the main UI with cache-busted static asset URLs.
+
+    Each ``<script src="static/js/…">`` tag gets a ``?v=<mtime>`` suffix so
+    browsers re-download scripts whenever we ship a new build instead of
+    serving a stale cached copy.
+    """
+    from fastapi.responses import HTMLResponse
+
+    index_path = FRONTEND_DIR / "index.html"
+    html = index_path.read_text(encoding="utf-8")
+
+    import re
+
+    static_dir = FRONTEND_DIR / "static"
+
+    def _stamp(match: re.Match[str]) -> str:
+        rel = match.group(1)
+        try:
+            mtime = int((static_dir / rel.removeprefix("static/")).stat().st_mtime)
+        except OSError:
+            mtime = 0
+        return f'src="{rel}?v={mtime}"'
+
+    html = re.sub(r'src="(static/js/[^"?]+)"', _stamp, html)
+    return HTMLResponse(html)
 
 
 @app.get("/health")
