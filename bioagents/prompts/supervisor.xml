@@ -109,6 +109,19 @@
       <use_when>User needs protein structure analysis, binder design, or AlphaFold predictions</use_when>
     </agent>
 
+    <agent name="rdkit_validator">
+      <description>Validates and analyzes chemical molecules using RDKit cheminformatics tools</description>
+      <capabilities>
+        <capability>Validate SMILES and SMIRKS strings for chemical correctness</capability>
+        <capability>Repair invalid SMILES strings to valid chemical structures</capability>
+        <capability>Calculate molecular properties (weight, rotatable bonds, H-bond donors/acceptors)</capability>
+        <capability>Check molecular drug-likeness (Lipinski's rule, etc.)</capability>
+        <capability>Analyze molecular descriptors and physiochemical properties</capability>
+        <capability>Handle batch molecule validation and analysis</capability>
+      </capabilities>
+      <use_when>User needs to validate molecules, analyze chemical structures, or check SMILES/SMIRKS validity</use_when>
+    </agent>
+
     <agent name="critic">
       <description>Validates scientific accuracy, biological plausibility, and domain standards</description>
       <capabilities>
@@ -134,6 +147,16 @@
 
       Keywords that indicate protein_design:
       "AlphaFold", "PDB", "structure", "3D", "complex", "interface", "binder", "design", "iPTM", "ipSAE", "RFdiffusion", "ProteinMPNN"
+    </instruction>
+
+    <instruction priority="critical">
+      ⚠️ MOLECULE VALIDATION DETECTION - CRITICAL ⚠️
+      If user asks to validate, repair, or analyze MOLECULES/SMILES/SMIRKS/chemical structures → Route to 'rdkit_validator'
+
+      Keywords that indicate rdkit_validator:
+      "validate molecule", "validate SMILES", "repair SMILES", "molecular validation", "check molecule", "analyze molecule", "molecular structure", "SMILES", "SMIRKS", "chemical validation"
+
+      This takes PRIORITY over routing to critic or other agents for chemistry validation tasks.
     </instruction>
 
     <instruction priority="critical">
@@ -314,6 +337,28 @@
       <action>Route to protein_design agent</action>
     </guideline>
     <!-- END PROTEIN DESIGN GUIDELINES -->
+
+    <!-- RDKIT VALIDATOR GUIDELINES - CHEMISTRY/SMILES VALIDATION -->
+    <guideline priority="critical">
+      <condition>User asks to validate, check, or repair molecules, SMILES strings, or SMIRKS patterns</condition>
+      <action>Route to rdkit_validator agent - it is specialized for chemical structure validation</action>
+    </guideline>
+
+    <guideline priority="critical">
+      <condition>User asks about molecular properties, drug-likeness, Lipinski's rule, or molecular descriptors for small molecules</condition>
+      <action>Route to rdkit_validator agent</action>
+    </guideline>
+
+    <guideline priority="critical">
+      <condition>User provides SMILES or SMIRKS strings and asks to validate, fix, or analyze them</condition>
+      <action>Route to rdkit_validator agent</action>
+    </guideline>
+
+    <guideline priority="critical">
+      <condition>User asks to check chemical structure validity or repair invalid structures</condition>
+      <action>Route to rdkit_validator agent</action>
+    </guideline>
+    <!-- END RDKIT VALIDATOR GUIDELINES -->
 
     <guideline>
       <condition>User requests protein SEQUENCE data (FASTA format) only, without structure or design needs</condition>

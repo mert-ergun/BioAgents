@@ -169,17 +169,23 @@ def main():
             graph.stream(initial_state, config=stream_config), 1
         ):
             print(f"\n{'=' * 80}")
-            print(f"STEP {step_num}: {next(iter(step_output.keys())).upper()}")
+            print(f"STEP {step_num}: Nodes executing: {list(step_output.keys())}")
             print(f"{'=' * 80}")
 
             for node_name, node_output in step_output.items():
+                print(f"\n[{node_name.upper()}]")
                 if node_name == "supervisor":
                     if "next" in node_output:
-                        print(f"Supervisor Decision: Route to '{node_output['next']}'")
+                        print(f"  -> Routing to: '{node_output['next']}'")
+                    if "reasoning" in node_output:
+                        print(f"  -> Reasoning: {node_output['reasoning'][:200]}")
                 elif node_name.endswith("_tools"):
-                    print("Executing tools...")
+                    print("  -> Executing tools...")
                 else:
-                    print(f"Agent '{node_name}' working...")
+                    print("  -> Agent working...")
+                    if "memory" in node_output and node_name in node_output["memory"]:
+                        agent_mem = node_output["memory"][node_name]
+                        print(f"     Status: {agent_mem.get('status', 'unknown')}")
 
         print(f"\n{'=' * 80}")
         print("FINAL RESULTS (FROM SHARED MEMORY)")
