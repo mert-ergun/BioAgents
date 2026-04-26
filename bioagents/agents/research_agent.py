@@ -16,15 +16,17 @@ from bioagents.agents.helpers import (
     extract_task_from_messages,
     get_content_text,
     resolve_tool_name,
+    filter_allowed_tools,          
+    inject_tools_to_system_prompt  
 )
 from bioagents.llms.llm_provider import get_llm
 from bioagents.prompts.prompt_loader import load_prompt
 
 logger = logging.getLogger(__name__)
 
-RESEARCH_AGENT_PROMPT = load_prompt("research")
+DYNAMIC_BASE_PROMPT = load_prompt("research")
 
-RESEARCH_AGENT_SYSTEM_PROMPT = """
+DYNAMIC_SYSTEM_PROMPT = """
 You are the Research Agent. Your task is to fetch biological data, sequences, and analyze scientific literature.
 
 INSTRUCTIONS:
@@ -53,7 +55,7 @@ ALWAYS end with valid JSON output.
 
 RESEARCH_AGENT_MEMORY_PROMPT = (
     "CRITICAL: You MUST NOT read other agents' outputs from messages. "
-    "Use only shared memory and your tools.\n\n" + RESEARCH_AGENT_SYSTEM_PROMPT
+    "Use only shared memory and your tools.\n\n" + DYNAMIC_SYSTEM_PROMPT
 )
 
 # Maximum number of tool-result rounds a sub-agent is allowed before being
@@ -125,30 +127,28 @@ def parse_sub_tasks(content) -> list[str]:
     return tasks[:4]
 
 
-def create_research_agent(tools: list):
+def create_research_agent(tools: list, allowed_tool_names: list[str] | None = None):
     """
     Create the Research Agent with tool-executing loop and parallel sub-agent support.
-
-    Args:
-        tools: List of tool objects
-
-    Returns:
-        Agent node function that returns shared-memory-compatible dict
     """
+    active_tools = filter_allowed_tools(tools, allowed_tool_names)
+    tool_names: list[str] = [resolve_tool_name(t) for t in active_tools]
+
     llm = get_llm(prompt_name="research")
-    llm_with_tools = llm.bind_tools(tools)
+    llm_with_tools = llm.bind_tools(active_tools)
 
-    tool_names: list[str] = [resolve_tool_name(t) for t in tools]
+    system_prompt = inject_tools_to_system_prompt(DYNAMIC_SYSTEM_PROMPT, tool_names)
+    base_prompt = inject_tools_to_system_prompt(DYNAMIC_BASE_PROMPT, tool_names)
 
-    # Build tools_dict for execute_agent_with_tools (shared memory path)
+    # Build tools_dict for execute_agent_with_tools using only active tools
     tools_dict = {}
-    for tool in tools:
+    for tool in active_tools:
         if isinstance(tool, BaseTool):
             tools_dict[tool.name] = tool.func if hasattr(tool, "func") else tool
         else:
             tools_dict[resolve_tool_name(tool)] = tool
 
-    logger.info(f"Research agent tools: {list(tools_dict.keys())}")
+    logger.info(f"Research agent active tools: {list(tools_dict.keys())}")
 
     # Track how many parallel tool-result rounds we've done (per invocation).
     _parallel_round = 0
@@ -247,7 +247,7 @@ def create_research_agent(tools: list):
                     "Research Agent: Decomposition failed. Falling back to direct tool-loop."
                 )
                 return _direct_tool_loop(
-                    messages, tools_dict, llm_with_tools, RESEARCH_AGENT_SYSTEM_PROMPT
+                    messages, tools_dict, llm_with_tools, system_prompt
                 )
 
             logger.info(f"Research Agent: Running {len(sub_tasks)} sub-tasks in parallel")
@@ -262,7 +262,7 @@ def create_research_agent(tools: list):
                         f"(do NOT re-fetch these):\n{already_fetched}"
                     )
                 sub_agent_messages = [
-                    SystemMessage(content=RESEARCH_AGENT_PROMPT),
+                    SystemMessage(content=base_prompt),
                     HumanMessage(
                         content=(
                             f"Perform this sub-task: {sub_task}\n\n"
@@ -465,7 +465,7 @@ def create_research_agent(tools: list):
                         f"(do NOT re-fetch these):\n{already_fetched}"
                     )
                 sub_agent_messages = [
-                    SystemMessage(content=RESEARCH_AGENT_PROMPT),
+                    SystemMessage(content=base_prompt),
                     HumanMessage(
                         content=(
                             f"Perform this sub-task: {sub_task}\n\n"
@@ -497,7 +497,7 @@ def create_research_agent(tools: list):
         else:
             logger.info("Research Agent: ToolMessage received for single-agent mode. Continuing.")
             msgs_with_system = [
-                SystemMessage(content=RESEARCH_AGENT_PROMPT),
+                SystemMessage(content=base_prompt),
                 *messages,
             ]
             return create_retry_response(

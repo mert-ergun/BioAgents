@@ -18,6 +18,7 @@ from bioagents.agents.docking_agent import create_docking_agent
 from bioagents.agents.environment_agent import create_environment_agent
 from bioagents.agents.genomics_agent import create_genomics_agent
 from bioagents.agents.git_agent import create_git_agent
+from bioagents.agents.helpers import filter_allowed_tools
 from bioagents.agents.literature_agent import create_literature_agent
 from bioagents.agents.ml_agent import create_ml_agent, create_ml_node
 from bioagents.agents.paper_replication_agent import create_paper_replication_agent
@@ -376,7 +377,10 @@ ALL_MEMBERS = [
 
 
 def create_graph(
-    _initialize_references: bool = True, checkpointer=None, policy: ToolPolicy | None = None
+    _initialize_references: bool = True, 
+    checkpointer=None, 
+    policy: ToolPolicy | None = None,
+    agent_tools_config: dict[str, list[str]] | None = None  # YENİ: Arayüzden gelen araç listesi
 ):
     """Create and compile the multi-agent LangGraph workflow.
 
@@ -394,7 +398,7 @@ def create_graph(
             approval gate. If None, default policy is used (auto-approve everything).
     """
     # ---- existing tool lists ----
-    research_tools = [
+    research_tools_full = [
         fetch_uniprot_fasta,
         tool_universe_find_tools,
         tool_universe_call_tool,
@@ -404,6 +408,20 @@ def create_graph(
         fetch_pdb_structure,
         download_structure_file,
     ]
+
+    # 2. Frontend'in Research agent'ı için izin verdiği araçların isimlerini çek
+    research_allowed = agent_tools_config.get("research") if agent_tools_config else None
+    
+    # 3. Listeyi filtrele
+    research_active_tools = filter_allowed_tools(research_tools_full, research_allowed)
+
+    # 4. Agent'ı (Prompt ve LLM ayarları için) SADECE aktif araçlarla yarat
+    # (Adım 2'de create_research_agent fonksiyonuna bu listeyi alacak yeteneği kazandırmıştık)
+    research_agent = create_research_agent(
+        tools=research_tools_full, 
+        allowed_tool_names=research_allowed
+    )
+
     analysis_tools_list = [
         calculate_molecular_weight,
         analyze_amino_acid_composition,
@@ -429,7 +447,7 @@ def create_graph(
     viz_tools = get_visualization_tools()
 
     # ---- create agents ----
-    research_agent = create_research_agent(research_tools)
+    # research_agent is already created above with proper tool filtering
     analysis_agent = create_analysis_agent(analysis_tools_list)
     report_agent = create_report_agent()
     coder_agent = create_coder_agent()
@@ -466,7 +484,7 @@ def create_graph(
 
     # ---- tool nodes (with approval gate when policy is provided) ----
     active_policy = policy or get_default_policy()
-    research_tool_node = make_approval_tool_node(research_tools, policy=active_policy)
+    research_tool_node = make_approval_tool_node(research_active_tools, policy=active_policy)
     analysis_tool_node = make_approval_tool_node(analysis_tools_list, policy=active_policy)
     tool_builder_tool_node = make_approval_tool_node(tb_tools, policy=active_policy)
     protein_design_tool_node = make_approval_tool_node(pd_tools, policy=active_policy)

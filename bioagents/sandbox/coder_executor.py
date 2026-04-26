@@ -204,8 +204,18 @@ def create_executor(
         print(f"Using LocalPythonExecutor for {agent_type} (USE_LOCAL_EXECUTOR=true)")
         from bioagents.sandbox.coder_helpers import PermissiveList
 
+        # Filter additional_imports to only include installed modules
+        installed_imports = [
+            imp for imp in additional_imports
+            if is_module_installed(imp)
+        ]
+        
+        if len(installed_imports) < len(additional_imports):
+            skipped = set(additional_imports) - set(installed_imports)
+            print(f"Note: Skipping unavailable packages: {', '.join(sorted(skipped))}")
+
         return LocalPythonExecutor(
-            additional_authorized_imports=PermissiveList(additional_imports),
+            additional_authorized_imports=PermissiveList(installed_imports),
             additional_functions=_extra_builtins(),
         )
 
@@ -310,7 +320,17 @@ def create_executor(
         apply_local_executor_runtime_env()
         from bioagents.sandbox.coder_helpers import PermissiveList
 
+        # Filter additional_imports to only include installed modules
+        installed_imports = [
+            imp for imp in additional_imports
+            if is_module_installed(imp)
+        ]
+        
+        if len(installed_imports) < len(additional_imports):
+            skipped = set(additional_imports) - set(installed_imports)
+            print(f"Note: Skipping unavailable packages: {', '.join(sorted(skipped))}")
+
         return LocalPythonExecutor(
-            additional_authorized_imports=PermissiveList(additional_imports),
+            additional_authorized_imports=PermissiveList(installed_imports),
             additional_functions=_extra_builtins(),
         )

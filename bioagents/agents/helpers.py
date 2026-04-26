@@ -451,3 +451,30 @@ def extract_best_content(messages: list) -> str:
         best_content = best_content[:4000] + "\n... [truncated]"
 
     return best_content
+
+def filter_allowed_tools(tools: list, allowed_tool_names: list[str] | None) -> list:
+    """
+    Filter the provided tools list based on the allowed_tool_names from the UI.
+    If allowed_tool_names is None, all tools are permitted.
+    """
+    if allowed_tool_names is None:
+        return tools
+    
+    filtered_tools = []
+    for tool in tools:
+        if resolve_tool_name(tool) in allowed_tool_names:
+            filtered_tools.append(tool)
+    return filtered_tools
+
+def inject_tools_to_system_prompt(base_prompt: str, active_tool_names: list[str]) -> str:
+    """
+    Dynamically appends the list of currently active tools to the system prompt
+    so the LLM knows exactly what it is allowed to use.
+    """
+    if not active_tool_names:
+        tools_str = "No tools available."
+    else:
+        tools_str = "\n".join([f"- {name}" for name in active_tool_names])
+        
+    dynamic_addition = f"\n\nCURRENTLY AVAILABLE TOOLS (You can ONLY use these):\n{tools_str}\n"
+    return base_prompt + dynamic_addition
