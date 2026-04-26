@@ -1,6 +1,7 @@
 """Analysis Agent - Tool-executing implementation."""
 
 import logging
+from typing import Any
 
 from langchain_core.messages import HumanMessage
 from langchain_core.tools import BaseTool
@@ -111,7 +112,7 @@ def create_analysis_agent(tools: list):
 
             structured_data = safe_json_output(raw_output, default_json)
 
-            out = {
+            out: dict[str, Any] = {
                 "data": structured_data,
                 "raw_output": raw_output,
                 "tool_calls": tool_calls_used,

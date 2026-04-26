@@ -35,9 +35,19 @@ class RateLimiter:
 
         This method blocks if the rate limit would be exceeded,
         waiting until a request slot becomes available.
+
+        Raises:
+            TimeoutError: If waiting beyond BIOAGENTS_RATE_LIMIT_MAX_WAIT_SEC (default 120s).
         """
+        from bioagents.limits import RATE_LIMIT_MAX_WAIT_SEC
+
+        deadline = (
+            time.time() + RATE_LIMIT_MAX_WAIT_SEC
+            if RATE_LIMIT_MAX_WAIT_SEC and RATE_LIMIT_MAX_WAIT_SEC > 0
+            else None
+        )
         while True:
-            sleep_time: float = 0
+            sleep_time: float = 0.0
 
             with self.lock:
                 current_time = time.time()
@@ -46,20 +56,31 @@ class RateLimiter:
                 while self.requests and self.requests[0] <= current_time - self.time_window:
                     self.requests.popleft()
 
-                if len(self.requests) >= self.max_requests:
-                    sleep_time = self.requests[0] + self.time_window - current_time
-                    if sleep_time > 0:
-                        print(
-                            f"Rate limit reached. Waiting {sleep_time:.1f}s "
-                            f"({len(self.requests)}/{self.max_requests} requests in window)..."
-                        )
-                    else:
-                        continue
-                else:
+                if len(self.requests) < self.max_requests:
                     self.requests.append(time.time())
                     return
 
+                sleep_time = self.requests[0] + self.time_window - current_time
+
+            if sleep_time <= 0:
+                continue
+
+            if deadline is not None:
+                remaining = deadline - time.time()
+                if remaining <= 0:
+                    raise TimeoutError(
+                        f"Rate limiter waited longer than {RATE_LIMIT_MAX_WAIT_SEC}s "
+                        "(BIOAGENTS_RATE_LIMIT_MAX_WAIT_SEC; set 0 to disable)"
+                    )
+                sleep_time = min(sleep_time, remaining)
+
             if sleep_time > 0:
+                with self.lock:
+                    n = len(self.requests)
+                print(
+                    f"Rate limit reached. Waiting {sleep_time:.1f}s "
+                    f"({n}/{self.max_requests} requests in window)..."
+                )
                 time.sleep(sleep_time)
 
     def get_stats(self) -> dict:
@@ -116,6 +137,11 @@ class RateLimitedLLM:
         if self._rate_limiter:
             self._rate_limiter.acquire()
         return self._llm.invoke(*args, **kwargs)
+
+    def bind(self, **kwargs):
+        """Preserve RPM limiting when callers use ``model.bind(stop=...)`` (e.g. smolagents)."""
+        bound = self._llm.bind(**kwargs)
+        return RateLimitedRunnable(bound, self._rate_limiter)
 
     def bind_tools(self, tools):
         """

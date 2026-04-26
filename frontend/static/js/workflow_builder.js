@@ -961,19 +961,147 @@ async function wbRun() {
     }
 }
 
-function wbWireTemplateSelect() {
+/** Cache of remote presets fetched from /api/workflows/presets. */
+const wbRemotePresets = new Map();
+/** Cache of fully-resolved preset definitions (preset_id -> template object). */
+const wbRemoteTemplateCache = new Map();
+
+function wbRebuildTemplateOptions() {
     const sel = document.getElementById('wb-template-select');
-    if (!sel || sel.dataset.bound === '1') return;
-    sel.dataset.bound = '1';
+    if (!sel) return;
+    const current = sel.value;
     sel.innerHTML = '';
+
+    const builtinGroup = document.createElement('optgroup');
+    builtinGroup.label = 'Built-in templates';
     WB_TEMPLATE_KEYS.forEach((k) => {
         const opt = document.createElement('option');
         opt.value = k;
         opt.textContent = WB_TEMPLATES[k].label;
-        sel.appendChild(opt);
+        builtinGroup.appendChild(opt);
     });
+    sel.appendChild(builtinGroup);
+
+    // Group remote presets by category.
+    const byCat = new Map();
+    wbRemotePresets.forEach((p) => {
+        const cat = p.category || 'other';
+        if (!byCat.has(cat)) byCat.set(cat, []);
+        byCat.get(cat).push(p);
+    });
+    const catLabels = {
+        drug_discovery: 'Drug discovery scenarios',
+        protein: 'Protein workflows',
+        other: 'More presets',
+    };
+    Array.from(byCat.keys())
+        .sort()
+        .forEach((cat) => {
+            const group = document.createElement('optgroup');
+            group.label = catLabels[cat] || cat;
+            byCat
+                .get(cat)
+                .sort((a, b) => (a.name || a.id).localeCompare(b.name || b.id))
+                .forEach((p) => {
+                    const opt = document.createElement('option');
+                    opt.value = p.id;
+                    opt.textContent = p.name || p.id;
+                    group.appendChild(opt);
+                });
+            sel.appendChild(group);
+        });
+
+    if (current && (WB_TEMPLATES[current] || wbRemotePresets.has(current))) {
+        sel.value = current;
+    } else {
+        sel.value = 'uniprot_mw_text';
+    }
+}
+
+async function wbLoadRemotePresets() {
+    try {
+        const res = await fetch('/api/workflows/presets');
+        if (!res.ok) {
+            console.warn('[wb] /api/workflows/presets returned', res.status);
+            return;
+        }
+        const data = await res.json();
+        const presets = data.presets || [];
+        presets.forEach((p) => {
+            if (!p || !p.id) return;
+            if (WB_TEMPLATES[p.id]) return;
+            wbRemotePresets.set(p.id, p);
+        });
+        console.info(
+            `[wb] loaded ${presets.length} remote presets (${wbRemotePresets.size} added to templates)`,
+        );
+        wbRebuildTemplateOptions();
+    } catch (e) {
+        console.warn('[wb] failed to load remote presets:', e);
+    }
+}
+
+async function wbFetchRemoteTemplate(presetId) {
+    if (wbRemoteTemplateCache.has(presetId)) return wbRemoteTemplateCache.get(presetId);
+    const res = await fetch(`/api/workflows/presets/${encodeURIComponent(presetId)}/definition`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    const def = data.definition || { nodes: [], edges: [] };
+    const layout = data.layout || {};
+    const template = {
+        label: data.name || presetId,
+        nodes: (def.nodes || []).map((n) => ({
+            id: n.id,
+            type: n.type,
+            params: n.params || {},
+            x: layout[n.id]?.x,
+            y: layout[n.id]?.y,
+        })),
+        edges: (def.edges || []).map((e) => ({
+            source: e.source,
+            target: e.target,
+            port_map: e.port_map || {},
+        })),
+        initial_inputs: data.initial_inputs || {},
+    };
+    wbRemoteTemplateCache.set(presetId, template);
+    return template;
+}
+
+async function wbApplyTemplateAsync(key) {
+    if (WB_TEMPLATES[key]) {
+        wbApplyTemplate(key);
+        return;
+    }
+    if (!wbRemotePresets.has(key)) {
+        wbApplyTemplate('blank');
+        return;
+    }
+    const sel = document.getElementById('wb-template-select');
+    const prev = sel?.value;
+    if (sel) sel.disabled = true;
+    try {
+        const t = await wbFetchRemoteTemplate(key);
+        WB_TEMPLATES[key] = t; // register so subsequent wbApplyTemplate calls work
+        wbApplyTemplate(key);
+    } catch (e) {
+        console.error('Failed to load preset definition:', e);
+        if (typeof showToast === 'function') {
+            showToast(`Failed to load template: ${e}`, 'error');
+        }
+        if (sel && prev && prev !== key) sel.value = prev;
+    } finally {
+        if (sel) sel.disabled = false;
+    }
+}
+
+function wbWireTemplateSelect() {
+    const sel = document.getElementById('wb-template-select');
+    if (!sel || sel.dataset.bound === '1') return;
+    sel.dataset.bound = '1';
+    wbRebuildTemplateOptions();
     sel.value = 'uniprot_mw_text';
-    sel.addEventListener('change', () => wbApplyTemplate(sel.value));
+    sel.addEventListener('change', () => wbApplyTemplateAsync(sel.value));
 }
 
 function wbWireCanvasInteractions() {
@@ -982,12 +1110,21 @@ function wbWireCanvasInteractions() {
     vp.dataset.wbWired = '1';
 
     vp.addEventListener('mousedown', (e) => {
-        if (e.target.closest('.wb-node') || e.target.closest('button')) return;
-        if (e.button === 1 || (e.button === 0 && e.shiftKey)) {
-            e.preventDefault();
-            wbPanDrag = { sx: e.clientX, sy: e.clientY, tx: wbState.view.tx, ty: wbState.view.ty };
-            vp.classList.add('wb-panning');
-        }
+        // Don't hijack clicks on nodes, wires, or inspector controls.
+        if (e.target.closest('.wb-node')) return;
+        if (e.target.closest('button')) return;
+        if (e.target.closest('path.wb-wire-hit')) return;
+        // Pan on middle-mouse, shift+left-click, or plain left-click on empty canvas.
+        if (e.button !== 0 && e.button !== 1) return;
+        e.preventDefault();
+        wbPanDrag = {
+            sx: e.clientX,
+            sy: e.clientY,
+            tx: wbState.view.tx,
+            ty: wbState.view.ty,
+            moved: false,
+        };
+        vp.classList.add('wb-panning');
     });
 
     window.addEventListener('mousemove', (e) => {
@@ -1007,8 +1144,11 @@ function wbWireCanvasInteractions() {
             }
         }
         if (wbPanDrag) {
-            wbState.view.tx = wbPanDrag.tx + (e.clientX - wbPanDrag.sx);
-            wbState.view.ty = wbPanDrag.ty + (e.clientY - wbPanDrag.sy);
+            const dx = e.clientX - wbPanDrag.sx;
+            const dy = e.clientY - wbPanDrag.sy;
+            if (!wbPanDrag.moved && Math.hypot(dx, dy) > 3) wbPanDrag.moved = true;
+            wbState.view.tx = wbPanDrag.tx + dx;
+            wbState.view.ty = wbPanDrag.ty + dy;
             wbApplyWorldTransform();
             wbScheduleRedrawEdges();
         }
@@ -1026,6 +1166,9 @@ function wbWireCanvasInteractions() {
             wbScheduleRedrawEdges();
         }
         if (wbPanDrag) {
+            // Swallow the trailing click if the user actually dragged so
+            // panning doesn't deselect nodes/wires.
+            if (wbPanDrag.moved) wbState._suppressNextClick = true;
             wbPanDrag = null;
             vp.classList.remove('wb-panning');
         }
@@ -1038,14 +1181,33 @@ function wbWireCanvasInteractions() {
     vp.addEventListener(
         'wheel',
         (e) => {
-            if (!e.ctrlKey && !e.metaKey) return;
             e.preventDefault();
+            // Trackpad two-finger pan: reports wheel with deltaMode=0, small
+            // deltas, often both deltaX and deltaY, and no ctrlKey. Browsers
+            // synthesize ctrlKey=true for pinch-zoom gestures so we can split:
+            //   - ctrl/meta/pinch → zoom
+            //   - plain wheel without ctrl and with any deltaX → pan
+            //   - plain wheel without ctrl and only deltaY → zoom (mouse wheel)
+            const isPinch = e.ctrlKey || e.metaKey;
+            const isTrackpadPan =
+                !isPinch && (Math.abs(e.deltaX) > 0 || e.shiftKey);
+            if (isTrackpadPan) {
+                wbState.view.tx -= e.deltaX;
+                wbState.view.ty -= e.deltaY;
+                wbApplyWorldTransform();
+                wbScheduleRedrawEdges();
+                return;
+            }
             const rect = vp.getBoundingClientRect();
             const mx = e.clientX - rect.left;
             const my = e.clientY - rect.top;
             const old = wbState.view.scale;
-            const delta = e.deltaY > 0 ? 0.92 : 1.08;
-            const ns = Math.min(1.8, Math.max(0.25, old * delta));
+            // Zoom speed: pinch zoom reports large deltaY, mouse wheel reports
+            // discrete steps. Normalize so both feel comparable.
+            const step = Math.min(Math.abs(e.deltaY), 50) / 50; // 0..1
+            const dir = e.deltaY > 0 ? -1 : 1;
+            const factor = 1 + dir * step * 0.12;
+            const ns = Math.min(1.8, Math.max(0.25, old * factor));
             const k = ns / old;
             wbState.view.tx = mx - (mx - wbState.view.tx) * k;
             wbState.view.ty = my - (my - wbState.view.ty) * k;
@@ -1057,7 +1219,12 @@ function wbWireCanvasInteractions() {
     );
 
     vp.addEventListener('click', (e) => {
+        if (wbState._suppressNextClick) {
+            wbState._suppressNextClick = false;
+            return;
+        }
         if (e.target.closest('.wb-node')) return;
+        if (e.target.closest('path.wb-wire-hit')) return;
         wbState.selectedId = null;
         wbSelectedWire = null;
         wbDrawEdges();
@@ -1136,8 +1303,11 @@ async function initWorkflowBuilder() {
     });
 
     try {
-        const res = await fetch('/api/workflows/node-types');
-        const data = await res.json();
+        const [typesRes] = await Promise.all([
+            fetch('/api/workflows/node-types'),
+            wbLoadRemotePresets(),
+        ]);
+        const data = await typesRes.json();
         wbNodeTypes = data.node_types || [];
         const hint = document.getElementById('wb-node-type-count');
         if (hint) hint.textContent = String(wbNodeTypes.length);
@@ -1145,7 +1315,7 @@ async function initWorkflowBuilder() {
         wbRenderPalette();
 
         if (!wbState.nodes.length) {
-            wbApplyTemplate(document.getElementById('wb-template-select')?.value || 'uniprot_mw_text');
+            await wbApplyTemplateAsync(document.getElementById('wb-template-select')?.value || 'uniprot_mw_text');
         } else {
             wbApplyWorldTransform();
             wbRenderNodes();

@@ -1,0 +1,125 @@
+{
+  "run_id": "7a56441e9dc74f5989f66915983b9e90",
+  "experiment_config": {
+    "id": "cfg_baseline",
+    "name": "Baseline",
+    "description": "Default configuration with no prompt overrides.",
+    "max_steps": 50,
+    "timeout": 180,
+    "system_prompt_overrides": {},
+    "model_override": {},
+    "temperature": 0.0,
+    "extra": {}
+  },
+  "use_cases": [
+    {
+      "id": "stella_cancer_gene_classification",
+      "name": "Cancer Gene Classification",
+      "prompt": "Using the COSMIC cancer gene census (~700 genes) and PCAWG 2020 datasets (87 cancer genes, 93 normal-pathway genes), classify a given gene list as cancer-related or normal. Report classification metrics including accuracy, overlap analysis between databases, and confidence scores.\n",
+      "description": "Classify genes as cancer-related vs. normal using COSMIC and PCAWG curated databases.\n",
+      "expected_agents": [],
+      "expected_tools": [],
+      "expected_output_contains": [
+        "COSMIC",
+        "PCAWG",
+        "cancer",
+        "normal"
+      ],
+      "reference_output": null,
+      "evaluation_criteria": "- Can classify genes as cancer vs normal with >80% accuracy.\n- Identifies overlapping genes across COSMIC and PCAWG databases.\n- Provides confidence scores for classifications.\n",
+      "tags": [
+        "stella",
+        "cancer",
+        "cosmic",
+        "pcawg",
+        "classification"
+      ],
+      "category": "cancer_biology"
+    }
+  ],
+  "started_at": "2026-03-31T19:24:06.745428+00:00",
+  "finished_at": "2026-03-31T19:27:36.468937+00:00",
+  "results": [
+    {
+      "use_case_id": "stella_cancer_gene_classification",
+      "use_case_name": "Cancer Gene Classification",
+      "prompt": "Using the COSMIC cancer gene census (~700 genes) and PCAWG 2020 datasets (87 cancer genes, 93 normal-pathway genes), classify a given gene list as cancer-related or normal. Report classification metrics including accuracy, overlap analysis between databases, and confidence scores.\n",
+      "execution_time": 206.87576174736023,
+      "total_steps": 3,
+      "workflow_completed": false,
+      "agent_flow": [
+        "supervisor",
+        "planner",
+        "supervisor"
+      ],
+      "agent_steps": [
+        {
+          "step": 1,
+          "agent": "supervisor",
+          "elapsed_ms": 2830.44171333313,
+          "messages": [
+            {
+              "type": "HumanMessage",
+              "content": "[SUPERVISOR TASK] Create a detailed step-by-step plan to classify a given gene list as cancer-related or normal using the COSMIC cancer gene census (~700 genes) and PCAWG 2020 datasets (87 cancer genes, 93 normal-pathway genes). The plan should include steps for data acquisition, data processing, classification methodology, calculation of classification metrics (accuracy, overlap analysis between databases, and confidence scores), and reporting."
+            }
+          ],
+          "routing_decision": "planner"
+        },
+        {
+          "step": 2,
+          "agent": "planner",
+          "elapsed_ms": 25597.413063049316,
+          "messages": [
+            {
+              "type": "AIMessage",
+              "content": "This plan outlines the steps to classify a given gene list as cancer-related or normal using the COSMIC Cancer Gene Census (CGC) and PCAWG 2020 datasets. It includes data acquisition, standardization, classification logic, overlap analysis, and reporting of classification metrics and confidence scores.\n\n**Goal:** Classify an input gene list as \"cancer-related\" or \"normal\" based on reference datasets, and report classification metrics.\n\n**Reference Datasets:**\n*   **COSMIC Cancer Gene Census (CGC):** ~700 genes (cancer-related).\n*   **PCAWG 2020 Cancer Genes:** 87 genes (cancer-related).\n*   **PCAWG 2020 Normal-Pathway Genes:** 93 genes (normal-pathway).\n\n**Classification Logic:**\nA gene will be classified based on its presence in these sets. Conflicts (e.g., a gene appearing in both cancer and normal sets) will be explicitly handled and assigned an \"Ambiguous\" classification.\n\n**Confidence Score Categories:**\n1.  **High Confidence Cancer:** Gene present in COSMIC CGC AND PCAWG Cancer Genes, AND NOT present in PCAWG Normal-Pathway Genes.\n2.  **Medium Confidence Cancer (COSMIC-only):** Gene present in COSMIC CGC, AND NOT present in PCAWG Cancer Genes, AND NOT present in PCAWG Normal-Pathway Genes.\n3.  **Medium Confidence Cancer (PCAWG-only):** Gene present in PCAWG Cancer Genes, AND NOT present in COSMIC CGC, AND NOT present in PCAWG Normal-Pathway Genes.\n4.  **High Confidence Normal:** Gene present in PCAWG Normal-Pathway Genes, AND NOT present in COSMIC CGC, AND NOT present in PCAWG Cancer Genes.\n5.  **Ambiguous (Cancer & Normal Conflict):** Gene present in (COSMIC CGC OR PCAWG Cancer Genes) AND present in PCAWG Normal-Pathway Genes.\n6.  **Unclassified:** Gene not present in any of the reference datasets.\n\n---\n\n### Step-by-Step Plan\n\n**Agent Roles:**\n*   **Bioinformatics Analyst (BA):** Handles data acquisition, initial processing, and reporting.\n*   **Computational Biologist (CB):** Develops and executes scripts for data standardization, classification, and metric "
+            }
+          ],
+          "routing_decision": null
+        },
+        {
+          "step": 3,
+          "agent": "supervisor",
+          "elapsed_ms": 26875.4301071167,
+          "messages": [
+            {
+              "type": "HumanMessage",
+              "content": "[SUPERVISOR TASK] Download the latest version of the COSMIC Cancer Gene Census (CGC) gene list. Prioritize a TSV or similar tabular format containing gene symbols. If direct download is not possible, provide instructions on how to manually obtain it."
+            }
+          ],
+          "routing_decision": "data_acquisition"
+        }
+      ],
+      "tool_calls": [],
+      "final_messages": [],
+      "raw_output": null,
+      "error_message": "LLM invoke exceeded 180.0s (set BIOAGENTS_AGENT_LLM_INVOKE_TIMEOUT_SEC or disable with 0)",
+      "failure_mode": "exception",
+      "token_usage": null,
+      "judge_score": 0.0,
+      "judge_reasoning": "The agent failed to produce any output due to an LLM invoke timeout, resulting in a complete failure to address the prompt. All evaluation dimensions are scored 0.0.",
+      "judge_breakdown": {
+        "correctness": 0.0,
+        "tool_use": 0.0,
+        "clarity": 0.0,
+        "completeness": 0.0,
+        "dimensions": {
+          "correctness_reasoning": "No output was captured from the agent, so correctness cannot be assessed.",
+          "tool_use_reasoning": "The agent did not call any tools, which were necessary to perform gene classification, overlap analysis, and report metrics as requested by the prompt.",
+          "clarity_reasoning": "No output was captured from the agent, so clarity cannot be assessed.",
+          "completeness_reasoning": "The agent produced no output, therefore it did not address any aspect of the prompt."
+        }
+      }
+    }
+  ],
+  "aggregates": {
+    "mean_score": 0.0,
+    "success_rate": 0.0,
+    "total_execution_time": 206.87576174736023,
+    "total_tokens": null,
+    "failure_mode_counts": {
+      "exception": 1
+    },
+    "total_use_cases": 1
+  }
+}

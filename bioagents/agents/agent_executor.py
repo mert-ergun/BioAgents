@@ -4,7 +4,6 @@ import json
 import logging
 import re
 import uuid
-from collections.abc import Callable
 from typing import Any
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
@@ -16,7 +15,7 @@ def execute_agent_with_tools(
     llm_with_tools,
     system_prompt: str,
     user_message: HumanMessage,
-    tools_dict: dict[str, Callable],
+    tools_dict: dict[str, Any],
     max_iterations: int = 5,
     full_message_history: list[Any] | None = None,
 ) -> tuple[str, list[str], AIMessage | None, str | None]:

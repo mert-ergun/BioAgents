@@ -7,9 +7,10 @@
 // CONFIGURATION
 // =====================================================
 
+const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
 const CONFIG = {
     apiBaseUrl: window.location.origin,
-    wsUrl: `ws://${window.location.host}/ws`,
+    wsUrl: `${wsProtocol}//${window.location.host}/ws`,
     reconnectDelay: 3000,
     maxReconnectAttempts: 5,
     storageKey: 'bioagents_sessions',
@@ -17,16 +18,36 @@ const CONFIG = {
 
 // Agent configuration
 const AGENTS = {
-    supervisor: { label: 'Orchestrator', icon: 'alt_route', color: 'slate', description: 'Routing tasks...' },
-    research: { label: 'LitSearcher', icon: 'menu_book', color: 'blue', description: 'Searching literature...' },
-    analysis: { label: 'Analyzer', icon: 'analytics', color: 'emerald', description: 'Analyzing data...' },
-    coder: { label: 'CodeGen', icon: 'code', color: 'amber', description: 'Generating code...' },
-    report: { label: 'Reporter', icon: 'description', color: 'pink', description: 'Writing report...' },
-    tool_builder: { label: 'ToolBuilder', icon: 'build', color: 'indigo', description: 'Building tools...' },
-    protein_design: { label: 'ProteinFolder', icon: 'polymer', color: 'primary', description: 'Folding protein...' },
-    critic: { label: 'Validator', icon: 'fact_check', color: 'rose', description: 'Validating results...' },
-    ml: { label: 'ML-Expert', icon: 'psychology', color: 'purple', description: 'Training ML model...', isTraining: true },
-    dl: { label: 'DL-Specialist', icon: 'memory', color: 'cyan', description: 'Designing neural network...', isTraining: true },
+    supervisor: { label: 'Orchestrator', icon: 'alt_route', color: 'slate', description: 'Routing tasks...', category: 'Core' },
+    research: { label: 'LitSearcher', icon: 'menu_book', color: 'blue', description: 'Searching literature...', category: 'Research' },
+    analysis: { label: 'Analyzer', icon: 'analytics', color: 'emerald', description: 'Analyzing data...', category: 'Computation' },
+    coder: { label: 'CodeGen', icon: 'code', color: 'amber', description: 'Generating code...', category: 'Computation' },
+    report: { label: 'Reporter', icon: 'description', color: 'pink', description: 'Writing report...', category: 'Quality' },
+    tool_builder: { label: 'ToolBuilder', icon: 'build', color: 'indigo', description: 'Building tools...', category: 'Meta' },
+    protein_design: { label: 'ProteinFolder', icon: 'polymer', color: 'primary', description: 'Folding protein...', category: 'Domain' },
+    critic: { label: 'Validator', icon: 'fact_check', color: 'rose', description: 'Validating results...', category: 'Quality' },
+    ml: { label: 'ML-Expert', icon: 'psychology', color: 'purple', description: 'Training ML model...', isTraining: true, category: 'Computation' },
+    dl: { label: 'DL-Specialist', icon: 'memory', color: 'cyan', description: 'Designing neural network...', isTraining: true, category: 'Computation' },
+    summary: { label: 'Summarizer', icon: 'summarize', color: 'pink', description: 'Summarizing results...', category: 'Quality' },
+    literature: { label: 'Literature', icon: 'library_books', color: 'blue', description: 'Searching papers...', category: 'Research' },
+    web_browser: { label: 'WebBrowser', icon: 'travel_explore', color: 'sky', description: 'Browsing web...', category: 'Research' },
+    paper_replication: { label: 'PaperReplicator', icon: 'content_copy', color: 'teal', description: 'Replicating paper...', category: 'Research' },
+    data_acquisition: { label: 'DataAcquirer', icon: 'download', color: 'green', description: 'Downloading data...', category: 'Research' },
+    genomics: { label: 'Genomics', icon: 'genetics', color: 'lime', description: 'Analyzing sequences...', category: 'Domain' },
+    transcriptomics: { label: 'Transcriptomics', icon: 'biotech', color: 'yellow', description: 'Analyzing expression...', category: 'Domain' },
+    structural_biology: { label: 'StructBio', icon: 'view_in_ar', color: 'orange', description: 'Analyzing structures...', category: 'Domain' },
+    phylogenetics: { label: 'Phylogenetics', icon: 'park', color: 'green', description: 'Building trees...', category: 'Domain' },
+    docking: { label: 'Docking', icon: 'hub', color: 'red', description: 'Docking molecules...', category: 'Domain' },
+    planner: { label: 'Planner', icon: 'checklist', color: 'violet', description: 'Planning tasks...', category: 'Meta' },
+    tool_validator: { label: 'ToolValidator', icon: 'verified', color: 'emerald', description: 'Validating tools...', category: 'Meta' },
+    tool_discovery: { label: 'ToolDiscovery', icon: 'search', color: 'blue', description: 'Discovering tools...', category: 'Meta' },
+    prompt_optimizer: { label: 'PromptOptimizer', icon: 'tune', color: 'amber', description: 'Optimizing prompts...', category: 'Meta' },
+    result_checker: { label: 'ResultChecker', icon: 'rule', color: 'rose', description: 'Checking results...', category: 'Meta' },
+    shell: { label: 'Shell', icon: 'terminal', color: 'slate', description: 'Running commands...', category: 'Infrastructure' },
+    git: { label: 'Git', icon: 'commit', color: 'orange', description: 'Managing repos...', category: 'Infrastructure' },
+    environment: { label: 'Environment', icon: 'settings_applications', color: 'teal', description: 'Setting up environment...', category: 'Infrastructure' },
+    visualization: { label: 'Visualizer', icon: 'bar_chart', color: 'fuchsia', description: 'Creating plots...', category: 'Infrastructure' },
+    user_input: { label: 'Awaiting Input', icon: 'person', color: 'cyan', description: 'Waiting for your response...', category: 'Core' },
 };
 
 // =====================================================
@@ -51,6 +72,7 @@ const state = {
     settings: {
         autoScroll: true,
         notifications: true,
+        advancedMode: false,
         theme: 'dark',
         apiKeys: {
             openai: '',
@@ -570,6 +592,7 @@ function initializeApp() {
     initSettings();
     initFileAttachment();
     initVoiceInput();
+    initAdvancedModeToggle();
 
     // Render initial state
     renderAgentList();
@@ -659,15 +682,8 @@ function loadSession(sessionId) {
 
     elements.projectTitle.textContent = session.title;
 
-    // Re-render everything
     resetChatUI();
-    state.messages.forEach(msg => {
-        if (msg.role === 'user') {
-            renderUserMessage(msg);
-        } else {
-            renderAssistantMessage(msg);
-        }
-    });
+    renderAllMessages();
 
     renderArtifacts();
     updateAuditLog(state.auditLog);
@@ -807,8 +823,13 @@ function handleMessage(data) {
             setActiveAgent(data.agent, data.progress);
             break;
         case 'message':
-            // Pass the entire message object to preserve references
             addAssistantMessage(data.content, data.agent, data.references);
+            break;
+        case 'tool_call':
+            addToolCallMessage(data.agent, data.tool_name, data.arguments);
+            break;
+        case 'tool_result':
+            addToolResultMessage(data.agent, data.tool_name, data.content);
             break;
         case 'audit':
             updateAuditLog(data.entries);
@@ -820,7 +841,6 @@ function handleMessage(data) {
             loadStructure(data.pdbContent);
             break;
         case 'complete':
-            // Handle all_references if provided
             if (data.all_references) {
                 console.log('Received all references:', data.all_references);
             }
@@ -837,6 +857,27 @@ function handleMessage(data) {
             break;
         case 'code_execution':
             renderCodeExecution(data.steps, data.agent);
+            break;
+        case 'steering_received':
+            updateSteeringBannerStatus(data.content);
+            break;
+        case 'tool_approval_request':
+            showToolApprovalPanel(data);
+            break;
+        case 'engagement_request':
+            showEngagementPanel(data);
+            break;
+        case 'engagement_response_received':
+            updateEngagementPanelStatus(data.id, 'received');
+            break;
+        case 'engagement_timeout':
+            updateEngagementPanelStatus(data.id, 'timeout');
+            break;
+        case 'tool_policy_blocked':
+            showToolBlockedNotification(data);
+            break;
+        case 'tool_policy_stats':
+            updateToolPolicyStats(data);
             break;
     }
 }
@@ -991,7 +1032,13 @@ function initInputHandlers() {
 
 async function handleSubmit() {
     const query = elements.queryInput.value.trim();
-    if (!query || state.isProcessing) return;
+    if (!query) return;
+
+    // If agents are already processing, send as steering message instead
+    if (state.isProcessing) {
+        handleSteer(query);
+        return;
+    }
 
     elements.queryInput.value = '';
     autoResizeTextarea();
@@ -1008,7 +1055,7 @@ async function handleSubmit() {
     try {
         const apiKeys = getApiKeysPayload();
         if (state.isConnected && state.ws?.readyState === WebSocket.OPEN) {
-            state.ws.send(JSON.stringify({ type: 'query', content: query, api_keys: apiKeys }));
+            state.ws.send(JSON.stringify({ type: 'query', content: query, api_keys: apiKeys, session_id: state.currentSessionId }));
         } else {
             await sendQueryViaRest(query, apiKeys);
         }
@@ -1024,6 +1071,23 @@ function getApiKeysPayload() {
     if (keys.openai?.trim()) payload.openai = keys.openai.trim();
     if (keys.gemini?.trim()) payload.gemini = keys.gemini.trim();
     return Object.keys(payload).length ? payload : undefined;
+}
+
+function handleSteer(steeringText) {
+    if (!steeringText || !state.isProcessing) return;
+
+    // Clear input
+    elements.queryInput.value = '';
+    autoResizeTextarea();
+
+    if (state.isConnected && state.ws?.readyState === WebSocket.OPEN) {
+        state.ws.send(JSON.stringify({ type: 'steer', content: steeringText }));
+        addSteeringBanner(steeringText);
+        logTerminal(`Steering: "${steeringText.substring(0, 50)}${steeringText.length > 50 ? '...' : ''}"`);
+    } else {
+        showToast('Steering requires a WebSocket connection. Reconnecting...', 'warning');
+        logTerminal('Steering failed — not connected via WebSocket');
+    }
 }
 
 async function sendQueryViaRest(query, apiKeys) {
@@ -1229,6 +1293,49 @@ function addUserMessage(content) {
     saveCurrentSession();
 }
 
+function addSteeringBanner(steeringText) {
+    const bannerId = 'steering-' + Date.now();
+    const time = new Date().toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    const html = `
+        <div id="${bannerId}" class="flex gap-3 animate-fadeIn steering-banner">
+            <div class="h-8 w-8 rounded-full bg-amber-900/60 flex-shrink-0 flex items-center justify-center border border-amber-600/40">
+                <span class="material-symbols-outlined text-amber-400 text-[16px]">navigation</span>
+            </div>
+            <div class="max-w-[80%] flex flex-col gap-1">
+                <div class="bg-amber-900/20 border border-amber-600/30 text-amber-100 px-4 py-2.5 rounded-2xl rounded-tl-none text-sm">
+                    <div class="flex items-center gap-2 mb-1">
+                        <span class="text-[10px] font-bold text-amber-400 uppercase tracking-wider">Steering</span>
+                        <span class="steering-status text-[10px] text-amber-500/70 italic">sending...</span>
+                    </div>
+                    <p class="whitespace-pre-wrap text-amber-50">${escapeHtml(steeringText)}</p>
+                </div>
+                <span class="text-[10px] text-slate-500 font-mono">${time}</span>
+            </div>
+        </div>
+    `;
+    elements.chatMessages.insertAdjacentHTML('beforeend', html);
+    scrollToBottom();
+    logTerminal('Steering prompt sent to agents');
+}
+
+function updateSteeringBannerStatus(content) {
+    const banners = document.querySelectorAll('.steering-banner .steering-status');
+    if (banners.length > 0) {
+        // Update the last banner (most recently sent)
+        const lastBanner = banners[banners.length - 1];
+        lastBanner.textContent = 'applied';
+        lastBanner.classList.remove('text-amber-500/70', 'italic');
+        lastBanner.classList.add('text-emerald-400', 'font-bold');
+    }
+    logTerminal('Steering prompt applied by agents');
+}
+
+function shouldShowMessage(message) {
+    if (message.role === 'user') return true;
+    if (state.settings.advancedMode) return true;
+    return message.role === 'assistant' && message.agent === 'summary';
+}
+
 function addAssistantMessage(content, agent = null, references = null) {
     const message = {
         role: 'assistant',
@@ -1238,8 +1345,40 @@ function addAssistantMessage(content, agent = null, references = null) {
         references: references || []
     };
     state.messages.push(message);
-    renderAssistantMessage(message);
-    scrollToBottom();
+    if (shouldShowMessage(message)) {
+        renderAssistantMessage(message);
+        scrollToBottom();
+    }
+}
+
+function addToolCallMessage(agent, toolName, args) {
+    const message = {
+        role: 'tool_call',
+        agent,
+        toolName,
+        arguments: args,
+        timestamp: new Date().toISOString(),
+    };
+    state.messages.push(message);
+    if (state.settings.advancedMode) {
+        renderToolCallMessage(message);
+        scrollToBottom();
+    }
+}
+
+function addToolResultMessage(agent, toolName, content) {
+    const message = {
+        role: 'tool_result',
+        agent,
+        toolName,
+        content,
+        timestamp: new Date().toISOString(),
+    };
+    state.messages.push(message);
+    if (state.settings.advancedMode) {
+        renderToolResultMessage(message);
+        scrollToBottom();
+    }
 }
 
 function renderUserMessage(message) {
@@ -1326,6 +1465,480 @@ function renderAssistantMessage(message) {
             });
         });
     }, 0);
+}
+
+function renderToolCallMessage(message) {
+    const agent = AGENTS[message.agent] || { label: message.agent || 'Agent', icon: 'smart_toy', color: 'slate' };
+    const colorClass = getColorClass(agent.color);
+    const argsStr = message.arguments ? JSON.stringify(message.arguments, null, 2) : '{}';
+    const argsPreview = argsStr.length > 80 ? argsStr.substring(0, 80) + '...' : argsStr;
+
+    const html = `
+        <div class="flex gap-2 animate-fadeIn ml-6">
+            <div class="tool-connector" style="background: rgba(245,158,11,0.3)"></div>
+            <div class="flex-1 max-w-[80%] tool-card">
+                <div class="rounded-xl px-3.5 py-2.5 border" style="background: rgba(245,158,11,0.04); border-color: rgba(245,158,11,0.1)">
+                    <div class="flex items-center gap-2 mb-0.5">
+                        <span class="material-symbols-outlined text-[14px]" style="color: rgba(251,191,36,0.8)">build</span>
+                        <span class="text-[10px] font-bold uppercase tracking-wider" style="color: rgba(251,191,36,0.9)">${escapeHtml(agent.label)}</span>
+                        <span class="material-symbols-outlined text-slate-600 text-[12px]">arrow_forward</span>
+                        <span class="text-[10px] font-mono font-semibold text-white/80">${escapeHtml(message.toolName)}</span>
+                    </div>
+                    <details>
+                        <summary class="flex items-center gap-1 text-[10px] text-slate-500 hover:text-slate-300 transition-colors py-1">
+                            <span class="material-symbols-outlined chevron-icon text-[12px]">chevron_right</span>
+                            <span>Arguments</span>
+                            <span class="text-slate-600 font-mono ml-1">${escapeHtml(argsPreview)}</span>
+                        </summary>
+                        <pre class="mt-1.5 bg-black/30 rounded-lg p-2.5 text-[10px] font-mono overflow-x-auto max-h-40 overflow-y-auto custom-scrollbar border border-white/5" style="color: rgba(253,230,138,0.7)">${escapeHtml(argsStr)}</pre>
+                    </details>
+                </div>
+            </div>
+        </div>
+    `;
+    elements.chatMessages.insertAdjacentHTML('beforeend', html);
+}
+
+function renderToolResultMessage(message) {
+    const content = message.content || '';
+    const preview = content.length > 120 ? content.substring(0, 120).replace(/\n/g, ' ') + '...' : content.replace(/\n/g, ' ');
+    const isError = content.toLowerCase().includes('error') || content.toLowerCase().includes('traceback');
+
+    const connectorBg = isError ? 'background: rgba(244,63,94,0.3)' : 'background: rgba(16,185,129,0.3)';
+    const cardBg = isError ? 'background: rgba(244,63,94,0.04); border-color: rgba(244,63,94,0.1)' : 'background: rgba(16,185,129,0.04); border-color: rgba(16,185,129,0.1)';
+    const iconColor = isError ? 'color: rgba(251,113,133,0.8)' : 'color: rgba(52,211,153,0.8)';
+    const labelColor = isError ? 'color: rgba(251,113,133,0.7)' : 'color: rgba(52,211,153,0.7)';
+    const preColor = isError ? 'color: rgba(254,205,211,0.6)' : 'color: rgba(167,243,208,0.6)';
+    const iconName = isError ? 'error' : 'check_circle';
+
+    const html = `
+        <div class="flex gap-2 animate-fadeIn ml-6">
+            <div class="tool-connector" style="${connectorBg}"></div>
+            <div class="flex-1 max-w-[80%] tool-card">
+                <div class="rounded-xl px-3.5 py-2.5 border" style="${cardBg}">
+                    <div class="flex items-center gap-2 mb-0.5">
+                        <span class="material-symbols-outlined text-[14px]" style="${iconColor}">${iconName}</span>
+                        <span class="text-[10px] font-mono font-semibold text-white/70">${escapeHtml(message.toolName)}</span>
+                        <span class="text-[10px] font-medium" style="${labelColor}">result</span>
+                    </div>
+                    <details>
+                        <summary class="flex items-center gap-1 text-[10px] text-slate-500 hover:text-slate-300 transition-colors py-1">
+                            <span class="material-symbols-outlined chevron-icon text-[12px]">chevron_right</span>
+                            <span class="truncate font-mono text-slate-400">${escapeHtml(preview)}</span>
+                        </summary>
+                        <pre class="mt-1.5 bg-black/30 rounded-lg p-2.5 text-[10px] font-mono overflow-x-auto max-h-48 overflow-y-auto custom-scrollbar border border-white/5" style="${preColor}">${escapeHtml(content)}</pre>
+                    </details>
+                </div>
+            </div>
+        </div>
+    `;
+    elements.chatMessages.insertAdjacentHTML('beforeend', html);
+}
+
+// ---------------------------------------------------------------------------
+// Tool Approval UI
+// ---------------------------------------------------------------------------
+
+function showToolApprovalPanel(data) {
+    const agent = AGENTS[data.agent] || { label: data.agent || 'Agent', icon: 'smart_toy', color: 'slate' };
+    const riskColors = {
+        none: { bg: 'rgba(52,211,153,0.08)', border: 'rgba(52,211,153,0.2)', text: 'rgba(52,211,153,0.9)' },
+        low: { bg: 'rgba(96,165,250,0.08)', border: 'rgba(96,165,250,0.2)', text: 'rgba(96,165,250,0.9)' },
+        medium: { bg: 'rgba(251,191,36,0.08)', border: 'rgba(251,191,36,0.2)', text: 'rgba(251,191,36,0.9)' },
+        high: { bg: 'rgba(251,113,133,0.08)', border: 'rgba(251,113,133,0.2)', text: 'rgba(251,113,133,0.9)' },
+    };
+    const risk = riskColors[data.risk_level] || riskColors.medium;
+    const riskLabel = (data.risk_level || 'medium').toUpperCase();
+
+    const panelId = `approval-${data.request_id}`;
+    const html = `
+        <div id="${panelId}" class="flex gap-2 animate-fadeIn ml-2 mr-2 my-3">
+            <div class="flex-1">
+                <div class="rounded-2xl border-2 overflow-hidden" style="background: ${risk.bg}; border-color: ${risk.border}">
+                    <!-- Header -->
+                    <div class="px-4 py-3 flex items-center gap-3 border-b" style="border-color: ${risk.border}">
+                        <div class="h-9 w-9 rounded-xl flex items-center justify-center" style="background: ${risk.border}">
+                            <span class="material-symbols-outlined text-[18px] text-white">verified_user</span>
+                        </div>
+                        <div class="flex-1">
+                            <div class="flex items-center gap-2">
+                                <span class="text-xs font-bold text-white/90">Tool Approval Required</span>
+                                <span class="text-[9px] font-bold px-2 py-0.5 rounded-full" style="background: ${risk.border}; color: white">${riskLabel} RISK</span>
+                            </div>
+                            <span class="text-[10px] text-slate-400">${escapeHtml(agent.label)} wants to call an external tool</span>
+                        </div>
+                        <div class="approval-pulse h-3 w-3 rounded-full animate-pulse" style="background: ${risk.text}"></div>
+                    </div>
+
+                    <!-- Tool info -->
+                    <div class="px-4 py-3 space-y-2.5">
+                        <div class="flex items-center gap-2">
+                            <span class="material-symbols-outlined text-[14px] text-slate-400">build</span>
+                            <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Tool</span>
+                            <span class="text-xs font-mono font-semibold text-white/90">${escapeHtml(data.tool_name)}</span>
+                        </div>
+
+                        <div class="flex items-start gap-2">
+                            <span class="material-symbols-outlined text-[14px] text-slate-400 mt-0.5">info</span>
+                            <div>
+                                <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Reason</span>
+                                <span class="text-xs text-white/70">${escapeHtml(data.reason || 'External API tool — requires user approval')}</span>
+                            </div>
+                        </div>
+
+                        <div class="bg-black/20 rounded-xl p-3 border border-white/5">
+                            <details>
+                                <summary class="flex items-center gap-1 text-[10px] text-slate-500 hover:text-slate-300 transition-colors cursor-pointer">
+                                    <span class="material-symbols-outlined chevron-icon text-[12px]">chevron_right</span>
+                                    <span>View full message</span>
+                                </summary>
+                                <pre class="mt-2 text-[10px] font-mono text-slate-400 whitespace-pre-wrap leading-relaxed">${escapeHtml(data.content || '')}</pre>
+                            </details>
+                        </div>
+                    </div>
+
+                    <!-- Actions -->
+                    <div class="px-4 py-3 flex items-center gap-2 border-t" style="border-color: ${risk.border}; background: rgba(0,0,0,0.15)">
+                        <button onclick="handleToolApproval('${data.request_id}', '${escapeHtml(data.tool_name)}', true)"
+                            class="flex-1 flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold transition-all hover:scale-[1.02] active:scale-[0.98]"
+                            style="background: rgba(52,211,153,0.15); color: rgba(52,211,153,0.95); border: 1px solid rgba(52,211,153,0.25)">
+                            <span class="material-symbols-outlined text-[16px]">check_circle</span>
+                            Approve
+                        </button>
+                        <button onclick="handleToolApproval('${data.request_id}', '${escapeHtml(data.tool_name)}', false)"
+                            class="flex-1 flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold transition-all hover:scale-[1.02] active:scale-[0.98]"
+                            style="background: rgba(251,113,133,0.15); color: rgba(251,113,133,0.95); border: 1px solid rgba(251,113,133,0.25)">
+                            <span class="material-symbols-outlined text-[16px]">cancel</span>
+                            Reject
+                        </button>
+                        <button onclick="handleToolApproval('${data.request_id}', '${escapeHtml(data.tool_name)}', true, true)"
+                            class="flex items-center justify-center gap-1 px-3 py-2 rounded-xl text-[10px] font-medium transition-all hover:scale-[1.02] active:scale-[0.98]"
+                            style="background: rgba(96,165,250,0.1); color: rgba(96,165,250,0.8); border: 1px solid rgba(96,165,250,0.2)"
+                            title="Approve this tool for the rest of the session">
+                            <span class="material-symbols-outlined text-[14px]">done_all</span>
+                            Always
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+    elements.chatMessages.insertAdjacentHTML('beforeend', html);
+    scrollToBottom();
+}
+
+function handleToolApproval(requestId, toolName, approved, alwaysApprove = false) {
+    // Send approval response to server
+    if (state.ws && state.ws.readyState === WebSocket.OPEN) {
+        state.ws.send(JSON.stringify({
+            type: 'tool_approval_response',
+            request_id: requestId,
+            tool_name: toolName,
+            approved: approved,
+            always: alwaysApprove,
+        }));
+    }
+
+    // Update the panel to show the response
+    const panel = document.getElementById(`approval-${requestId}`);
+    if (panel) {
+        const statusColor = approved ? 'rgba(52,211,153,0.15)' : 'rgba(251,113,133,0.15)';
+        const statusBorder = approved ? 'rgba(52,211,153,0.3)' : 'rgba(251,113,133,0.3)';
+        const statusText = approved ? 'Approved' : 'Rejected';
+        const statusIcon = approved ? 'check_circle' : 'cancel';
+        const statusTextColor = approved ? 'rgba(52,211,153,0.9)' : 'rgba(251,113,133,0.9)';
+
+        panel.innerHTML = `
+            <div class="flex-1">
+                <div class="rounded-2xl border px-4 py-3 flex items-center gap-3" style="background: ${statusColor}; border-color: ${statusBorder}">
+                    <span class="material-symbols-outlined text-[20px]" style="color: ${statusTextColor}">${statusIcon}</span>
+                    <span class="text-xs font-bold" style="color: ${statusTextColor}">${escapeHtml(toolName)} — ${statusText}</span>
+                    ${alwaysApprove && approved ? '<span class="text-[10px] text-blue-400 ml-2">Approved for this session</span>' : ''}
+                </div>
+            </div>
+        `;
+    }
+
+    if (approved) {
+        showToast(`Tool "${toolName}" approved`, 'success');
+    } else {
+        showToast(`Tool "${toolName}" rejected`, 'warning');
+    }
+}
+
+// =====================================================
+// ENGAGEMENT PANELS — Agent asks user for input
+// =====================================================
+
+const ENGAGEMENT_COLORS = {
+    clarification: { bg: 'rgba(96,165,250,0.08)', border: 'rgba(96,165,250,0.25)', accent: 'rgba(96,165,250,0.9)', icon: 'help', label: 'CLARIFICATION' },
+    confirmation: { bg: 'rgba(251,191,36,0.08)', border: 'rgba(251,191,36,0.25)', accent: 'rgba(251,191,36,0.9)', icon: 'priority_high', label: 'CONFIRMATION' },
+    decision_fork: { bg: 'rgba(168,85,247,0.08)', border: 'rgba(168,85,247,0.25)', accent: 'rgba(168,85,247,0.9)', icon: 'call_split', label: 'DECISION' },
+    stuck: { bg: 'rgba(251,113,133,0.08)', border: 'rgba(251,113,133,0.25)', accent: 'rgba(251,113,133,0.9)', icon: 'error_outline', label: 'NEEDS HELP' },
+    progress_check: { bg: 'rgba(52,211,153,0.08)', border: 'rgba(52,211,153,0.25)', accent: 'rgba(52,211,153,0.9)', icon: 'flag', label: 'PROGRESS' },
+};
+
+function showEngagementPanel(data) {
+    const colors = ENGAGEMENT_COLORS[data.engagement_type] || ENGAGEMENT_COLORS.clarification;
+    const agent = AGENTS[data.agent] || AGENTS.user_input;
+    const panelId = `engagement-${data.id}`;
+    const optionsHtml = (data.options && data.options.length > 0)
+        ? data.options.map((opt, i) => `
+            <button onclick="selectEngagementOption('${panelId}', ${i}, '${escapeHtml(opt.replace(/'/g, "\\'"))}')"
+                class="engagement-option-${data.id} flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-medium transition-all hover:scale-[1.02] active:scale-[0.98] text-left"
+                style="background: rgba(255,255,255,0.04); color: rgba(255,255,255,0.8); border: 1px solid rgba(255,255,255,0.08)"
+                data-option="${escapeHtml(opt)}">
+                <span class="flex-shrink-0 h-5 w-5 rounded-full border-2 flex items-center justify-center text-[9px] font-bold"
+                    style="border-color: ${colors.accent}; color: ${colors.accent}">${i + 1}</span>
+                <span>${escapeHtml(opt)}</span>
+            </button>
+        `).join('')
+        : '';
+
+    const hasOptions = optionsHtml.length > 0;
+    const showFreeText = data.engagement_type === 'clarification' || data.engagement_type === 'stuck' || !hasOptions;
+
+    const html = `
+        <div id="${panelId}" class="flex gap-2 animate-fadeIn ml-2 mr-2 my-3">
+            <div class="flex-1">
+                <div class="rounded-2xl border-2 overflow-hidden engagement-panel" style="background: ${colors.bg}; border-color: ${colors.border}; animation: engagement-pulse 2s ease-in-out 3">
+                    <!-- Header -->
+                    <div class="px-4 py-3 flex items-center gap-3 border-b" style="border-color: ${colors.border}">
+                        <div class="h-9 w-9 rounded-xl flex items-center justify-center" style="background: ${colors.accent}">
+                            <span class="material-symbols-outlined text-[18px] text-white">${agent.icon}</span>
+                        </div>
+                        <div class="flex-1">
+                            <div class="flex items-center gap-2">
+                                <span class="text-xs font-bold text-white/90">${agent.label}</span>
+                                <span class="text-[9px] font-bold px-2 py-0.5 rounded-full" style="background: ${colors.accent}; color: white">${colors.label}</span>
+                            </div>
+                            <span class="text-[10px] text-slate-400">has a question for you</span>
+                        </div>
+                        <div class="h-3 w-3 rounded-full animate-pulse" style="background: ${colors.accent}"></div>
+                    </div>
+
+                    <!-- Question -->
+                    <div class="px-4 py-3 space-y-3">
+                        <div class="flex items-start gap-2.5">
+                            <span class="material-symbols-outlined text-[18px] mt-0.5" style="color: ${colors.accent}">${colors.icon}</span>
+                            <div>
+                                <p class="text-sm text-white/90 font-medium leading-relaxed">${escapeHtml(data.question)}</p>
+                                ${data.context ? `<p class="text-[11px] text-slate-400 mt-1.5">${escapeHtml(data.context)}</p>` : ''}
+                            </div>
+                        </div>
+
+                        ${hasOptions ? `
+                        <div class="space-y-1.5" id="engagement-options-${data.id}">
+                            ${optionsHtml}
+                        </div>
+                        ` : ''}
+
+                        ${showFreeText ? `
+                        <div class="relative">
+                            <textarea id="engagement-input-${data.id}"
+                                class="w-full bg-black/20 rounded-xl px-3 py-2.5 text-xs text-white/90 placeholder-slate-500 border border-white/5 focus:border-white/15 focus:outline-none resize-none transition-colors"
+                                rows="2"
+                                placeholder="${hasOptions ? 'Or type a custom response...' : 'Type your response...'}"></textarea>
+                        </div>
+                        ` : ''}
+                    </div>
+
+                    <!-- Actions -->
+                    <div class="px-4 py-3 flex items-center gap-2 border-t" style="border-color: ${colors.border}; background: rgba(0,0,0,0.1)">
+                        <button onclick="submitEngagementResponse('${panelId}', '${data.id}')"
+                            class="flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-bold transition-all hover:scale-[1.02] active:scale-[0.98]"
+                            style="background: ${colors.accent}20; color: ${colors.accent}; border: 1px solid ${colors.accent}40">
+                            <span class="material-symbols-outlined text-[16px]">send</span>
+                            Reply
+                        </button>
+                        <button onclick="submitEngagementResponse('${panelId}', '${data.id}', true)"
+                            class="flex items-center justify-center gap-1 px-3 py-2.5 rounded-xl text-[10px] font-medium transition-all hover:scale-[1.02] active:scale-[0.98]"
+                            style="background: rgba(255,255,255,0.04); color: rgba(255,255,255,0.4); border: 1px solid rgba(255,255,255,0.06)"
+                            title="Let the agent decide">
+                            <span class="material-symbols-outlined text-[14px]">auto_awesome</span>
+                            Auto
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+
+    elements.chatMessages.insertAdjacentHTML('beforeend', html);
+    scrollToBottom();
+
+    // Focus the input if present
+    const input = document.getElementById(`engagement-input-${data.id}`);
+    if (input) {
+        setTimeout(() => input.focus(), 100);
+    }
+}
+
+function selectEngagementOption(panelId, optionIndex, optionText) {
+    const panel = document.getElementById(panelId);
+    if (!panel) return;
+
+    // Clear previous selection
+    const allOptions = panel.querySelectorAll('[class*="engagement-option-"]');
+    allOptions.forEach(btn => {
+        btn.style.background = 'rgba(255,255,255,0.04)';
+        btn.style.borderColor = 'rgba(255,255,255,0.08)';
+    });
+
+    // Highlight selected
+    const selected = allOptions[optionIndex];
+    if (selected) {
+        selected.style.background = 'rgba(255,255,255,0.1)';
+        selected.style.borderColor = 'rgba(255,255,255,0.2)';
+        selected.dataset.selected = 'true';
+    }
+
+    // Store selection
+    panel.dataset.selectedOption = optionText;
+}
+
+function submitEngagementResponse(panelId, engagementId, autoDecide = false) {
+    const panel = document.getElementById(panelId);
+    if (!panel) return;
+
+    let content = '';
+    let selectedOption = null;
+
+    if (autoDecide) {
+        content = 'Proceed with your best judgment.';
+    } else {
+        // Check if an option was selected
+        selectedOption = panel.dataset.selectedOption || null;
+
+        // Check free-text input
+        const input = document.getElementById(`engagement-input-${engagementId}`);
+        const freeText = input ? input.value.trim() : '';
+
+        if (!selectedOption && !freeText) {
+            showToast('Please select an option or type a response', 'warning');
+            return;
+        }
+
+        content = freeText || selectedOption;
+    }
+
+    // Send response
+    if (state.ws && state.ws.readyState === WebSocket.OPEN) {
+        state.ws.send(JSON.stringify({
+            type: 'engagement_response',
+            engagement_id: engagementId,
+            content: content,
+            selected_option: selectedOption,
+        }));
+    }
+
+    // Update panel to show "sent" state
+    updateEngagementPanelStatus(engagementId, 'sent', content);
+}
+
+function updateEngagementPanelStatus(engagementId, status, userResponse = '') {
+    const panel = document.getElementById(`engagement-${engagementId}`);
+    if (!panel) return;
+
+    const statusConfig = {
+        sent: { icon: 'schedule', text: 'Response sent', color: 'rgba(96,165,250,0.8)', bg: 'rgba(96,165,250,0.08)' },
+        received: { icon: 'check_circle', text: userResponse ? `"${userResponse.substring(0, 60)}${userResponse.length > 60 ? '...' : ''}"` : 'Response applied', color: 'rgba(52,211,153,0.9)', bg: 'rgba(52,211,153,0.08)' },
+        timeout: { icon: 'timer_off', text: 'Timed out — agent proceeded with best judgment', color: 'rgba(251,191,36,0.8)', bg: 'rgba(251,191,36,0.08)' },
+    };
+
+    const cfg = statusConfig[status] || statusConfig.sent;
+
+    // Replace the entire panel content with a compact status
+    const innerPanel = panel.querySelector('.engagement-panel');
+    if (innerPanel) {
+        innerPanel.style.animation = 'none';
+        innerPanel.style.background = cfg.bg;
+        innerPanel.style.borderColor = cfg.color + '30';
+        innerPanel.innerHTML = `
+            <div class="px-4 py-3 flex items-center gap-3">
+                <span class="material-symbols-outlined text-[18px]" style="color: ${cfg.color}">${cfg.icon}</span>
+                <span class="text-xs font-medium" style="color: ${cfg.color}">${cfg.text}</span>
+            </div>
+        `;
+    }
+}
+
+function showToolBlockedNotification(data) {
+    const toolName = data.tool_name || 'Unknown tool';
+    showToast(`Tool "${toolName}" blocked by safety policy`, 'error');
+
+    // Also render a subtle blocked indicator in chat
+    const html = `
+        <div class="flex gap-2 animate-fadeIn ml-6 my-1">
+            <div class="flex items-center gap-2 px-3 py-1.5 rounded-lg border" style="background: rgba(244,63,94,0.05); border-color: rgba(244,63,94,0.15)">
+                <span class="material-symbols-outlined text-[12px]" style="color: rgba(251,113,133,0.7)">block</span>
+                <span class="text-[10px] font-mono text-red-400/80">${escapeHtml(toolName)}</span>
+                <span class="text-[10px] text-red-400/50">blocked by policy</span>
+            </div>
+        </div>
+    `;
+    elements.chatMessages.insertAdjacentHTML('beforeend', html);
+    scrollToBottom();
+}
+
+// ---------------------------------------------------------------------------
+// Tool Policy Stats
+// ---------------------------------------------------------------------------
+
+function updateToolPolicyStats(data) {
+    const container = document.getElementById('toolPolicyStats');
+    if (!container) return;
+
+    const parts = [];
+    if (data.auto_approved > 0) parts.push(`<span class="text-emerald-400">${data.auto_approved}</span> auto`);
+    if (data.user_approved > 0) parts.push(`<span class="text-blue-400">${data.user_approved}</span> approved`);
+    if (data.blocked > 0) parts.push(`<span class="text-red-400">${data.blocked}</span> blocked`);
+    if (data.filtered_at_discovery > 0) parts.push(`<span class="text-amber-400">${data.filtered_at_discovery}</span> filtered`);
+
+    if (parts.length === 0) {
+        container.classList.add('hidden');
+        return;
+    }
+
+    container.classList.remove('hidden');
+    container.innerHTML = `
+        <div class="flex items-center gap-1.5 text-[9px]">
+            <span class="material-symbols-outlined text-[12px] text-slate-500">shield</span>
+            <span class="text-slate-500">Tool Policy:</span>
+            ${parts.join('<span class="text-slate-600">|</span>')}
+        </div>
+    `;
+}
+
+function renderAllMessages() {
+    if (!elements.chatMessages) return;
+
+    elements.chatMessages.innerHTML = '';
+
+    if (state.messages.length === 0) {
+        resetChatUI();
+        return;
+    }
+
+    state.messages.forEach(msg => {
+        if (!shouldShowMessage(msg)) return;
+        switch (msg.role) {
+            case 'user':
+                renderUserMessage(msg);
+                break;
+            case 'assistant':
+                renderAssistantMessage(msg);
+                break;
+            case 'tool_call':
+                renderToolCallMessage(msg);
+                break;
+            case 'tool_result':
+                renderToolResultMessage(msg);
+                break;
+        }
+    });
+
+    scrollToBottom();
 }
 
 function scrollToBottom() {
@@ -2005,7 +2618,6 @@ function initSidebarNavigation() {
             link.classList.add('bg-primary/20', 'border', 'border-primary/20', 'text-primary');
             link.classList.remove('text-text-subtle');
 
-            // Handle navigation
             const text = link.textContent.trim();
             if (text.includes('History')) {
                 showHistoryPanel();
@@ -2013,6 +2625,10 @@ function initSidebarNavigation() {
                 showAgentLibrary();
             } else if (text.includes('Project Index')) {
                 showProjectIndex();
+            } else if (text.includes('Tool Registry')) {
+                showToolRegistry();
+            } else if (text.includes('Sandbox Terminal')) {
+                showSandboxTerminal();
             }
         });
     });
@@ -2145,33 +2761,46 @@ function showAgentLibrary() {
     const modal = document.createElement('div');
     modal.className = 'fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm';
 
-    const agentsHtml = Object.entries(AGENTS).map(([id, agent]) => {
-        const colorClass = getColorClass(agent.color);
-        return `
-            <div class="flex items-center gap-3 p-3 rounded-lg border border-white/5 bg-surface-card/50 hover:border-primary/30 transition-all">
-                <div class="h-10 w-10 rounded-lg ${colorClass.bg} flex items-center justify-center border ${colorClass.border}">
-                    <span class="material-symbols-outlined ${colorClass.text}">${agent.icon}</span>
+    const categories = {};
+    Object.entries(AGENTS).forEach(([id, agent]) => {
+        const cat = agent.category || 'Other';
+        if (!categories[cat]) categories[cat] = [];
+        categories[cat].push({ id, ...agent });
+    });
+
+    let agentsHtml = '';
+    for (const [category, agents] of Object.entries(categories)) {
+        agentsHtml += `<h4 class="text-xs font-bold text-slate-400 uppercase tracking-wider mt-3 mb-2">${category} (${agents.length})</h4>`;
+        agentsHtml += agents.map(agent => {
+            const colorClass = getColorClass(agent.color);
+            return `
+                <div class="flex items-center gap-3 p-3 rounded-lg border border-white/5 bg-surface-card/50 hover:border-primary/30 transition-all">
+                    <div class="h-10 w-10 rounded-lg ${colorClass.bg} flex items-center justify-center border ${colorClass.border}">
+                        <span class="material-symbols-outlined ${colorClass.text}">${agent.icon}</span>
+                    </div>
+                    <div class="flex-1">
+                        <p class="text-sm font-bold text-white">${agent.label}</p>
+                        <p class="text-xs text-slate-400">${agent.description}</p>
+                    </div>
+                    <span class="text-[10px] px-2 py-0.5 rounded-full bg-white/5 text-slate-400">${agent.id}</span>
                 </div>
-                <div class="flex-1">
-                    <p class="text-sm font-bold text-white">${agent.label}</p>
-                    <p class="text-xs text-slate-400">${agent.description}</p>
-                </div>
-            </div>
-        `;
-    }).join('');
+            `;
+        }).join('');
+    }
 
     modal.innerHTML = `
-        <div class="bg-surface-dark border border-white/10 rounded-xl shadow-2xl w-full max-w-lg mx-4 overflow-hidden animate-fadeIn">
+        <div class="bg-surface-dark border border-white/10 rounded-xl shadow-2xl w-full max-w-2xl mx-4 overflow-hidden animate-fadeIn">
             <div class="flex items-center justify-between p-4 border-b border-white/5">
                 <h3 class="text-lg font-bold text-white flex items-center gap-2">
                     <span class="material-symbols-outlined text-primary">smart_toy</span>
                     Agent Library
+                    <span class="text-xs font-normal text-slate-400 ml-2">${Object.keys(AGENTS).length} agents</span>
                 </h3>
                 <button class="modal-close p-1.5 text-slate-400 hover:text-white hover:bg-white/10 rounded-lg transition-all">
                     <span class="material-symbols-outlined">close</span>
                 </button>
             </div>
-            <div class="max-h-96 overflow-y-auto custom-scrollbar p-4 grid gap-3">
+            <div class="max-h-[70vh] overflow-y-auto custom-scrollbar p-4 grid gap-2">
                 ${agentsHtml}
             </div>
         </div>
@@ -2216,6 +2845,121 @@ function showProjectIndex() {
             </div>
             <div class="max-h-96 overflow-y-auto custom-scrollbar p-4 grid gap-2">
                 ${artifactsHtml}
+            </div>
+        </div>
+    `;
+
+    document.body.appendChild(modal);
+    modal.querySelector('.modal-close')?.addEventListener('click', () => modal.remove());
+    modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
+}
+
+async function showToolRegistry() {
+    const modal = document.createElement('div');
+    modal.className = 'fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm';
+
+    let toolsHtml = '<p class="text-center py-8 text-slate-400">Loading tools...</p>';
+
+    try {
+        const res = await fetch(`${CONFIG.apiBaseUrl}/api/tools/registry`);
+        const data = await res.json();
+        if (data.tools && data.tools.length > 0) {
+            toolsHtml = data.tools.map(t => `
+                <div class="flex items-center gap-3 p-3 rounded-lg border border-white/5 bg-surface-card/50">
+                    <div class="h-10 w-10 rounded-lg bg-indigo-500/10 flex items-center justify-center border border-indigo-500/20">
+                        <span class="material-symbols-outlined text-indigo-400">extension</span>
+                    </div>
+                    <div class="flex-1">
+                        <p class="text-sm font-bold text-white">${escapeHtml(t.name || t)}</p>
+                        <p class="text-xs text-slate-400">${escapeHtml(t.description || 'Custom tool')}</p>
+                    </div>
+                </div>
+            `).join('');
+        } else {
+            toolsHtml = '<p class="text-center py-8 text-slate-400">No custom tools registered yet</p>';
+        }
+    } catch (e) {
+        toolsHtml = '<p class="text-center py-8 text-slate-400">Could not load tool registry</p>';
+    }
+
+    const builtInHtml = Object.entries(AGENTS)
+        .filter(([, a]) => a.category !== 'Core')
+        .map(([id, agent]) => {
+            const colorClass = getColorClass(agent.color);
+            return `
+                <div class="flex items-center gap-3 p-2 rounded-lg border border-white/5 bg-surface-card/30">
+                    <span class="material-symbols-outlined text-sm ${colorClass.text}">${agent.icon}</span>
+                    <span class="text-xs text-white font-medium">${agent.label}</span>
+                    <span class="text-[10px] text-slate-500 ml-auto">${agent.category}</span>
+                </div>
+            `;
+        }).join('');
+
+    modal.innerHTML = `
+        <div class="bg-surface-dark border border-white/10 rounded-xl shadow-2xl w-full max-w-2xl mx-4 overflow-hidden animate-fadeIn">
+            <div class="flex items-center justify-between p-4 border-b border-white/5">
+                <h3 class="text-lg font-bold text-white flex items-center gap-2">
+                    <span class="material-symbols-outlined text-primary">extension</span>
+                    Tool Registry
+                </h3>
+                <button class="modal-close p-1.5 text-slate-400 hover:text-white hover:bg-white/10 rounded-lg transition-all">
+                    <span class="material-symbols-outlined">close</span>
+                </button>
+            </div>
+            <div class="max-h-[70vh] overflow-y-auto custom-scrollbar p-4">
+                <h4 class="text-sm font-bold text-slate-300 mb-3">Custom Tools</h4>
+                <div class="grid gap-3 mb-6">${toolsHtml}</div>
+                <h4 class="text-sm font-bold text-slate-300 mb-3">Built-in Agent Tools</h4>
+                <div class="grid grid-cols-2 gap-2">${builtInHtml}</div>
+            </div>
+        </div>
+    `;
+
+    document.body.appendChild(modal);
+    modal.querySelector('.modal-close')?.addEventListener('click', () => modal.remove());
+    modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
+}
+
+async function showSandboxTerminal() {
+    const modal = document.createElement('div');
+    modal.className = 'fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm';
+
+    let statusHtml = '<p class="text-slate-400">Loading sandbox status...</p>';
+    try {
+        const res = await fetch(`${CONFIG.apiBaseUrl}/api/sandbox/status`);
+        const data = await res.json();
+        statusHtml = `
+            <div class="grid gap-2 text-sm">
+                <div class="flex justify-between"><span class="text-slate-400">Status:</span><span class="text-emerald-400 font-bold">${data.status}</span></div>
+                <div class="flex justify-between"><span class="text-slate-400">Workspace:</span><span class="text-white font-mono text-xs">${escapeHtml(data.workspace_dir || 'N/A')}</span></div>
+                <div class="flex justify-between"><span class="text-slate-400">Commands Run:</span><span class="text-white">${data.command_history_count || 0}</span></div>
+            </div>
+        `;
+    } catch (e) {
+        statusHtml = '<p class="text-slate-400">Sandbox is not running</p>';
+    }
+
+    modal.innerHTML = `
+        <div class="bg-surface-dark border border-white/10 rounded-xl shadow-2xl w-full max-w-2xl mx-4 overflow-hidden animate-fadeIn">
+            <div class="flex items-center justify-between p-4 border-b border-white/5">
+                <h3 class="text-lg font-bold text-white flex items-center gap-2">
+                    <span class="material-symbols-outlined text-primary">terminal</span>
+                    Sandbox Terminal
+                </h3>
+                <button class="modal-close p-1.5 text-slate-400 hover:text-white hover:bg-white/10 rounded-lg transition-all">
+                    <span class="material-symbols-outlined">close</span>
+                </button>
+            </div>
+            <div class="p-4">
+                <div class="bg-black/50 rounded-lg p-4 border border-white/5 mb-4">
+                    ${statusHtml}
+                </div>
+                <div class="bg-black rounded-lg p-4 font-mono text-sm text-green-400 min-h-[200px] border border-white/10">
+                    <div id="sandbox-output" class="space-y-1">
+                        <p class="text-slate-500">$ # Sandbox terminal - commands run by agents will appear here</p>
+                        <p class="text-slate-500">$ # Use the Shell agent to execute commands</p>
+                    </div>
+                </div>
             </div>
         </div>
     `;
@@ -2544,6 +3288,54 @@ function showSettingsPanel() {
 }
 
 // =====================================================
+// ADVANCED MODE
+// =====================================================
+
+function initAdvancedModeToggle() {
+    const btn = document.getElementById('advancedModeBtn');
+    const label = document.getElementById('advancedModeLabel');
+    if (!btn) return;
+
+    updateAdvancedToggleVisual(btn, label, state.settings.advancedMode);
+
+    btn.addEventListener('click', () => {
+        state.settings.advancedMode = !state.settings.advancedMode;
+        updateAdvancedToggleVisual(btn, label, state.settings.advancedMode);
+        saveToStorage();
+        renderAllMessages();
+        showToast(
+            state.settings.advancedMode
+                ? 'Advanced mode enabled — showing all agent activity'
+                : 'Advanced mode disabled — showing summary only',
+            'info'
+        );
+    });
+}
+
+function updateAdvancedToggleVisual(btn, label, isOn) {
+    const knob = btn.querySelector('span');
+    if (isOn) {
+        btn.style.background = 'rgba(7, 182, 213, 0.4)';
+        btn.style.borderColor = 'rgba(7, 182, 213, 0.5)';
+        knob.style.transform = 'translateX(18px)';
+        knob.style.background = '#07b6d5';
+        knob.style.boxShadow = '0 0 8px rgba(7, 182, 213, 0.5)';
+        if (label) {
+            label.style.color = '#07b6d5';
+        }
+    } else {
+        btn.style.background = '#334155';
+        btn.style.borderColor = 'rgba(255,255,255,0.1)';
+        knob.style.transform = 'translateX(0)';
+        knob.style.background = '#94a3b8';
+        knob.style.boxShadow = 'none';
+        if (label) {
+            label.style.color = '#64748b';
+        }
+    }
+}
+
+// =====================================================
 // TABS
 // =====================================================
 
@@ -2588,14 +3380,17 @@ function setProcessingState(isProcessing) {
     state.isProcessing = isProcessing;
 
     if (elements.submitBtn) {
-        elements.submitBtn.disabled = isProcessing;
+        elements.submitBtn.disabled = false; // Always enabled — acts as "Steer" during processing
         elements.submitBtn.innerHTML = isProcessing
-            ? '<span class="animate-spin material-symbols-outlined text-[18px]">progress_activity</span><span>Processing...</span>'
+            ? '<span class="material-symbols-outlined text-[18px]">navigation</span><span>Steer</span>'
             : '<span>Run Agent</span><span class="material-symbols-outlined text-[18px]">send</span>';
     }
 
     if (elements.queryInput) {
-        elements.queryInput.disabled = isProcessing;
+        elements.queryInput.disabled = false; // Keep input active for steering
+        elements.queryInput.placeholder = isProcessing
+            ? 'Steer agents \u2014 add context, redirect, or clarify...'
+            : 'Describe a protein, paste a FASTA sequence, or ask a research question...';
     }
 
     updateStatus(isProcessing ? 'processing' : 'ready');
@@ -2700,6 +3495,16 @@ function getColorClass(color) {
         indigo: { bg: 'bg-indigo-500/10', text: 'text-indigo-400', border: 'border-indigo-500/30' },
         rose: { bg: 'bg-rose-500/10', text: 'text-rose-400', border: 'border-rose-500/30' },
         purple: { bg: 'bg-purple-500/10', text: 'text-purple-400', border: 'border-purple-500/30' },
+        cyan: { bg: 'bg-cyan-500/10', text: 'text-cyan-400', border: 'border-cyan-500/30' },
+        teal: { bg: 'bg-teal-500/10', text: 'text-teal-400', border: 'border-teal-500/30' },
+        sky: { bg: 'bg-sky-500/10', text: 'text-sky-400', border: 'border-sky-500/30' },
+        green: { bg: 'bg-green-500/10', text: 'text-green-400', border: 'border-green-500/30' },
+        lime: { bg: 'bg-lime-500/10', text: 'text-lime-400', border: 'border-lime-500/30' },
+        yellow: { bg: 'bg-yellow-500/10', text: 'text-yellow-400', border: 'border-yellow-500/30' },
+        orange: { bg: 'bg-orange-500/10', text: 'text-orange-400', border: 'border-orange-500/30' },
+        red: { bg: 'bg-red-500/10', text: 'text-red-400', border: 'border-red-500/30' },
+        violet: { bg: 'bg-violet-500/10', text: 'text-violet-400', border: 'border-violet-500/30' },
+        fuchsia: { bg: 'bg-fuchsia-500/10', text: 'text-fuchsia-400', border: 'border-fuchsia-500/30' },
     };
     return colors[color] || colors.slate;
 }
@@ -2898,4 +3703,5 @@ window.BioAgents = {
     setActiveAgent,
     showToast,
     logTerminal,
+    renderAllMessages,
 };

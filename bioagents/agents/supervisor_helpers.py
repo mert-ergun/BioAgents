@@ -10,7 +10,7 @@ from bioagents.agents.helpers import get_message_content
 
 logger = logging.getLogger(__name__)
 
-MAX_EMPTY_RESPONSES = 2
+MAX_EMPTY_RESPONSES = 1
 
 TOOL_MISSING_PATTERNS = [
     r"no suitable tool found",
@@ -27,6 +27,122 @@ TOOL_MISSING_PATTERNS = [
     r"no.*capability",
     r"lacks.*capability",
 ]
+
+
+_CODE_AGENT_NAMES = frozenset({"Coder", "ML", "DL"})
+
+_TASK_COMPLETION_MARKERS = re.compile(
+    r"(METRIC:|Accuracy[:\s]+\d|Loss[:\s]+\d|Epoch\s+\d+/\d+"
+    r"|training complete|evaluation accuracy|successfully trained"
+    r"|model trained|F1[:\s]+\d|AUC[:\s]+\d|precision[:\s]+\d|recall[:\s]+\d)",
+    re.IGNORECASE,
+)
+
+
+def _is_substantive_code_agent_output(content: str) -> bool:
+    """True if a code agent response looks like a real implementation, not a one-line stub."""
+    c = content.strip()
+    if len(c) < 400:
+        return False
+    if "```" in c or "nn.Module" in c or "torch.nn" in c or "sklearn" in c:
+        return True
+    return len(c) >= 1200
+
+
+def check_code_agent_task_completed(messages) -> tuple[bool, str]:
+    """Finish if the last code agent message contains execution metrics indicating the task is done."""
+    if not messages:
+        return False, ""
+    last = messages[-1]
+    if not isinstance(last, AIMessage) and not (
+        hasattr(last, "__class__") and last.__class__.__name__ == "AIMessage"
+    ):
+        return False, ""
+    name = getattr(last, "name", None)
+    if name not in _CODE_AGENT_NAMES:
+        return False, ""
+    content = get_message_content(last)
+    if len(content.strip()) < 200:
+        return False, ""
+    if _TASK_COMPLETION_MARKERS.search(content):
+        return True, (
+            f"Code agent '{name}' produced output with execution metrics "
+            "(accuracy/loss/training results), indicating the task is complete."
+        )
+    return False, ""
+
+
+def check_finish_if_code_agent_substantive_repeat(messages) -> tuple[bool, str]:
+    """
+    If Coder/ML/DL has returned substantive output in 2+ turns, finish the workflow.
+
+    Prevents supervisor↔code-agent loops where the LLM keeps re-delegating for
+    spurious "refinement" after the task is already satisfied.
+    """
+    if len(messages) < 2:
+        return False, ""
+    last = messages[-1]
+    if not isinstance(last, AIMessage) and not (
+        hasattr(last, "__class__") and last.__class__.__name__ == "AIMessage"
+    ):
+        return False, ""
+    name = getattr(last, "name", None)
+    if name not in _CODE_AGENT_NAMES:
+        return False, ""
+    content = get_message_content(last)
+    if not _is_substantive_code_agent_output(content):
+        return False, ""
+
+    count = 0
+    for msg in messages[-14:]:
+        if (
+            isinstance(msg, AIMessage)
+            or (hasattr(msg, "__class__") and msg.__class__.__name__ == "AIMessage")
+        ) and getattr(msg, "name", None) == name:
+            count += 1
+    if count >= 2:
+        return True, (
+            f"Code agent '{name}' has already produced substantive output in multiple turns; "
+            "finishing to avoid redundant delegation."
+        )
+    return False, ""
+
+
+def check_coder_should_force_finish(messages) -> tuple[bool, str]:
+    """
+    If a code agent (Coder/ML/DL) ended with exhaustion or sandbox denial markers,
+    the supervisor must not delegate the same execution again—finish the workflow.
+    """
+    if not messages:
+        return False, ""
+    last = messages[-1]
+    if not isinstance(last, AIMessage) and not (
+        hasattr(last, "__class__") and last.__class__.__name__ == "AIMessage"
+    ):
+        return False, ""
+    if getattr(last, "name", None) not in _CODE_AGENT_NAMES:
+        return False, ""
+    content = get_message_content(last)
+    if (
+        "[CODER_STATUS: max_steps_reached]" in content
+        or "[CODER_STATUS: repeated_parse_errors]" in content
+        or "[CODER_STATUS: timeout]" in content
+    ):
+        return True, (
+            "Code agent finished with step-limit, parse-loop exhaustion, or timeout; "
+            "terminating workflow to avoid redundant delegation."
+        )
+    if "[CODER_STATUS: import_denied]" in content:
+        return True, (
+            "Code agent could not import a required package in the sandbox; "
+            "terminating workflow to avoid an execution loop."
+        )
+    if "[CODER_STATUS: import_failed]" in content:
+        return True, (
+            "Code agent could not import a required library (missing shared object / module); "
+            "terminating workflow to avoid an execution loop."
+        )
+    return False, ""
 
 
 def check_for_empty_response_loop(messages) -> tuple[bool, str]:
@@ -78,6 +194,9 @@ def check_for_repeated_routing(messages) -> tuple[bool, str]:
     Looks for patterns like the same agent being called multiple times without progress.
     Only counts AIMessage instances with agent names, not tool names.
 
+    Also detects tool-call pattern loops where the research agent repeatedly calls
+    tool_universe_find_tools without ever calling tool_universe_call_tool.
+
     Args:
         messages: List of conversation messages
 
@@ -87,38 +206,149 @@ def check_for_repeated_routing(messages) -> tuple[bool, str]:
     if len(messages) < 4:
         return False, ""
 
-    # Valid agent names (exclude tool names and other non-agent identifiers)
     valid_agent_names = {
         "ToolBuilder",
         "Research",
         "Analysis",
         "Coder",
         "ML",
+        "DL",
         "Report",
         "ProteinDesign",
         "Critic",
         "Supervisor",
+        "Summary",
+        "Literature",
+        "WebBrowser",
+        "PaperReplication",
+        "DataAcquisition",
+        "Genomics",
+        "Transcriptomics",
+        "StructuralBiology",
+        "Phylogenetics",
+        "Docking",
+        "Planner",
+        "ToolValidator",
+        "ToolDiscovery",
+        "PromptOptimizer",
+        "ResultChecker",
+        "Shell",
+        "Git",
+        "Environment",
+        "Visualization",
     }
 
     agent_counts: dict[str, int] = {}
-    for msg in messages[-10:]:
-        # Only count AIMessage instances (actual agent responses)
-        # ToolMessage instances have tool names, not agent names
+    agent_content_sigs: dict[str, list[str]] = {}
+    for msg in messages[-20:]:
         if isinstance(msg, AIMessage) or (
             hasattr(msg, "__class__") and msg.__class__.__name__ == "AIMessage"
         ):
             agent_name = getattr(msg, "name", None)
-            # Only count valid agent names, ignore tool names or other identifiers
             if agent_name and agent_name in valid_agent_names:
                 agent_counts[agent_name] = agent_counts.get(agent_name, 0) + 1
+                content = getattr(msg, "content", "")
+                if isinstance(content, str) and len(content) > 100:
+                    sig = content[:200]
+                    agent_content_sigs.setdefault(agent_name, []).append(sig)
 
-    for agent, count in agent_counts.items():
-        if count >= 4:
-            logger.warning(
-                f"Potential loop: agent '{agent}' appeared {count} times in last 10 messages"
+    # The Research agent legitimately produces 3 named AIMessages in a single pass:
+    #   1. initial sub-task dispatch, 2. continue after first tool results, 3. merger output.
+    # Only flag as a loop after 5+ appearances (1 full pass + 1 re-route still allowed).
+    AGENT_APPEARANCE_LOOP_THRESHOLD = 5
+    candidates = [
+        (agent, count)
+        for agent, count in agent_counts.items()
+        if count >= AGENT_APPEARANCE_LOOP_THRESHOLD
+    ]
+
+    # Also detect content-based loops: an agent returning near-identical
+    # content multiple times is a strong signal it's stuck.
+    for agent_name, sigs in agent_content_sigs.items():
+        if len(sigs) >= 3 and agent_name not in {c[0] for c in candidates}:
+            unique = set(sigs)
+            if len(unique) <= len(sigs) // 2:
+                candidates.append((agent_name, len(sigs)))
+
+    # Detect tool-call pattern loops even when AIMessages have no name.
+    # Specifically: if the recent window contains many tool_universe_find_tools
+    # calls but zero tool_universe_call_tool calls, the research sub-agents are
+    # stuck in a search loop that the per-agent name check would miss.
+    find_tools_calls = 0
+    call_tool_calls = 0
+    for msg in messages[-30:]:
+        tool_calls = getattr(msg, "tool_calls", None) or []
+        for tc in tool_calls:
+            name = tc.get("name", "") if isinstance(tc, dict) else getattr(tc, "name", "")
+            if name == "tool_universe_find_tools":
+                find_tools_calls += 1
+            elif name == "tool_universe_call_tool":
+                call_tool_calls += 1
+    # The research agent runs up to 4 sub-tasks in parallel, each making 1-2
+    # tool_universe_find_tools calls before a tool_universe_call_tool call.
+    # Worst case before any actual execution: 4 sub-agents x 2 rounds = 8 searches.
+    # Only flag as a loop if we exceed that budget with zero executions.
+    if find_tools_calls >= 9 and call_tool_calls == 0:
+        logger.warning(
+            "Tool-call loop detected: %d tool_universe_find_tools calls with 0 "
+            "tool_universe_call_tool calls in last 30 messages.",
+            find_tools_calls,
+        )
+        candidates.append(("Research", find_tools_calls))
+
+    if not candidates:
+        return False, ""
+
+    # Prefer the strongest signal (highest count). On ties, deprioritize synthesis/meta
+    # agents so we break "work" loops (Analysis/Research) instead of oscillating with Report.
+    def _loop_sort_key(item: tuple[str, int]) -> tuple:
+        name, cnt = item
+        deprior = 1 if name in ("Report", "Summary", "Supervisor") else 0
+        return (-cnt, deprior, name)
+
+    candidates.sort(key=_loop_sort_key)
+    agent, count = candidates[0]
+    logger.warning(
+        f"Potential loop: agent '{agent}' appeared {count} times in last 20 messages "
+        f"(among {len(candidates)} agent(s) over threshold)"
+    )
+    return True, agent
+
+
+_RESEARCH_FAILURE_PATTERNS = re.compile(
+    r"(no\s+(genetic|transcriptomic|proteomic|omics)\s+data\s+(was|were|could be)\s+(retrieved|collected|obtained)"
+    r"|foundational\s+data\s+collection\s+steps?\s+failed"
+    r"|no\s+substantive\s+data\s+was\s+collected"
+    r"|could\s+not\s+be\s+successfully\s+(retrieved|executed|completed)"
+    r"|this\s+foundational\s+step.*was\s+unsuccessful"
+    r"|no\s+specific\s+tool\s+calls?\s+were\s+executed"
+    r"|tool\s+searches?\s+were\s+unsuccessful)",
+    re.IGNORECASE,
+)
+
+
+def check_for_research_failure(messages) -> tuple[bool, str]:
+    """
+    Check if the last research agent message indicates a data-collection failure.
+
+    Prevents the supervisor from re-sending the same task to research when the
+    previous attempt already reported that no data could be retrieved.
+    """
+    for msg in reversed(messages[-5:]):
+        if not (
+            isinstance(msg, AIMessage)
+            or (hasattr(msg, "__class__") and msg.__class__.__name__ == "AIMessage")
+        ):
+            continue
+        name = getattr(msg, "name", "")
+        if name != "Research":
+            continue
+        content = get_message_content(msg)
+        if _RESEARCH_FAILURE_PATTERNS.search(content):
+            return True, (
+                "Research agent already reported data-collection failure. "
+                "Re-sending the same task will not produce different results."
             )
-            return True, agent
-
     return False, ""
 
 
@@ -442,6 +672,114 @@ def get_all_created_tools(messages) -> list[str]:
                 pass
 
     return created_tools
+
+
+def extract_steering_messages(messages) -> list[str]:
+    """Extract [USER STEERING] directives from conversation history.
+
+    Returns the cleaned steering text (prefix removed) for each steering message found.
+    """
+    steering_texts: list[str] = []
+    for msg in messages:
+        if not isinstance(msg, HumanMessage):
+            continue
+        content = get_message_content(msg)
+        if "[USER STEERING]" in content:
+            clean = content.replace("[USER STEERING]", "").strip()
+            if clean:
+                steering_texts.append(clean)
+    return steering_texts
+
+
+def check_for_engagement_request(messages) -> tuple[bool, dict | None]:
+    """Check if the last agent message contains an engagement request.
+
+    Agents signal they need user input by including [ENGAGEMENT_REQUEST] followed
+    by a JSON payload in their AIMessage content.
+
+    Returns (has_request, parsed_request_dict_or_None).
+    """
+    # Don't re-trigger if user already responded to an engagement
+    for m in messages:
+        content = get_message_content(m)
+        if isinstance(m, HumanMessage) and "[USER RESPONSE]" in content:
+            return False, None
+
+    for msg in reversed(messages[-5:]):
+        if not isinstance(msg, AIMessage):
+            continue
+        content = get_message_content(msg)
+        marker = "[ENGAGEMENT_REQUEST]"
+        idx = content.find(marker)
+        if idx == -1:
+            continue
+        json_text = content[idx + len(marker) :].strip()
+        try:
+            data = json.loads(json_text)
+            if isinstance(data, dict) and "type" in data and "question" in data:
+                return True, data
+        except json.JSONDecodeError:
+            # Try to find JSON block after the marker
+            json_match = re.search(r"\{[^{}]+\}", json_text, re.DOTALL)
+            if json_match:
+                try:
+                    data = json.loads(json_match.group())
+                    if isinstance(data, dict) and "type" in data and "question" in data:
+                        return True, data
+                except json.JSONDecodeError:
+                    pass
+        return False, None
+    return False, None
+
+
+def check_query_ambiguity(messages) -> str | None:
+    """Check if the initial user query is too ambiguous to route confidently.
+
+    Returns a description of what's missing, or None if the query is specific enough.
+    Only checks on the first supervisor call (when there's no agent output yet).
+    """
+    # Only check on first routing — if there are AIMessages, agents already responded
+    has_agent_output = any(isinstance(m, AIMessage) for m in messages)
+    if has_agent_output:
+        return None
+
+    # Don't re-ask if user already responded to a previous engagement
+    for m in messages:
+        content = get_message_content(m)
+        if isinstance(m, HumanMessage) and "[USER RESPONSE]" in content:
+            return None
+
+    original = extract_original_query(messages)
+    if not original:
+        return "No query provided."
+
+    original_lower = original.lower().strip()
+
+    # Too short / vague
+    if len(original_lower) < 10:
+        return "Query is too vague to route. Please provide more details about what you need."
+
+    # Check for common ambiguous patterns
+    ambiguous_patterns = [
+        (
+            r"^analyze\s+(?:this|a|the)\s+protein$",
+            "Please specify which protein (UniProt ID, PDB ID, or protein name).",
+        ),
+        (r"^analyze\s+$", "Please specify what to analyze and which protein/molecule."),
+        (
+            r"^help$",
+            "Please describe what you need help with — e.g., sequence analysis, structure prediction, literature search.",
+        ),
+        (
+            r"^run\s+(?:analysis|ml|dl)$",
+            "Please specify what data to use and what analysis to perform.",
+        ),
+    ]
+    for pattern, reason in ambiguous_patterns:
+        if re.search(pattern, original_lower):
+            return reason
+
+    return None
 
 
 def extract_original_query(messages) -> str | None:

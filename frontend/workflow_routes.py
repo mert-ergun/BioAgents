@@ -66,6 +66,85 @@ async def list_workflow_node_types():
     return {"node_types": types_, "total": len(types_)}
 
 
+@router.get("/api/workflows/presets/{preset_id}/definition")
+async def get_preset_definition(preset_id: str):
+    """Serialized graph definition for a preset so the builder can load it.
+
+    Returns ``{definition: {nodes, edges}, initial_inputs, layout, preset_id}``
+    where ``definition`` matches the shape accepted by ``graph_from_definition``
+    and the ``/api/workflows/run-custom`` endpoint, and ``layout`` supplies
+    auto-computed x/y hints for the builder canvas.
+    """
+    entry = PRESET_BY_ID.get(preset_id)
+    if entry is None:
+        raise HTTPException(status_code=404, detail=f"Unknown preset_id: {preset_id!r}")
+    try:
+        graph = build_graph_for_preset(
+            preset_id,
+            embedding_dim=8,
+            esm2_model_name=DEFAULT_ESM2_MODEL_NAME,
+            options=None,
+        )
+    except Exception as exc:
+        logger.exception("Failed to build preset graph %s", preset_id)
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    definition = graph.to_definition_dict()
+    layout = _compute_preset_layout(graph)
+
+    # Default initial_inputs derived from the preset's declared form fields.
+    initial_inputs: dict[str, dict[str, Any]] = {}
+    if entry.source_spec:
+        # Multi-source scenario: populate every declared input with a placeholder
+        # that the UI can edit.
+        for spec in entry.source_spec:
+            nid = spec["node_id"]
+            key = spec["input_key"]
+            initial_inputs.setdefault(nid, {})[key] = ""
+    else:
+        initial_inputs[entry.source_node_id] = {entry.source_input_key: ""}
+
+    return {
+        "preset_id": preset_id,
+        "name": entry.name,
+        "description": entry.description,
+        "category": entry.category,
+        "definition": definition,
+        "layout": layout,
+        "initial_inputs": initial_inputs,
+    }
+
+
+def _compute_preset_layout(graph: Any) -> dict[str, dict[str, int]]:
+    """Assign (x, y) positions to every node using a longest-path layered layout.
+
+    Column = longest path from any source → node (so all predecessors sit left).
+    Within a column, rows are stable-sorted by node id. Spacing matches the
+    builder's node footprint (260 x 200).
+    """
+    import networkx as nx  # local import keeps module import cheap
+
+    nxg = graph.nx_graph
+    # Longest-path distance from any root to each node == topological depth.
+    depth: dict[str, int] = {}
+    for nid in nx.lexicographical_topological_sort(nxg):
+        preds = list(nxg.predecessors(nid))
+        depth[nid] = 0 if not preds else 1 + max(depth[p] for p in preds)
+
+    by_col: dict[int, list[str]] = {}
+    for nid, d in depth.items():
+        by_col.setdefault(d, []).append(nid)
+
+    col_w = 320
+    row_h = 140
+    layout: dict[str, dict[str, int]] = {}
+    for col, ids in by_col.items():
+        ids.sort()
+        for row, nid in enumerate(ids):
+            layout[nid] = {"x": 80 + col * col_w, "y": 80 + row * row_h}
+    return layout
+
+
 def validate_custom_workflow_request(request: CustomWorkflowRunRequest) -> None:
     d = request.definition
     if not isinstance(d, dict):

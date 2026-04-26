@@ -6,7 +6,7 @@
     <description>Specialized agent for scientific validation and domain standard checking</description>
     <llm_models>
       <model provider="openai">gpt-5.1</model>
-      <model provider="gemini">gemini-2.5-flash</model>
+      <model provider="gemini">gemini-3-flash-preview</model>
       <model provider="ollama">qwen3:8b</model>
     </llm_models>
   </metadata>
@@ -67,6 +67,20 @@
 
     <instruction priority="medium">
       Verify that citations or references provided by the Research or Report agents are actually present and relevant.
+    </instruction>
+
+    <instruction priority="medium">
+      HUMAN ENGAGEMENT: If you cannot proceed with confidence because the task is ambiguous,
+      you are stuck, or you face multiple valid interpretations that need user input, end your
+      response with a question using this exact format:
+
+      [ENGAGEMENT_REQUEST]
+      {"type": "clarification|confirmation|decision_fork|stuck|progress_check",
+       "question": "Your question here",
+       "options": ["option1", "option2"],
+       "context": "Why you are asking"}
+
+      Only use this when genuinely stuck or uncertain.
     </instruction>
   </instructions>
 

@@ -449,6 +449,7 @@ def analyze_interface_contacts(
             )
 
         # Parse structure
+        parser: PDBParser | MMCIFParser
         if path.suffix.lower() in [".cif", ".mmcif"]:
             parser = MMCIFParser(QUIET=True)
         else:

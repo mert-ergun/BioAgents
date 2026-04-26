@@ -1,0 +1,103 @@
+{
+  "version": "1.0",
+  "updated_at": "2026-04-06T19:26:56.457966",
+  "tools": {
+    "analyze_pdb_chain": {
+      "name": "analyze_pdb_chain",
+      "description": "Parses a PDB file, extracts a specified chain, counts VAL and TRP residues (alpha carbons), and calculates the distance between alpha carbons of two specified residues.",
+      "category": "structural",
+      "parameters": [
+        {
+          "name": "pdb_id",
+          "type": "str",
+          "description": "The PDB ID (e.g., '1PC2').",
+          "required": true,
+          "default": null,
+          "enum": null
+        },
+        {
+          "name": "chain_id",
+          "type": "str",
+          "description": "The chain ID to analyze (e.g., 'A').",
+          "required": true,
+          "default": null,
+          "enum": null
+        },
+        {
+          "name": "residue1_spec",
+          "type": "str",
+          "description": "Optional: Specification for the first residue for distance calculation (e.g., 'ASP72'). Format: RESIDUE_NAME_3_LETTER_CODE + RESIDUE_NUMBER.",
+          "required": true,
+          "default": null,
+          "enum": null
+        },
+        {
+          "name": "residue2_spec",
+          "type": "str",
+          "description": "Optional: Specification for the second residue for distance calculation (e.g., 'GLY144'). Format: RESIDUE_NAME_3_LETTER_CODE + RESIDUE_NUMBER.",
+          "required": true,
+          "default": null,
+          "enum": null
+        }
+      ],
+      "return_type": "dict",
+      "return_description": "A dictionary containing the counts of VAL and TRP residues, and the calculated distance if residue specifications are provided.",
+      "source_paper": null,
+      "source_url": null,
+      "source_software": null,
+      "code": "import os\nimport re\nfrom typing import Dict, Any, Optional, Tuple\n\n# Biopython imports\nfrom Bio.PDB import PDBList, PDBParser\nfrom Bio.PDB.MMCIFParser import MMCIFParser\nfrom Bio.PDB.PDBExceptions import PDBConstructionException\n\n# NumPy for distance calculation\nimport numpy as np\n\ndef _parse_residue_spec(spec: str) -> Tuple[str, int]:\n    \"\"\"\n    Parses a residue specification string (e.g., 'ASP72') into its name and number.\n\n    Args:\n        spec (str): The residue specification string.\n\n    Returns:\n        Tuple[str, int]: A tuple containing the 3-letter residue name and its number.\n\n    Raises:\n        ValueError: If the specification format is invalid.\n    \"\"\"\n    match = re.match(r'([A-Z]{3})(\\d+)', spec)\n    if not match:\n        raise ValueError(f\"Invalid residue specification format: '{spec}'. Expected format like 'ASP72'.\")\n    res_name = match.group(1).upper()\n    res_num = int(match.group(2))\n    return res_name, res_num\n\ndef analyze_pdb_chain(\n    pdb_id: str,\n    chain_id: str,\n    residue1_spec: Optional[str] = None,\n    residue2_spec: Optional[str] = None\n) -> Dict[str, Any]:\n    \"\"\"\n    Parses a PDB file, extracts a specified chain, counts VAL and TRP residues (alpha carbons),\n    and calculates the distance between alpha carbons of two specified residues.\n\n    Args:\n        pdb_id (str): The PDB ID (e.g., '1PC2').\n        chain_id (str): The chain ID to analyze (e.g., 'A').\n        residue1_spec (Optional[str]): Specification for the first residue for distance calculation\n                                        (e.g., 'ASP72'). Format: RESIDUE_NAME_3_LETTER_CODE + RESIDUE_NUMBER.\n                                        Required if residue2_spec is provided.\n        residue2_spec (Optional[str]): Specification for the second residue for distance calculation\n                                        (e.g., 'GLY144'). Format: RESIDUE_NAME_3_LETTER_CODE + RESIDUE_NUMBER.\n\n    Returns:\n        Dict[str, Any]: A dictionary containing the counts of VAL and TRP residues, and the calculated distance\n                        if residue specifications are provided.\n\n    Raises:\n        ValueError: If input parameters are invalid or required residues are not found.\n        RuntimeError: If PDB file cannot be downloaded or parsed, or if Biopython is not installed.\n\n    Example:\n        >>> # To count VAL and TRP residues in chain A of 1PC2\n        >>> analyze_pdb_chain(pdb_id='1PC2', chain_id='A')\n        {'val_count': 10, 'trp_count': 2, 'distance_angstroms': None}\n\n        >>> # To count VAL and TRP and calculate distance between ASP72 and GLY144 in chain A of 1PC2\n        >>> analyze_pdb_chain(pdb_id='1PC2', chain_id='A', residue1_spec='ASP72', residue2_spec='GLY144')\n        {'val_count': 10, 'trp_count': 2, 'distance_angstroms': 15.78}\n    \"\"\"\n    if (residue1_spec and not residue2_spec) or (not residue1_spec and residue2_spec):\n        raise ValueError(\"Both 'residue1_spec' and 'residue2_spec' must be provided for distance calculation.\")\n\n    # Initialize PDBList to download PDB files\n    pdbl = PDBList()\n    pdb_file = None\n    try:\n        # Attempt to download PDB file. By default, it downloads to current directory.\n        # We'll try to find it in the current directory or a 'pdb' subdirectory.\n        pdb_file_path = pdbl.retrieve_pdb_file(pdb_id, pdir='.', file_format='pdb')\n        if not os.path.exists(pdb_file_path):\n            # Try .cif format if .pdb fails\n            pdb_file_path = pdbl.retrieve_pdb_file(pdb_id, pdir='.', file_format='cif')\n            if not os.path.exists(pdb_file_path):\n                raise RuntimeError(f\"Could not download PDB or CIF file for {pdb_id}.\")\n\n        # Determine parser based on file extension\n        if pdb_file_path.endswith('.pdb'):\n            parser = PDBParser(QUIET=True)\n        elif pdb_file_path.endswith('.cif'):\n            parser = MMCIFParser(QUIET=True)\n        else:\n            raise RuntimeError(f\"Unsupported file format for {pdb_id}: {pdb_file_path}\")\n\n        structure = parser.get_structure(pdb_id, pdb_file_path)\n    except PDBConstructionException as e:\n        raise RuntimeError(f\"Error parsing PDB file {pdb_id}: {e}\")\n    except Exception as e:\n        raise RuntimeError(f\"Failed to retrieve or parse PDB file {pdb_id}: {e}\")\n\n    val_count = 0\n    trp_count = 0\n    ca_atom_res1 = None\n    ca_atom_res2 = None\n\n    target_res1_name, target_res1_num = (None, None)\n    target_res2_name, target_res2_num = (None, None)\n\n    if residue1_spec and residue2_spec:\n        target_res1_name, target_res1_num = _parse_residue_spec(residue1_spec)\n        target_res2_name, target_res2_num = _parse_residue_spec(residue2_spec)\n\n    found_chain = False\n    for model in structure:\n        for chain in model:\n            if chain.id == chain_id:\n                found_chain = True\n                for residue in chain:\n                    # Biopython residue ID is a tuple: (hetero_flag, residue_number, insertion_code)\n                    res_id = residue.get_id()\n                    res_name = residue.get_resname()\n                    res_num = res_id[1]\n\n                    # Count VAL and TRP alpha carbons\n                    if res_name == 'VAL' and 'CA' in residue:\n                        val_count += 1\n                    elif res_name == 'TRP' and 'CA' in residue:\n                        trp_count += 1\n\n                    # Find alpha carbons for specified residues for distance calculation\n                    if target_res1_name and target_res1_num and res_name == target_res1_name and res_num == target_res1_num:\n                        if 'CA' in residue:\n                            ca_atom_res1 = residue['CA']\n                        else:\n                            raise ValueError(f\"Alpha carbon not found for {residue1_spec} in chain {chain_id}.\")\n                    if target_res2_name and target_res2_num and res_name == target_res2_name and res_num == target_res2_num:\n                        if 'CA' in residue:\n                            ca_atom_res2 = residue['CA']\n                        else:\n                            raise ValueError(f\"Alpha carbon not found for {residue2_spec} in chain {chain_id}.\")\n                break # Chain found, no need to iterate further in this model\n        if found_chain:\n            break # Chain found, no need to iterate further in other models\n\n    if not found_chain:\n        raise ValueError(f\"Chain '{chain_id}' not found in PDB ID '{pdb_id}'.\")\n\n    distance_angstroms = None\n    if ca_atom_res1 is not None and ca_atom_res2 is not None:\n        distance_angstroms = np.linalg.norm(ca_atom_res1.get_coord() - ca_atom_res2.get_coord())\n    elif (residue1_spec and residue2_spec) and (ca_atom_res1 is None or ca_atom_res2 is None):\n        raise ValueError(f\"Could not find both specified residues ({residue1_spec}, {residue2_spec}) in chain {chain_id}.\")\n\n    # Clean up downloaded PDB file\n    if pdb_file_path and os.path.exists(pdb_file_path):\n        os.remove(pdb_file_path)\n        # Also remove the directory if it's empty and was created by PDBList\n        pdb_dir = os.path.dirname(pdb_file_path)\n        if pdb_dir and pdb_dir != '.' and not os.listdir(pdb_dir):\n            os.rmdir(pdb_dir)\n\n    return {\n        'val_count': val_count,\n        'trp_count': trp_count,\n        'distance_angstroms': distance_angstroms\n    }\n",
+      "dependencies": [
+        "biopython",
+        "numpy"
+      ],
+      "system_dependencies": [],
+      "created_at": "2026-03-31T20:14:19.373618",
+      "updated_at": "2026-03-31T20:14:19.373806",
+      "version": "1.0.0",
+      "validated": false,
+      "validation_error": null,
+      "usage_count": 0,
+      "last_used": null
+    },
+    "gwas_get_associations_by_disease": {
+      "name": "gwas_get_associations_by_disease",
+      "description": "Retrieve genome-wide significant GWAS associations for a disease from the NHGRI-EBI GWAS Catalog REST API. Accepts EFO IDs (e.g., EFO_0000249) or MONDO IDs (auto-mapped to EFO).",
+      "category": "genomics",
+      "parameters": [
+        {
+          "name": "efo_id",
+          "type": "str",
+          "description": "EFO ID of the disease (e.g., \"EFO_0000249\" for Alzheimer's disease). MONDO IDs such as \"MONDO_0004975\" are automatically mapped to the correct GWAS Catalog EFO ID.",
+          "required": true,
+          "default": null,
+          "enum": null
+        },
+        {
+          "name": "p_value_threshold",
+          "type": "float",
+          "description": "P-value threshold for significance (default: 5e-8).",
+          "required": true,
+          "default": 5e-08,
+          "enum": null
+        }
+      ],
+      "return_type": "str",
+      "return_description": "A CSV/TSV formatted string containing GWAS_Locus_ID, Mapped_Gene_Symbol, P_value, SNP_ID, Risk_Allele, Trait for genome-wide significant associations.",
+      "source_paper": null,
+      "source_url": "https://www.ebi.ac.uk/gwas/rest/api/",
+      "source_software": "NHGRI-EBI GWAS Catalog",
+      "code": "import csv\nimport io\nimport requests\n\n# GWAS Catalog uses its own EFO IDs; map common MONDO/other ontology IDs to EFO.\n_MONDO_TO_EFO = {\n    \"MONDO_0004975\": \"EFO_0000249\",  # Alzheimer disease\n    \"MONDO_0005301\": \"EFO_0003767\",  # multiple sclerosis\n    \"MONDO_0004976\": \"EFO_0000249\",  # Alzheimer disease (alt)\n    \"MONDO_0007256\": \"EFO_0000384\",  # Crohn disease\n    \"MONDO_0005090\": \"EFO_0000692\",  # schizophrenia\n    \"MONDO_0011561\": \"EFO_0000612\",  # myocardial infarction\n    \"MONDO_0005148\": \"EFO_0001360\",  # type 2 diabetes\n}\n\n_BASE = \"https://www.ebi.ac.uk/gwas/rest/api\"\n_TIMEOUT = 30\n\n\ndef _compute_pvalue(mantissa, exponent):\n    try:\n        return float(mantissa) * (10 ** int(exponent))\n    except (TypeError, ValueError):\n        return None\n\n\ndef _extract_genes(loci):\n    genes = []\n    for locus in loci:\n        for g in locus.get(\"entrezMappedGenes\", []):\n            name = g.get(\"geneName\", \"\").strip()\n            if name:\n                genes.append(name)\n        if not genes:\n            for g in locus.get(\"authorReportedGenes\", []):\n                name = g.get(\"geneName\", \"\").strip()\n                if name:\n                    genes.append(name)\n    return \", \".join(dict.fromkeys(genes)) if genes else \"N/A\"\n\n\ndef _extract_snp_allele(loci):\n    for locus in loci:\n        for allele in locus.get(\"strongestRiskAlleles\", []):\n            name = allele.get(\"riskAlleleName\", \"\").strip()\n            if name:\n                if \"-\" in name:\n                    parts = name.rsplit(\"-\", 1)\n                    return parts[0], parts[1]\n                return name, \"N/A\"\n    return \"N/A\", \"N/A\"\n\n\ndef _extract_trait(assoc):\n    for t in assoc.get(\"efoTraits\", []):\n        trait = t.get(\"trait\", \"\").strip()\n        if trait:\n            return trait\n    return \"N/A\"\n\n\ndef _extract_study_accession(assoc):\n    study_href = assoc.get(\"_links\", {}).get(\"study\", {}).get(\"href\", \"\")\n    if study_href:\n        return study_href.rstrip(\"/\").split(\"/\")[-1]\n    return \"N/A\"\n\n\ndef _fetch_pages(url: str, params: dict, p_threshold: float) -> list[dict]:\n    \"\"\"Fetch all pages from a GWAS Catalog HAL endpoint and return filtered rows.\"\"\"\n    rows = []\n    page = 0\n    while True:\n        params[\"page\"] = page\n        try:\n            resp = requests.get(url, params=params, timeout=_TIMEOUT)\n            resp.raise_for_status()\n            data = resp.json()\n        except requests.exceptions.HTTPError as exc:\n            if exc.response is not None and exc.response.status_code == 404:\n                return rows  # endpoint not supported for this ID\n            return rows\n        except Exception:\n            return rows\n\n        associations = data.get(\"_embedded\", {}).get(\"associations\", [])\n        if not associations:\n            break\n\n        for assoc in associations:\n            pval = _compute_pvalue(\n                assoc.get(\"pvalueMantissa\"), assoc.get(\"pvalueExponent\")\n            )\n            if pval is None or pval > p_threshold:\n                continue\n            loci = assoc.get(\"loci\", [])\n            snp_id, risk_allele = _extract_snp_allele(loci)\n            rows.append(\n                {\n                    \"GWAS_Locus_ID\": _extract_study_accession(assoc),\n                    \"Mapped_Gene_Symbol\": _extract_genes(loci),\n                    \"P_value\": pval,\n                    \"SNP_ID\": snp_id,\n                    \"Risk_Allele\": risk_allele,\n                    \"Trait\": _extract_trait(assoc),\n                }\n            )\n\n        page_info = data.get(\"page\", {})\n        total_pages = page_info.get(\"totalPages\", 1)\n        if page >= total_pages - 1 or not data.get(\"_links\", {}).get(\"next\"):\n            break\n        page += 1\n\n    return rows\n\n\ndef gwas_get_associations_by_disease(\n    efo_id: str,\n    p_value_threshold: float = 5e-8,\n) -> str:\n    \"\"\"\n    Retrieve genome-wide significant GWAS associations for a disease from the\n    NHGRI-EBI GWAS Catalog REST API (https://www.ebi.ac.uk/gwas/rest/api/).\n\n    Args:\n        efo_id: EFO ID of the disease (e.g., 'EFO_0000249' for Alzheimer's disease).\n                Also accepts MONDO IDs such as 'MONDO_0004975' — these are\n                automatically mapped to the corresponding GWAS Catalog EFO ID.\n        p_value_threshold: P-value threshold for significance. Default: 5e-8.\n\n    Returns:\n        Tab-separated string with columns: GWAS_Locus_ID, Mapped_Gene_Symbol,\n        P_value, SNP_ID, Risk_Allele, Trait. Returns an informative message when\n        no associations are found.\n    \"\"\"\n    # Resolve MONDO → EFO mapping if needed\n    resolved_id = _MONDO_TO_EFO.get(efo_id, efo_id)\n\n    # Primary: search by EFO ID via /associations/search/findByEfoId\n    params_by_id = {\"efoId\": resolved_id, \"size\": 100}\n    rows = _fetch_pages(\n        f\"{_BASE}/associations/search/findByEfoId\",\n        dict(params_by_id),\n        p_value_threshold,\n    )\n\n    # Fallback: search by trait name via /associations/search/findByEfoTrait\n    # (trait name extracted from the EFO ID format EFO_XXXXXXX if first try empty)\n    if not rows:\n        # Use human-readable trait name lookup from GWAS Catalog if known\n        _EFO_TO_TRAIT = {\n            \"EFO_0000249\": \"Alzheimer disease\",\n            \"EFO_0003767\": \"multiple sclerosis\",\n            \"EFO_0000384\": \"Crohn disease\",\n            \"EFO_0000692\": \"schizophrenia\",\n            \"EFO_0000612\": \"myocardial infarction\",\n            \"EFO_0001360\": \"type 2 diabetes\",\n        }\n        trait_name = _EFO_TO_TRAIT.get(resolved_id)\n        if trait_name:\n            params_by_trait = {\"efoTrait\": trait_name, \"size\": 100}\n            rows = _fetch_pages(\n                f\"{_BASE}/associations/search/findByEfoTrait\",\n                params_by_trait,\n                p_value_threshold,\n            )\n\n    if not rows:\n        return (\n            f\"No genome-wide significant associations (p ≤ {p_value_threshold:.0e}) \"\n            f\"found for EFO ID '{efo_id}' (resolved to '{resolved_id}') \"\n            f\"in the NHGRI-EBI GWAS Catalog. \"\n            f\"Verify the EFO ID using the GWAS Catalog website: \"\n            f\"https://www.ebi.ac.uk/gwas/search?query={resolved_id}\"\n        )\n\n    out = io.StringIO()\n    fieldnames = [\"GWAS_Locus_ID\", \"Mapped_Gene_Symbol\", \"P_value\", \"SNP_ID\", \"Risk_Allele\", \"Trait\"]\n    writer = csv.DictWriter(out, fieldnames=fieldnames, delimiter=\"\\t\")\n    writer.writeheader()\n    writer.writerows(rows)\n    return out.getvalue()\n",
+      "dependencies": [
+        "requests"
+      ],
+      "system_dependencies": [],
+      "created_at": "2026-04-06T16:49:22.575601",
+      "updated_at": "2026-04-06T14:01:50.728678",
+      "version": "1.0.0",
+      "validated": false,
+      "validation_error": null,
+      "usage_count": 7,
+      "last_used": "2026-04-06T19:26:56.457952"
+    }
+  }
+}

@@ -1,0 +1,216 @@
+{
+  "run_id": "e51a6f7b187043c29fc7a3724a9203b7",
+  "experiment_config": {
+    "id": "cfg_baseline",
+    "name": "Baseline",
+    "description": "Default configuration with no prompt overrides.",
+    "max_steps": 50,
+    "timeout": 180,
+    "system_prompt_overrides": {},
+    "model_override": {},
+    "temperature": 0.0,
+    "extra": {}
+  },
+  "use_cases": [
+    {
+      "id": "adv_e2e_target_discovery_alzheimers",
+      "name": "End-to-End Therapeutic Target Discovery: Alzheimer's Disease",
+      "prompt": "I'm leading a target identification program for Alzheimer's disease and I need a comprehensive evidence-based target prioritisation. Please pull together the genetic evidence from GWAS — give me the top loci from the NHGRI-EBI Catalog with their mapped genes and p-values — and combine that with what transcriptomics studies have found consistently dysregulated in AD brain tissue and what proteomics has found changed in CSF. Then build an interaction network around this combined gene set and use it to identify which targets are network hubs that might have disproportionate influence. For the top candidates coming out of the network, check what structural data exists and whether the proteins have known ligandable pockets. I want each candidate scored on multiple evidence pillars: genetic, transcriptomic, proteomic, network position, structural druggability, and human genetic validation. The final output should be a ranked table of your top ten targets with scores across all pillars, and a written recommendation for the three you think are most worth pursuing, with a mechanistic hypothesis for each explaining how targeting it could modify disease. Please also give me your assessment of CNS drug delivery challenges for each of those three.\n",
+      "description": "Complete autonomous target discovery for Alzheimer's disease spanning GWAS evidence, transcriptomics, CSF proteomics, PPI network analysis, structural druggability assessment, and a fully scored ranked target report engaging all major agent types.\n",
+      "expected_agents": [
+        "research",
+        "coder",
+        "analysis",
+        "critic",
+        "report"
+      ],
+      "expected_tools": [
+        "fetch_pdb_structure",
+        "get_pdb_polymer_entities",
+        "analyze_interface_contacts",
+        "execute_ml_code",
+        "tool_universe_find_tools",
+        "tool_universe_call_tool"
+      ],
+      "expected_output_contains": [
+        "Alzheimer",
+        "GWAS",
+        "APOE",
+        "BIN1",
+        "druggability",
+        "network",
+        "CSF",
+        "blood-brain barrier"
+      ],
+      "reference_output": null,
+      "evaluation_criteria": "- ≥15 GWAS loci listed with SNP, gene, and p-value.\n- ≥10 transcriptomic genes with study support.\n- ≥5 CSF proteomic proteins identified.\n- PPI network built; degree/betweenness centrality computed.\n- Top 5 network hubs identified as candidate targets.\n- PDB availability and pocket druggability assessed for top targets.\n- Multi-pillar scoring (genetic/transcriptomic/proteomic/network/structural) applied.\n- Ranked table of top 10 targets produced.\n- Top 3 targets recommended with mechanistic hypothesis each.\n- CNS penetrance and BBB challenges assessed per recommendation.\n",
+      "tags": [
+        "advanced",
+        "end_to_end",
+        "alzheimers",
+        "target_discovery"
+      ],
+      "category": "end_to_end_discovery"
+    }
+  ],
+  "started_at": "2026-04-06T14:10:32.184965+00:00",
+  "finished_at": "2026-04-06T14:11:04.600084+00:00",
+  "results": [
+    {
+      "use_case_id": "adv_e2e_target_discovery_alzheimers",
+      "use_case_name": "End-to-End Therapeutic Target Discovery: Alzheimer's Disease",
+      "prompt": "I'm leading a target identification program for Alzheimer's disease and I need a comprehensive evidence-based target prioritisation. Please pull together the genetic evidence from GWAS — give me the top loci from the NHGRI-EBI Catalog with their mapped genes and p-values — and combine that with what transcriptomics studies have found consistently dysregulated in AD brain tissue and what proteomics has found changed in CSF. Then build an interaction network around this combined gene set and use it to identify which targets are network hubs that might have disproportionate influence. For the top candidates coming out of the network, check what structural data exists and whether the proteins have known ligandable pockets. I want each candidate scored on multiple evidence pillars: genetic, transcriptomic, proteomic, network position, structural druggability, and human genetic validation. The final output should be a ranked table of your top ten targets with scores across all pillars, and a written recommendation for the three you think are most worth pursuing, with a mechanistic hypothesis for each explaining how targeting it could modify disease. Please also give me your assessment of CNS drug delivery challenges for each of those three.\n",
+      "execution_time": 26.42689299583435,
+      "total_steps": 7,
+      "workflow_completed": false,
+      "agent_flow": [
+        "supervisor",
+        "planner",
+        "supervisor",
+        "planner",
+        "supervisor",
+        "research",
+        "research_tools"
+      ],
+      "agent_steps": [
+        {
+          "step": 1,
+          "agent": "supervisor",
+          "elapsed_ms": 2565.6747817993164,
+          "messages": [
+            {
+              "type": "HumanMessage",
+              "content": "[SUPERVISOR TASK] Decompose the Alzheimer's disease target prioritization request into a step-by-step execution plan. The plan must include: 1) Fetching AD GWAS loci from NHGRI-EBI via the research agent. 2) Identifying dysregulated genes from transcriptomics and CSF proteomics via literature and research agents. 3) Building a protein-protein interaction network and identifying hubs using the coder or structural_biology agents. 4) Assessing structural druggability and ligandable pockets for top candidates using structural_biology or docking agents. 5) Scoring candidates across all pillars (genetic, transcriptomic, proteomic, network, structural, validation). 6) Generating a final ranked table and a detailed report with mechanistic hypotheses and CNS delivery assessments via the report agent."
+            }
+          ],
+          "routing_decision": "planner"
+        },
+        {
+          "step": 2,
+          "agent": "planner",
+          "elapsed_ms": 10831.653594970703,
+          "messages": [
+            {
+              "type": "AIMessage",
+              "content": "[{'type': 'text', 'text': 'This execution plan outlines a multi-disciplinary bioinformatics workflow to prioritize Alzheimer’s Disease (AD) targets by integrating genetic, molecular, and structural evidence.\\n\\n### **Bioinformatics Execution Plan: AD Target Prioritization**\\n\\n#### **Phase 1: Data Acquisition & Evidence Gathering**\\n\\n1.  **GWAS Data Extraction**\\n    *   **Action:** Query the NHGRI-EBI GWAS Catalog for \"Alzheimer\\'s Disease\" (EFO_0000249). Extract lead SNPs, p-values, and reported/mapped genes.\\n    *   **Agent:** Research Agent\\n    *   **Inputs:** Disease term (Alzheimer\\'s Disease), P-value threshold ($< 5 \\\\times 10^{-8}$).\\n    *   **Outputs:** CSV of genetic loci (Locus, Lead SNP, Mapped Genes, P-value).\\n    *   **Dependencies:** None.\\n\\n2.  **Transcriptomic Meta-Analysis Synthesis**\\n    *   **Action:** Search literature and databases (e.g., Agora, AMP-AD, GEO) for consensus differentially expressed genes (DEGs) in AD brain tissue (focusing on Prefrontal Cortex/Hippocampus).\\n    *   **Agent:** Research Agent\\n    *   **Inputs:** Search terms (\"AD transcriptomics meta-analysis\", \"AMP-AD consensus modules\").\\n    *   **Outputs:** List of consistently up/down-regulated genes with fold-change and significance metrics.\\n    *   **Dependencies:** None.\\n\\n3.  **CSF Proteomics Profiling**\\n    *   **Action:** Identify proteins significantly altered in AD Cerebrospinal Fluid (CSF) from recent large-scale proteomic studies (e.g., EMIF-AD, TMT-MS cohorts).\\n    *   **Agent:** Research Agent\\n    *   **Inputs:** Search terms (\"AD CSF proteomics\", \"proteomic biomarkers Alzheimer\\'s\").\\n    *   **Outputs:** List of proteins with altered abundance in AD vs. Control.\\n    *   **Dependencies:** None.\\n\\n#### **Phase 2: Network Integration & Hub Identification**\\n\\n4.  **PPI Network Construction**\\n    *   **Action:** Merge gene lists from Steps 1, 2, and 3. Use the STRING or BioGRID database to build a Protein-Protein Interaction (PPI) network.\\n    *   "
+            }
+          ],
+          "routing_decision": null
+        },
+        {
+          "step": 3,
+          "agent": "supervisor",
+          "elapsed_ms": 13264.164209365845,
+          "messages": [
+            {
+              "type": "HumanMessage",
+              "content": "[SUPERVISOR TASK] Decompose the Alzheimer's disease target prioritization request into a step-by-step execution plan. The plan must include: 1) Fetching AD GWAS loci from NHGRI-EBI via the research agent. 2) Identifying dysregulated genes from transcriptomics and CSF proteomics via literature and research agents. 3) Building a protein-protein interaction network and identifying hubs using the coder or structural_biology agents. 4) Assessing structural druggability and ligandable pockets for top candidates using structural_biology or docking agents. 5) Scoring candidates across all pillars (genetic, transcriptomic, proteomic, network, structural, validation). 6) Generating a final ranked table and a detailed report with mechanistic hypotheses and CNS delivery assessments via the report agent."
+            }
+          ],
+          "routing_decision": "planner"
+        },
+        {
+          "step": 4,
+          "agent": "planner",
+          "elapsed_ms": 19003.55887413025,
+          "messages": [
+            {
+              "type": "AIMessage",
+              "content": "[{'type': 'text', 'text': 'This execution plan outlines a multi-disciplinary bioinformatics workflow to prioritize Alzheimer’s Disease (AD) targets by integrating genetic, molecular, and structural evidence.\\n\\n### **Bioinformatics Execution Plan: AD Target Prioritization**\\n\\n#### **Phase 1: Multi-Omic Evidence Gathering**\\n\\n1.  **GWAS Loci Extraction**\\n    *   **Action:** Query the NHGRI-EBI GWAS Catalog for \"Alzheimer\\'s Disease\" (EFO_0000249). Extract lead SNPs, p-values, and mapped genes.\\n    *   **Agent:** Research Agent\\n    *   **Inputs:** Disease term (Alzheimer\\'s Disease), P-value threshold ($< 5 \\\\times 10^{-8}$).\\n    *   **Outputs:** CSV of genetic loci (Locus, Lead SNP, Mapped Genes, P-value).\\n    *   **Dependencies:** None.\\n\\n2.  **Transcriptomic & Proteomic Synthesis**\\n    *   **Action:** Search literature and databases (e.g., AMP-AD, Agora, EMIF-AD) for consensus differentially expressed genes (DEGs) in AD brain tissue and significantly changed proteins in CSF.\\n    *   **Agent:** Research Agent\\n    *   **Inputs:** Search terms (\"AD transcriptomics meta-analysis\", \"CSF proteomics Alzheimer\\'s\").\\n    *   **Outputs:** List of genes/proteins with direction of change and evidence strength.\\n    *   **Dependencies:** None.\\n\\n#### **Phase 2: Network Analysis & Hub Identification**\\n\\n3.  **PPI Network Construction & Topology Analysis**\\n    *   **Action:** Integrate the gene lists from Steps 1 & 2. Build a Protein-Protein Interaction (PPI) network using STRING/BioGRID and calculate centrality metrics (Degree, Betweenness) to identify network hubs.\\n    *   **Agent:** Coder Agent\\n    *   **Inputs:** Combined gene list from Steps 1 and 2.\\n    *   **Outputs:** Network graph and a ranked list of \"Hub Scores\" for each gene.\\n    *   **Dependencies:** Steps 1 and 2.\\n\\n#### **Phase 3: Structural Druggability & Scoring**\\n\\n4.  **Structural Druggability Assessment**\\n    *   **Action:** For the top candidates, retrieve PDB structures or AlphaFold2 mo"
+            }
+          ],
+          "routing_decision": null
+        },
+        {
+          "step": 5,
+          "agent": "supervisor",
+          "elapsed_ms": 22411.174535751343,
+          "messages": [
+            {
+              "type": "HumanMessage",
+              "content": "[SUPERVISOR TASK] Query the NHGRI-EBI GWAS Catalog for 'Alzheimer's Disease' (EFO_0000249). Extract the top loci with a p-value threshold of < 5e-8. For each locus, provide the lead SNP, the mapped genes, and the specific p-value. Format the output as a CSV or a structured list that can be used for subsequent gene mapping."
+            }
+          ],
+          "routing_decision": "research"
+        },
+        {
+          "step": 6,
+          "agent": "research",
+          "elapsed_ms": 26137.879848480225,
+          "messages": [
+            {
+              "type": "AIMessage",
+              "content": "",
+              "tool_calls": [
+                {
+                  "name": "tool_universe_find_tools",
+                  "args": {
+                    "strategy": "keyword",
+                    "limit": 5,
+                    "description": "search NHGRI-EBI GWAS Catalog for disease loci and mapped genes"
+                  },
+                  "id": "9a5b4e8b-6281-415e-9801-8874097724cc"
+                }
+              ]
+            }
+          ],
+          "routing_decision": null
+        },
+        {
+          "step": 7,
+          "agent": "research_tools",
+          "elapsed_ms": 26179.95262145996,
+          "messages": [
+            {
+              "type": "ToolMessage",
+              "content": "{\n  \"source\": \"sdk\",\n  \"finder\": \"keyword\",\n  \"query\": \"search NHGRI-EBI GWAS Catalog for disease loci and mapped genes\",\n  \"result\": [\n    {\n      \"name\": \"gwas_search_snps\",\n      \"description\": \"Search for GWAS single nucleotide polymorphisms (SNPs) by rs ID or mapped gene.\",\n      \"parameter\": {\n        \"type\": \"object\",\n        \"properties\": {\n          \"rs_id\": {\n            \"type\": \"string\",\n            \"description\": \"dbSNP rs identifier\",\n            \"required\": false\n          },\n          \"mapped_gene\": {\n            \"type\": \"string\",\n            \"description\": \"Gene name or symbol\",\n            \"required\": false\n          },\n          \"size\": {\n            \"type\": \"integer\",\n            \"description\": \"Number of results to return\",\n            \"required\": false\n          },\n          \"page\": {\n            \"type\": \"integer\",\n            \"description\": \"Page number for pagination\",\n            \"required\": false\n          }\n        }\n      },\n      \"required\": []\n    },\n    {\n      \"name\": \"gwas_get_association_by_id\",\n      \"description\": \"Get a specific GWAS association by its unique identifier.\",\n      \"parameter\": {\n        \"type\": \"object\",\n        \"properties\": {\n          \"association_id\": {\n            \"type\": \"string\",\n            \"description\": \"GWAS association identifier\",\n            \"required\": true\n          }\n        }\n      },\n      \"required\": []\n    },\n    {\n      \"name\": \"gwas_get_study_by_id\",\n      \"description\": \"Get a specific GWAS study by its unique identifier.\",\n      \"parameter\": {\n        \"type\": \"object\",\n        \"properties\": {\n          \"study_id\": {\n            \"type\": \"string\",\n            \"description\": \"GWAS study identifier\",\n            \"required\": true\n          }\n        }\n      },\n      \"required\": []\n    },\n    {\n      \"name\": \"gwas_get_snp_by_id\",\n      \"description\": \"Get a specific GWAS SNP by its rs ID.\",\n      \"parameter\": {\n        \"type\": \"object\",\n        \"properties\": {\n          \"rs_id\": {\n            \"typ",
+              "tool_call_id": "9a5b4e8b-6281-415e-9801-8874097724cc"
+            }
+          ],
+          "routing_decision": null
+        }
+      ],
+      "tool_calls": [
+        {
+          "tool_name": "tool_universe_find_tools",
+          "args": {
+            "strategy": "keyword",
+            "limit": 5,
+            "description": "search NHGRI-EBI GWAS Catalog for disease loci and mapped genes"
+          },
+          "result_preview": "{\n  \"source\": \"sdk\",\n  \"finder\": \"keyword\",\n  \"query\": \"search NHGRI-EBI GWAS Catalog for disease loci and mapped genes\",\n  \"result\": [\n    {\n      \"name\": \"gwas_search_snps\",\n      \"description\": \"Search for GWAS single nucleotide polymorphisms (SNPs) by rs ID or mapped gene.\",\n      \"parameter\": {\n        \"type\": \"object\",\n        \"properties\": {\n          \"rs_id\": {\n            \"type\": \"string\",\n            \"description\": \"dbSNP rs identifier\",\n            \"required\": false\n          },\n     ",
+          "tool_call_id": "9a5b4e8b-6281-415e-9801-8874097724cc"
+        }
+      ],
+      "final_messages": [],
+      "raw_output": null,
+      "error_message": "Invalid argument provided to Gemini: 400 Function call is missing a thought_signature in functionCall parts. This is required for tools to work correctly, and missing thought_signature may lead to degraded model performance. Additional data, function call `default_api:tool_universe_find_tools` , position 7. Please refer to https://ai.google.dev/gemini-api/docs/thought-signatures for more details.",
+      "failure_mode": "exception",
+      "token_usage": null,
+      "judge_score": 0.0,
+      "judge_reasoning": "The agent failed to produce any output due to a technical error (missing thought_signature in a function call). As a result, none of the evaluation criteria were met.",
+      "judge_breakdown": {
+        "correctness": 0.0,
+        "tool_use": 0.0,
+        "clarity": 0.0,
+        "completeness": 0.0,
+        "dimensions": {
+          "correctness_reasoning": "The agent provided no information, so no correctness can be assessed.",
+          "tool_use_reasoning": "The agent attempted to use a tool but failed to provide the required thought_signature, leading to a system exception.",
+          "clarity_reasoning": "The agent provided no response due to a technical failure.",
+          "completeness_reasoning": "The agent failed to address any part of the prompt."
+        }
+      }
+    }
+  ],
+  "aggregates": {
+    "mean_score": 0.0,
+    "success_rate": 0.0,
+    "total_execution_time": 26.42689299583435,
+    "total_tokens": null,
+    "failure_mode_counts": {
+      "exception": 1
+    },
+    "total_use_cases": 1
+  }
+}

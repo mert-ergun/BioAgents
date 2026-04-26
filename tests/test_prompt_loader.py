@@ -424,7 +424,7 @@ class TestPromptLoader:
         <name>Test Agent</name>
         <llm_models>
             <model provider="openai">gpt-5.1</model>
-            <model provider="Gemini">gemini-2.5-flash</model>
+            <model provider="Gemini">gemini-3-flash-preview</model>
         </llm_models>
     </metadata>
     <role>Test role</role>
@@ -434,7 +434,7 @@ class TestPromptLoader:
             loader = PromptLoader(prompts_dir=tmpdir)
             models = loader.get_llm_models("test_prompt")
 
-            assert models == {"openai": "gpt-5.1", "gemini": "gemini-2.5-flash"}
+            assert models == {"openai": "gpt-5.1", "gemini": "gemini-3-flash-preview"}
 
     def test_get_llm_model_with_provider(self):
         """Test retrieving a specific provider model."""
@@ -544,7 +544,7 @@ class TestPromptLLMMetadataHelpers:
             pytest.skip("Analysis prompt file not found")
 
         assert models["openai"] == "gpt-5.1"
-        assert models["gemini"] == "gemini-2.5-flash"
+        assert models["gemini"] == "gemini-3-flash-preview"
         assert models["ollama"] == "qwen3:8b"
 
     def test_get_prompt_llm_model_helper(self):

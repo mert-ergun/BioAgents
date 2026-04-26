@@ -1,28 +1,46 @@
 """LangGraph multi-agent workflow definition."""
 
 import logging
-from datetime import datetime
 from functools import partial
-from typing import Annotated, Any, ClassVar, Literal, cast
+from typing import Annotated, Literal
 
-from langchain_core.messages import BaseMessage, SystemMessage
+from langchain_core.messages import BaseMessage, HumanMessage
 from langgraph.graph import END, StateGraph
 from langgraph.graph.message import add_messages
-from langgraph.prebuilt import ToolNode
+from langgraph.types import interrupt
 
 from bioagents.agents.analysis_agent import create_analysis_agent
 from bioagents.agents.coder_agent import create_coder_agent, create_coder_node
 from bioagents.agents.critic_agent import create_critic_agent
+from bioagents.agents.data_acquisition_agent import create_data_acquisition_agent
 from bioagents.agents.dl_agent import create_dl_agent, create_dl_node
+from bioagents.agents.docking_agent import create_docking_agent
+from bioagents.agents.environment_agent import create_environment_agent
+from bioagents.agents.genomics_agent import create_genomics_agent
+from bioagents.agents.git_agent import create_git_agent
+from bioagents.agents.literature_agent import create_literature_agent
 from bioagents.agents.ml_agent import create_ml_agent, create_ml_node
+from bioagents.agents.paper_replication_agent import create_paper_replication_agent
+from bioagents.agents.phylogenetics_agent import create_phylogenetics_agent
+from bioagents.agents.planner_agent import create_planner_agent
+from bioagents.agents.prompt_optimizer_agent import create_prompt_optimizer_agent
 from bioagents.agents.protein_design_agent import create_protein_design_agent
-from bioagents.agents.rdkit_validator_agent import create_rdkit_validator_agent
 from bioagents.agents.report_agent import create_report_agent
 from bioagents.agents.research_agent import create_research_agent
+from bioagents.agents.result_checker_agent import create_result_checker_agent
+from bioagents.agents.shell_agent import create_shell_agent
+from bioagents.agents.structural_biology_agent import create_structural_biology_agent
 from bioagents.agents.summary_agent import create_summary_agent
 from bioagents.agents.supervisor_agent import create_supervisor_agent
 from bioagents.agents.tool_builder_agent import create_tool_builder_agent
-from bioagents.learning.ace_integration import track_agent_execution
+from bioagents.agents.tool_discovery_agent import create_tool_discovery_agent
+from bioagents.agents.tool_validator_agent import create_tool_validator_agent
+from bioagents.agents.transcriptomics_agent import create_transcriptomics_agent
+from bioagents.agents.visualization_agent import create_visualization_agent
+from bioagents.agents.web_browser_agent import create_web_browser_agent
+from bioagents.learning.ace_integration import (
+    track_agent_execution,
+)
 from bioagents.references.reference_extractor import extract_references_from_messages
 from bioagents.references.reference_manager import ReferenceManager
 from bioagents.tools.analysis_tools import (
@@ -30,186 +48,36 @@ from bioagents.tools.analysis_tools import (
     calculate_isoelectric_point,
     calculate_molecular_weight,
 )
-from bioagents.tools.paperqa_wrapper import search_local_papers_with_paperqa
+from bioagents.tools.environment_tools import get_environment_tools
+from bioagents.tools.file_tools import get_file_tools
+from bioagents.tools.genomics_tools import get_genomics_tools
+from bioagents.tools.git_tools import get_git_tools
+from bioagents.tools.literature_tools import get_literature_tools
 from bioagents.tools.pdf_tools import (
     extract_pdf_text_spacy_layout,
     fetch_webpage_as_pdf_text,
 )
 from bioagents.tools.protein_design_tools import get_all_protein_design_tools
-from bioagents.tools.proteomics_tools import fetch_uniprot_fasta
+from bioagents.tools.proteomics_tools import download_uniprot_flat_file, fetch_uniprot_fasta
+from bioagents.tools.shell_tools import get_shell_tools
 from bioagents.tools.structural_tools import (
     download_structure_file,
     fetch_alphafold_structure,
     fetch_pdb_structure,
+    get_structural_tools,
 )
 from bioagents.tools.tool_builder_tools import get_tool_builder_tools
+from bioagents.tools.tool_policy import ToolPolicy, get_default_policy
 from bioagents.tools.tool_universe import tool_universe_call_tool, tool_universe_find_tools
+from bioagents.tools.transcriptomics_tools import get_transcriptomics_tools
+from bioagents.tools.visualization_tools import get_visualization_tools
+from bioagents.tools.web_tools import get_web_tools
+from bioagents.truncating_tool_node import make_approval_tool_node
 
 logger = logging.getLogger(__name__)
 
 
-class AgentState(dict):
-    """
-    The state object passed between nodes in the graph.
-
-    Attributes:
-        messages:   Orchestration messages (NOT for data passing between agents).
-        next:       The next agent to route to (set by supervisor).
-        reasoning:  The reasoning behind the supervisor's routing decision.
-        output_dir: Optional directory path for saving output files.
-        memory:     Shared workspace for agent outputs.
-                    Structure::
-
-                        {
-                            "agent_name": {
-                                "status":     "success" | "error" | "pending",
-                                "timestamp":  ISO-8601 string,
-                                "data":       {...},   # agent-specific structured output
-                                "raw_output": str,     # full text response
-                                "errors":     [...],   # errors encountered
-                                "tool_calls": [...],   # audit trail of tool usage
-                            }
-                        }
-
-        references: Optional ReferenceManager for tracking citations across agents.
-    """
-
-    messages: Annotated[list[BaseMessage], add_messages]
-    next: str
-    reasoning: str
-    output_dir: str | None = None
-    memory: ClassVar[dict[str, dict[str, Any]]] = {}
-    references: ReferenceManager | None = None
-
-
-def agent_node(state: AgentState, agent, name: str) -> dict:
-    """
-    Wrapper for agent nodes that:
-    - Writes agent output to ``state["memory"][name.lower()]``
-    - Extracts and stores citations via ReferenceManager (if enabled)
-    - Records execution telemetry via ACE tracking (zero overhead if disabled)
-    - Forwards ``messages`` returned by the agent (needed for tool routing)
-    - Preserves supervisor routing fields (``next``, ``reasoning``)
-
-    Agent callables must return a dict with at least::
-
-        {
-            "data":       {...},   # structured output
-            "raw_output": str,
-            "tool_calls": [...],
-            "error":      str | None,
-        }
-
-    They may additionally include:
-    - ``"messages"``: forwarded so conditional tool edges can fire
-    - ``"next"`` and ``"reasoning"``: supervisor routing decisions
-
-    Args:
-        state: The current AgentState.
-        agent: The agent callable.
-        name:  Human-readable agent name used as the memory key.
-
-    Returns:
-        Updated graph state slice, including routing decisions if present.
-    """
-    try:
-        result = agent(state)
-
-        agent_data = result.get("data", {})
-        agent_raw_output = result.get("raw_output", "")
-        agent_tool_calls = result.get("tool_calls", [])
-        agent_error = result.get("error", None)
-
-        memory_key = name.lower()
-        memory = state.setdefault("memory", {})
-
-        # Write structured output to shared memory
-        memory[memory_key] = {
-            "status": "error" if agent_error else "success",
-            "timestamp": datetime.now().isoformat(),
-            "data": agent_data,
-            "raw_output": agent_raw_output,
-            "errors": [agent_error] if agent_error else [],
-            "tool_calls": agent_tool_calls,
-        }
-
-        # Extract citations if a ReferenceManager is available
-        outgoing_messages = result.get("messages", [])
-        if state.get("references") is not None and outgoing_messages:
-            refs = extract_references_from_messages(outgoing_messages)
-            if refs:
-                state["references"].add_references(refs)
-                logger.info(f"Extracted {len(refs)} references from {name} agent")
-
-        # ACE tracking (no-op if ACE is disabled)
-        track_agent_execution(state, result, name)
-
-        # Tag messages with the agent name for supervisor visibility
-        for msg in outgoing_messages:
-            msg.name = memory_key
-
-        # Build return dict with messages and memory
-        return_dict = {
-            "memory": memory,
-        }
-
-        if outgoing_messages:
-            # Forward messages as-is (with any tool_calls intact) so conditional edges can route correctly
-            # Do NOT append a completion message that would hide tool_calls from the routing logic
-            return_dict["messages"] = outgoing_messages
-        else:
-            return_dict["messages"] = []
-
-        # Preserve supervisor routing fields (next, reasoning)
-        if "next" in result:
-            return_dict["next"] = result["next"]
-        if "reasoning" in result:
-            return_dict["reasoning"] = result["reasoning"]
-
-        return return_dict
-
-    except Exception as e:
-        memory_key = name.lower()
-        memory = state.setdefault("memory", {})
-        memory[memory_key] = {
-            "status": "error",
-            "timestamp": datetime.now().isoformat(),
-            "data": {},
-            "raw_output": "",
-            "errors": [str(e)],
-            "tool_calls": [],
-        }
-
-        error_msg = SystemMessage(
-            content=f"[ERROR] {name} agent failed: {e!s}",
-            name=memory_key,
-        )
-        logger.exception(f"agent_node caught unhandled error in '{name}': {e}")
-        return {
-            "messages": [error_msg],
-            "memory": memory,
-        }
-
-
-def should_continue_to_tools(state: AgentState) -> Literal["tools", "supervisor"]:
-    """
-    Conditional edge: checks whether the last message contains tool calls.
-
-    Returns:
-        ``"tools"`` if the last message has pending tool calls, else ``"supervisor"``.
-    """
-    messages = state["messages"]
-    if not messages:
-        return "supervisor"
-    last_message = messages[-1]
-    if hasattr(last_message, "tool_calls") and last_message.tool_calls:
-        return "tools"
-    return "supervisor"
-
-
-def route_supervisor(
-    state: AgentState,
-) -> Literal[
+AGENT_NAMES = Literal[
     "research",
     "analysis",
     "coder",
@@ -218,44 +86,314 @@ def route_supervisor(
     "report",
     "tool_builder",
     "protein_design",
-    "rdkit_validator",
     "critic",
+    "literature",
+    "web_browser",
+    "paper_replication",
+    "data_acquisition",
+    "genomics",
+    "transcriptomics",
+    "structural_biology",
+    "phylogenetics",
+    "docking",
+    "planner",
+    "tool_validator",
+    "tool_discovery",
+    "prompt_optimizer",
+    "result_checker",
+    "shell",
+    "git",
+    "environment",
+    "visualization",
     "summary",
-]:
+]
+
+
+class AgentState(dict):
+    """The state object passed between nodes in the graph."""
+
+    messages: Annotated[list[BaseMessage], add_messages]
+    next: str
+    reasoning: str
+    output_dir: str | None = None
+    references: ReferenceManager | None = None
+    failed_agents: set | None = None
+    loop_escape_tried: dict[str, list[str]] | None = None
+    iteration_count: int = 0
+    error_log: list[str] | None = None
+    tool_usage_log: list[dict] | None = None
+
+
+def _count_agent_tool_rounds(messages: list, agent_name: str) -> int:
+    """Count tool-call rounds this agent has taken since the last supervisor handoff."""
+    from langchain_core.messages import AIMessage, HumanMessage
+
+    rounds = 0
+    for msg in reversed(messages):
+        if isinstance(msg, HumanMessage):
+            content = msg.content if isinstance(msg.content, str) else str(msg.content)
+            if "[SUPERVISOR TASK]" in content:
+                break
+        if (
+            isinstance(msg, AIMessage)
+            and getattr(msg, "name", "") == agent_name
+            and hasattr(msg, "tool_calls")
+            and msg.tool_calls
+        ):
+            rounds += 1
+    return rounds
+
+
+def _detect_consecutive_duplicate_calls(messages: list, agent_name: str) -> tuple[bool, str]:
+    """Detect consecutive identical tool calls (same name + same args) by the same agent.
+
+    Returns (is_loop, description) where description explains the loop.
     """
-    Translate the supervisor's ``next`` decision into a graph edge.
+    import hashlib
+    import json
 
-    ``"FINISH"`` is remapped to ``"summary"`` so the workflow always
-    produces a final summary before reaching ``END``.
-    """
-    next_agent = state.get("next")
-    if next_agent == "FINISH" or next_agent is None:
-        return "summary"
-    return cast(
-        "Literal['research', 'analysis', 'coder', 'ml', 'dl', 'report', 'tool_builder', 'protein_design', 'rdkit_validator', 'critic', 'summary']",
-        next_agent,
-    )
+    from langchain_core.messages import AIMessage, HumanMessage
+
+    from bioagents.limits import MAX_CONSECUTIVE_IDENTICAL_TOOL_CALLS
+
+    call_hashes: list[str] = []
+    for msg in reversed(messages):
+        if isinstance(msg, HumanMessage):
+            break
+        if (
+            isinstance(msg, AIMessage)
+            and getattr(msg, "name", "") == agent_name
+            and hasattr(msg, "tool_calls")
+            and msg.tool_calls
+        ):
+            for tc in msg.tool_calls:
+                tool_name = tc.get("name", "")
+                tool_args = tc.get("args", {})
+                args_str = json.dumps(tool_args, sort_keys=True, default=str)
+                call_hash = hashlib.md5(
+                    f"{tool_name}:{args_str}".encode(), usedforsecurity=False
+                ).hexdigest()
+                call_hashes.append(call_hash)
+
+    if not call_hashes:
+        return False, ""
+
+    # Check for consecutive identical calls
+    consecutive = 1
+    for i in range(1, len(call_hashes)):
+        if call_hashes[i] == call_hashes[0]:
+            consecutive += 1
+        else:
+            break
+
+    if consecutive >= MAX_CONSECUTIVE_IDENTICAL_TOOL_CALLS:
+        return True, (
+            f"Agent '{agent_name}' made {consecutive} consecutive identical tool calls. "
+            f"Breaking loop (limit: {MAX_CONSECUTIVE_IDENTICAL_TOOL_CALLS})."
+        )
+
+    return False, ""
 
 
-def create_graph(_initialize_references: bool = True):
-    """
-    Create and compile the multi-agent LangGraph workflow.
+def _count_tu_tool_calls(messages: list, agent_name: str) -> int:
+    """Count tool_universe_call_tool calls by this agent since last supervisor handoff."""
+    from langchain_core.messages import AIMessage, HumanMessage
 
-    Architecture
-    ------------
-    - A **supervisor** routes tasks to specialised agents.
-    - Each agent writes its output to ``state["memory"]`` (shared memory).
-    - The supervisor reads memory to decide next steps.
-    - A **tool_builder** agent can create new tools on the fly.
-    - ``report → summary → END`` is a hard-wired path that cannot loop.
+    count = 0
+    for msg in reversed(messages):
+        if isinstance(msg, HumanMessage):
+            break
+        if (
+            isinstance(msg, AIMessage)
+            and getattr(msg, "name", "") == agent_name
+            and hasattr(msg, "tool_calls")
+            and msg.tool_calls
+        ):
+            for tc in msg.tool_calls:
+                if tc.get("name") == "tool_universe_call_tool":
+                    count += 1
+
+    return count
+
+
+def _extract_best_agent_content(messages: list, agent_name: str) -> str:
+    """Extract the most substantive content from an agent's previous AIMessages."""
+    from langchain_core.messages import AIMessage
+
+    best = ""
+    for msg in reversed(messages):
+        if isinstance(msg, AIMessage) and getattr(msg, "name", "") == agent_name:
+            content = msg.content if isinstance(msg.content, str) else str(msg.content)
+            if content and len(content) > len(best) and len(content) > 50:
+                best = content
+    return best[:4000] if best else ""
+
+
+def agent_node(state, agent, name):
+    """Wrapper for agent nodes that adds agent identification and ACE tracking."""
+    from langchain_core.messages import AIMessage
+
+    from bioagents.limits import MAX_AGENT_TOOL_ROUNDS, MAX_TU_TOOL_CALLS_PER_AGENT
+
+    if MAX_AGENT_TOOL_ROUNDS and MAX_AGENT_TOOL_ROUNDS > 0:
+        rounds = _count_agent_tool_rounds(state.get("messages", []), name)
+        if rounds >= MAX_AGENT_TOOL_ROUNDS:
+            logger.warning(
+                "Agent '%s' hit max tool rounds (%d) — forcing return to supervisor.",
+                name,
+                MAX_AGENT_TOOL_ROUNDS,
+            )
+            partial = _extract_best_agent_content(state.get("messages", []), name)
+            if partial:
+                content = partial
+            else:
+                content = (
+                    f"[MAX_TOOL_ROUNDS] Agent '{name}' reached the tool-round limit "
+                    f"({MAX_AGENT_TOOL_ROUNDS}). The supervisor should proceed with "
+                    f"available results or try a different approach."
+                )
+            error_msg = AIMessage(content=content, name=name)
+            return {"messages": [error_msg]}
+
+    # Check for consecutive duplicate tool calls (loop detection)
+    is_loop, loop_desc = _detect_consecutive_duplicate_calls(state.get("messages", []), name)
+    if is_loop:
+        logger.warning("Loop detected for agent '%s': %s", name, loop_desc)
+        error_msg = AIMessage(
+            content=f"[LOOP_DETECTED] {loop_desc} The supervisor should try a different approach.",
+            name=name,
+        )
+        return {"messages": [error_msg]}
+
+    # Check for excessive tool_universe_call_tool usage
+    tu_count = _count_tu_tool_calls(state.get("messages", []), name)
+    if tu_count >= MAX_TU_TOOL_CALLS_PER_AGENT:
+        logger.warning(
+            "Agent '%s' hit TU tool call limit (%d) — forcing return to supervisor.",
+            name,
+            MAX_TU_TOOL_CALLS_PER_AGENT,
+        )
+        error_msg = AIMessage(
+            content=(
+                f"[MAX_TU_CALLS] Agent '{name}' exceeded the ToolUniverse "
+                f"call limit ({MAX_TU_TOOL_CALLS_PER_AGENT}). The supervisor "
+                f"should proceed with available results or try a different approach."
+            ),
+            name=name,
+        )
+        return {"messages": [error_msg]}
+
+    try:
+        result = agent(state)
+    except (TimeoutError, Exception) as exc:
+        is_timeout = isinstance(exc, TimeoutError) or "timeout" in str(exc).lower()
+        if is_timeout:
+            logger.warning("Agent '%s' hit LLM timeout — returning error to supervisor.", name)
+            error_msg = AIMessage(
+                content=f"[TIMEOUT] Agent '{name}' could not complete: "
+                f"LLM call exceeded time limit. The supervisor should "
+                f"try a different agent or finish with available results.",
+                name=name,
+            )
+            if name == "Supervisor":
+                return {"messages": [error_msg], "next": "FINISH"}
+            return {"messages": [error_msg], "next": "supervisor"}
+        raise
+
+    if result.get("messages"):
+        for msg in result["messages"]:
+            msg.name = name
+
+    if state.get("references") is not None and result.get("messages"):
+        refs = extract_references_from_messages(result["messages"])
+        if refs:
+            state["references"].add_references(refs)
+            logger.info(f"Extracted {len(refs)} references from {name} agent")
+
+    track_agent_execution(state, result, name)
+
+    return result
+
+
+def should_continue_to_tools(state: AgentState) -> Literal["tools", "supervisor"]:
+    """Conditional edge: route to tools if last message has tool calls."""
+    from bioagents.llms.timeout_llm import _workflow_deadline
+
+    if _workflow_deadline is not None:
+        import time
+
+        if time.monotonic() >= _workflow_deadline:
+            logger.warning(
+                "Workflow deadline reached — skipping tool execution, returning to supervisor."
+            )
+            return "supervisor"
+
+    messages = state["messages"]
+    last_message = messages[-1]
+
+    if hasattr(last_message, "tool_calls") and last_message.tool_calls:
+        return "tools"
+
+    return "supervisor"
+
+
+def route_supervisor(state: AgentState) -> AGENT_NAMES:
+    """Route based on supervisor's decision."""
+    next_agent = state.get("next", "FINISH")
+    return "summary" if next_agent == "FINISH" else next_agent
+
+
+ALL_MEMBERS = [
+    "research",
+    "analysis",
+    "coder",
+    "ml",
+    "dl",
+    "report",
+    "tool_builder",
+    "protein_design",
+    "critic",
+    "literature",
+    "web_browser",
+    "paper_replication",
+    "data_acquisition",
+    "genomics",
+    "transcriptomics",
+    "structural_biology",
+    "phylogenetics",
+    "docking",
+    "planner",
+    "tool_validator",
+    "tool_discovery",
+    "prompt_optimizer",
+    "result_checker",
+    "shell",
+    "git",
+    "environment",
+    "visualization",
+    "user_input",
+]
+
+
+def create_graph(
+    _initialize_references: bool = True, checkpointer=None, policy: ToolPolicy | None = None
+):
+    """Create and compile the multi-agent LangGraph workflow.
+
+    The workflow uses a supervisor pattern where:
+    1. Supervisor routes tasks to specialized agents
+    2. Each agent can use tools and return to supervisor
+    3. Workflow continues until supervisor says FINISH
+    4. 30 specialized agents covering research, computation, domain science,
+       infrastructure, meta-cognition, and quality assurance
 
     Args:
-        _initialize_references: Reserved for future use; no-op currently.
-
-    Returns:
-        A compiled ``StateGraph`` ready for execution.
+        _initialize_references: Whether to initialize reference tracking.
+        checkpointer: Optional LangGraph checkpointer for mid-execution state updates.
+        policy: Optional ToolPolicy instance. If provided, tool nodes use the
+            approval gate. If None, default policy is used (auto-approve everything).
     """
-    # ── Tool lists ────────────────────────────────────────────────────────────
+    # ---- existing tool lists ----
     research_tools = [
         fetch_uniprot_fasta,
         tool_universe_find_tools,
@@ -265,19 +403,34 @@ def create_graph(_initialize_references: bool = True):
         fetch_alphafold_structure,
         fetch_pdb_structure,
         download_structure_file,
-        search_local_papers_with_paperqa,  # ← added in shared-memory-paperqa branch
     ]
-    analysis_tools = [
+    analysis_tools_list = [
         calculate_molecular_weight,
         analyze_amino_acid_composition,
         calculate_isoelectric_point,
     ]
-    tool_builder_tools = get_tool_builder_tools()
-    protein_design_tools = get_all_protein_design_tools()
+    tb_tools = get_tool_builder_tools()
+    pd_tools = get_all_protein_design_tools()
 
-    # ── Agent creation ────────────────────────────────────────────────────────
+    # ---- new tool lists ----
+    _tu_tools = [tool_universe_find_tools, tool_universe_call_tool]
+    lit_tools = get_literature_tools() + _tu_tools
+    web_tools = get_web_tools()
+    paper_rep_tools = get_web_tools() + get_git_tools()
+    data_acq_tools = get_web_tools() + get_file_tools() + [download_uniprot_flat_file]
+    gen_tools = get_genomics_tools() + _tu_tools
+    trans_tools = get_transcriptomics_tools() + _tu_tools
+    struct_tools = get_structural_tools()
+    phylo_tools = get_genomics_tools()
+    td_tools = get_tool_builder_tools()
+    sh_tools = get_shell_tools()
+    git_tools_list = get_git_tools()
+    env_tools = get_environment_tools()
+    viz_tools = get_visualization_tools()
+
+    # ---- create agents ----
     research_agent = create_research_agent(research_tools)
-    analysis_agent = create_analysis_agent(analysis_tools)
+    analysis_agent = create_analysis_agent(analysis_tools_list)
     report_agent = create_report_agent()
     coder_agent = create_coder_agent()
     coder_node_func = create_coder_node(coder_agent)
@@ -286,35 +439,55 @@ def create_graph(_initialize_references: bool = True):
     dl_agent = create_dl_agent()
     dl_node_func = create_dl_node(dl_agent)
     tool_builder_agent = create_tool_builder_agent()
-    protein_design_agent = create_protein_design_agent(protein_design_tools)
-    rdkit_validator_agent = create_rdkit_validator_agent()
+    protein_design_agent = create_protein_design_agent(pd_tools)
     critic_agent = create_critic_agent()
-
-    members = [
-        "research",
-        "analysis",
-        "coder",
-        "ml",
-        "dl",
-        "report",
-        "tool_builder",
-        "protein_design",
-        "rdkit_validator",
-        "critic",
-    ]
-    supervisor_agent = create_supervisor_agent(members)
     summary_agent = create_summary_agent()
 
-    # ── Tool nodes ────────────────────────────────────────────────────────────
-    research_tool_node = ToolNode(research_tools)
-    analysis_tool_node = ToolNode(analysis_tools)
-    tool_builder_tool_node = ToolNode(tool_builder_tools)
-    protein_design_tool_node = ToolNode(protein_design_tools)
+    literature_agent = create_literature_agent(extra_tools=_tu_tools)
+    web_browser_agent = create_web_browser_agent()
+    paper_replication_agent = create_paper_replication_agent()
+    data_acquisition_agent = create_data_acquisition_agent()
+    genomics_agent = create_genomics_agent(extra_tools=_tu_tools)
+    transcriptomics_agent = create_transcriptomics_agent(extra_tools=_tu_tools)
+    structural_biology_agent = create_structural_biology_agent()
+    phylogenetics_agent = create_phylogenetics_agent()
+    docking_agent = create_docking_agent()
+    planner_agent = create_planner_agent()
+    tool_validator_agent = create_tool_validator_agent()
+    tool_discovery_agent = create_tool_discovery_agent()
+    prompt_optimizer_agent = create_prompt_optimizer_agent()
+    result_checker_agent = create_result_checker_agent()
+    shell_agent = create_shell_agent()
+    git_agent_inst = create_git_agent()
+    environment_agent = create_environment_agent()
+    visualization_agent = create_visualization_agent()
 
-    # ── Graph construction ────────────────────────────────────────────────────
+    supervisor_agent = create_supervisor_agent(ALL_MEMBERS)
+
+    # ---- tool nodes (with approval gate when policy is provided) ----
+    active_policy = policy or get_default_policy()
+    research_tool_node = make_approval_tool_node(research_tools, policy=active_policy)
+    analysis_tool_node = make_approval_tool_node(analysis_tools_list, policy=active_policy)
+    tool_builder_tool_node = make_approval_tool_node(tb_tools, policy=active_policy)
+    protein_design_tool_node = make_approval_tool_node(pd_tools, policy=active_policy)
+    literature_tool_node = make_approval_tool_node(lit_tools, policy=active_policy)
+    web_browser_tool_node = make_approval_tool_node(web_tools, policy=active_policy)
+    paper_replication_tool_node = make_approval_tool_node(paper_rep_tools, policy=active_policy)
+    data_acquisition_tool_node = make_approval_tool_node(data_acq_tools, policy=active_policy)
+    genomics_tool_node = make_approval_tool_node(gen_tools, policy=active_policy)
+    transcriptomics_tool_node = make_approval_tool_node(trans_tools, policy=active_policy)
+    structural_biology_tool_node = make_approval_tool_node(struct_tools, policy=active_policy)
+    phylogenetics_tool_node = make_approval_tool_node(phylo_tools, policy=active_policy)
+    tool_discovery_tool_node = make_approval_tool_node(td_tools, policy=active_policy)
+    shell_tool_node = make_approval_tool_node(sh_tools, policy=active_policy)
+    git_tool_node = make_approval_tool_node(git_tools_list, policy=active_policy)
+    environment_tool_node = make_approval_tool_node(env_tools, policy=active_policy)
+    visualization_tool_node = make_approval_tool_node(viz_tools, policy=active_policy)
+
+    # ---- build graph ----
     workflow = StateGraph(AgentState)
 
-    # Nodes — all wrapped with agent_node for uniform memory writes + ACE tracking
+    # add all agent nodes
     workflow.add_node("supervisor", partial(agent_node, agent=supervisor_agent, name="Supervisor"))
     workflow.add_node("research", partial(agent_node, agent=research_agent, name="Research"))
     workflow.add_node("analysis", partial(agent_node, agent=analysis_agent, name="Analysis"))
@@ -323,101 +496,185 @@ def create_graph(_initialize_references: bool = True):
     workflow.add_node("dl", partial(agent_node, agent=dl_node_func, name="DL"))
     workflow.add_node("report", partial(agent_node, agent=report_agent, name="Report"))
     workflow.add_node(
-        "tool_builder",
-        partial(agent_node, agent=tool_builder_agent, name="tool_builder"),
+        "tool_builder", partial(agent_node, agent=tool_builder_agent, name="ToolBuilder")
     )
     workflow.add_node(
-        "protein_design",
-        partial(agent_node, agent=protein_design_agent, name="protein_design"),
-    )
-    workflow.add_node(
-        "rdkit_validator",
-        partial(agent_node, agent=rdkit_validator_agent, name="RdkitValidator"),
+        "protein_design", partial(agent_node, agent=protein_design_agent, name="ProteinDesign")
     )
     workflow.add_node("critic", partial(agent_node, agent=critic_agent, name="Critic"))
     workflow.add_node("summary", partial(agent_node, agent=summary_agent, name="Summary"))
+    workflow.add_node("literature", partial(agent_node, agent=literature_agent, name="Literature"))
+    workflow.add_node(
+        "web_browser", partial(agent_node, agent=web_browser_agent, name="WebBrowser")
+    )
+    workflow.add_node(
+        "paper_replication",
+        partial(agent_node, agent=paper_replication_agent, name="PaperReplication"),
+    )
+    workflow.add_node(
+        "data_acquisition",
+        partial(agent_node, agent=data_acquisition_agent, name="DataAcquisition"),
+    )
+    workflow.add_node("genomics", partial(agent_node, agent=genomics_agent, name="Genomics"))
+    workflow.add_node(
+        "transcriptomics", partial(agent_node, agent=transcriptomics_agent, name="Transcriptomics")
+    )
+    workflow.add_node(
+        "structural_biology",
+        partial(agent_node, agent=structural_biology_agent, name="StructuralBiology"),
+    )
+    workflow.add_node(
+        "phylogenetics", partial(agent_node, agent=phylogenetics_agent, name="Phylogenetics")
+    )
+    workflow.add_node("docking", partial(agent_node, agent=docking_agent, name="Docking"))
+    workflow.add_node("planner", partial(agent_node, agent=planner_agent, name="Planner"))
+    workflow.add_node(
+        "tool_validator", partial(agent_node, agent=tool_validator_agent, name="ToolValidator")
+    )
+    workflow.add_node(
+        "tool_discovery", partial(agent_node, agent=tool_discovery_agent, name="ToolDiscovery")
+    )
+    workflow.add_node(
+        "prompt_optimizer",
+        partial(agent_node, agent=prompt_optimizer_agent, name="PromptOptimizer"),
+    )
+    workflow.add_node(
+        "result_checker", partial(agent_node, agent=result_checker_agent, name="ResultChecker")
+    )
+    workflow.add_node("shell", partial(agent_node, agent=shell_agent, name="Shell"))
+    workflow.add_node("git", partial(agent_node, agent=git_agent_inst, name="Git"))
+    workflow.add_node(
+        "environment", partial(agent_node, agent=environment_agent, name="Environment")
+    )
+    workflow.add_node(
+        "visualization", partial(agent_node, agent=visualization_agent, name="Visualization")
+    )
 
-    # Tool-executor nodes (LangGraph ToolNode, not agent_node)
+    # add tool nodes
     workflow.add_node("research_tools", research_tool_node)
     workflow.add_node("analysis_tools", analysis_tool_node)
     workflow.add_node("tool_builder_tools", tool_builder_tool_node)
     workflow.add_node("protein_design_tools", protein_design_tool_node)
+    workflow.add_node("literature_tools", literature_tool_node)
+    workflow.add_node("web_browser_tools", web_browser_tool_node)
+    workflow.add_node("paper_replication_tools", paper_replication_tool_node)
+    workflow.add_node("data_acquisition_tools", data_acquisition_tool_node)
+    workflow.add_node("genomics_tools", genomics_tool_node)
+    workflow.add_node("transcriptomics_tools", transcriptomics_tool_node)
+    workflow.add_node("structural_biology_tools", structural_biology_tool_node)
+    workflow.add_node("phylogenetics_tools", phylogenetics_tool_node)
+    workflow.add_node("tool_discovery_tools", tool_discovery_tool_node)
+    workflow.add_node("shell_tools", shell_tool_node)
+    workflow.add_node("git_tools", git_tool_node)
+    workflow.add_node("environment_tools", environment_tool_node)
+    workflow.add_node("visualization_tools", visualization_tool_node)
 
-    # Entry point
+    # ---- entry point ----
     workflow.set_entry_point("supervisor")
 
-    # ── Supervisor → agents ───────────────────────────────────────────────────
-    workflow.add_conditional_edges(
-        "supervisor",
-        route_supervisor,
-        {
-            "research": "research",
-            "analysis": "analysis",
-            "coder": "coder",
-            "ml": "ml",
-            "dl": "dl",
-            "report": "report",
-            "tool_builder": "tool_builder",
-            "protein_design": "protein_design",
-            "rdkit_validator": "rdkit_validator",
-            "critic": "critic",
-            "summary": "summary",
-        },
-    )
+    # ---- user_input node: pauses via LangGraph interrupt() for human input ----
+    # When the supervisor routes here, the node extracts engagement data from
+    # state and calls interrupt(). The stream pauses, the server sends the
+    # engagement request to the frontend, collects the response, then resumes
+    # the graph with Command(resume=response). The response becomes the return
+    # value of interrupt(), and the node returns it as a HumanMessage.
+    def user_input_node(state):
+        import json
 
-    # ── Agents with tool edges ────────────────────────────────────────────────
-    workflow.add_conditional_edges(
-        "research",
-        should_continue_to_tools,
-        {"tools": "research_tools", "supervisor": "supervisor"},
-    )
+        messages = state.get("messages", [])
+        engagement_data = None
 
-    workflow.add_conditional_edges(
-        "analysis",
-        should_continue_to_tools,
-        {"tools": "analysis_tools", "supervisor": "supervisor"},
-    )
+        for msg in reversed(messages[-5:]):
+            content = getattr(msg, "content", "")
+            if not isinstance(content, str):
+                continue
+            marker = "[ENGAGEMENT_PENDING] "
+            idx = content.find(marker)
+            if idx != -1:
+                try:
+                    engagement_data = json.loads(content[idx + len(marker) :])
+                except json.JSONDecodeError:
+                    engagement_data = {
+                        "type": "clarification",
+                        "question": content[idx + len(marker) :],
+                    }
+                break
 
-    def _should_use_tool_builder_tools(state: AgentState) -> Literal["tools", "supervisor"]:
-        messages = state["messages"]
-        last = messages[-1] if messages else None
-        if last and hasattr(last, "tool_calls") and last.tool_calls:
-            return "tools"
-        return "supervisor"
+        payload = engagement_data or {
+            "type": "clarification",
+            "question": "How would you like to proceed?",
+        }
 
-    workflow.add_conditional_edges(
-        "tool_builder",
-        _should_use_tool_builder_tools,
-        {"tools": "tool_builder_tools", "supervisor": "supervisor"},
-    )
+        response = interrupt(payload)
 
-    def _should_use_protein_design_tools(state: AgentState) -> Literal["tools", "supervisor"]:
-        messages = state["messages"]
-        last = messages[-1] if messages else None
-        if last and hasattr(last, "tool_calls") and last.tool_calls:
-            return "tools"
-        return "supervisor"
+        response_text = ""
+        if isinstance(response, dict):
+            response_text = response.get("content", "")
+            selected_option = response.get("selected_option")
+            if selected_option:
+                response_text = f"{selected_option}. {response_text}".strip()
+        elif isinstance(response, str):
+            response_text = response
 
-    workflow.add_conditional_edges(
-        "protein_design",
-        _should_use_protein_design_tools,
-        {"tools": "protein_design_tools", "supervisor": "supervisor"},
-    )
+        if not response_text:
+            response_text = "Proceed with your best judgment."
 
-    # ── Direct edges ──────────────────────────────────────────────────────────
-    workflow.add_edge("coder", "supervisor")
-    workflow.add_edge("ml", "supervisor")
-    workflow.add_edge("dl", "supervisor")
-    workflow.add_edge("rdkit_validator", "supervisor")
-    workflow.add_edge("critic", "supervisor")
+        return {"messages": [HumanMessage(content=f"[USER RESPONSE] {response_text}")]}
 
-    workflow.add_edge("research_tools", "research")
-    workflow.add_edge("analysis_tools", "analysis")
-    workflow.add_edge("tool_builder_tools", "tool_builder")
-    workflow.add_edge("protein_design_tools", "protein_design")
+    workflow.add_node("user_input", user_input_node)
+    workflow.add_edge("user_input", "supervisor")
 
-    # ── report → summary → END  (hard-wired; prevents supervisor re-routing) ──
-    workflow.add_edge("report", "summary")
+    # ---- supervisor routing ----
+    routing_map = {m: m for m in ALL_MEMBERS}
+    routing_map["summary"] = "summary"
+    workflow.add_conditional_edges("supervisor", route_supervisor, routing_map)
+
+    # ---- tool-using agents: conditional edges to their tool nodes ----
+    tool_agent_pairs = [
+        ("research", "research_tools"),
+        ("analysis", "analysis_tools"),
+        ("tool_builder", "tool_builder_tools"),
+        ("protein_design", "protein_design_tools"),
+        ("literature", "literature_tools"),
+        ("web_browser", "web_browser_tools"),
+        ("paper_replication", "paper_replication_tools"),
+        ("data_acquisition", "data_acquisition_tools"),
+        ("genomics", "genomics_tools"),
+        ("transcriptomics", "transcriptomics_tools"),
+        ("structural_biology", "structural_biology_tools"),
+        ("phylogenetics", "phylogenetics_tools"),
+        ("tool_discovery", "tool_discovery_tools"),
+        ("shell", "shell_tools"),
+        ("git", "git_tools"),
+        ("environment", "environment_tools"),
+        ("visualization", "visualization_tools"),
+    ]
+
+    for agent_name, tool_node_name in tool_agent_pairs:
+        workflow.add_conditional_edges(
+            agent_name,
+            should_continue_to_tools,
+            {"tools": tool_node_name, "supervisor": "supervisor"},
+        )
+        workflow.add_edge(tool_node_name, agent_name)
+
+    # ---- non-tool agents: direct edges back to supervisor ----
+    non_tool_agents = [
+        "coder",
+        "ml",
+        "dl",
+        "critic",
+        "report",
+        "docking",
+        "planner",
+        "tool_validator",
+        "prompt_optimizer",
+        "result_checker",
+    ]
+    for agent_name in non_tool_agents:
+        workflow.add_edge(agent_name, "supervisor")
+
+    # ---- summary is terminal ----
     workflow.add_edge("summary", END)
 
-    return workflow.compile()
+    return workflow.compile(checkpointer=checkpointer)

@@ -14,7 +14,9 @@ from bioagents.prompts.prompt_loader import load_prompt
 from bioagents.sandbox.coder_executor import create_executor
 from bioagents.sandbox.coder_helpers import (
     DEFAULT_ML_IMPORTS,
+    append_code_agent_status_footer,
     build_task_with_output_dir,
+    collect_code_agent_run_telemetry,
     extract_available_data,
     extract_original_query,
     format_coder_result,
@@ -64,6 +66,7 @@ def create_ml_agent(
         additional_authorized_imports=PermissiveList(additional_imports),
         max_steps=max_steps,
         instructions=escaped_instructions,
+        code_block_tags="markdown",
     )
 
     return agent
@@ -98,6 +101,9 @@ def create_ml_node(agent: CodeAgent) -> Callable:
             logger.info("Starting ML agent execution")
             result = agent.run(task)
             content = format_coder_result(result)
+            content = append_code_agent_status_footer(
+                content, collect_code_agent_run_telemetry(agent)
+            )
 
             execution_steps: list[dict[str, Any]] = []
 

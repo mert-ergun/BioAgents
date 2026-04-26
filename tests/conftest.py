@@ -218,6 +218,7 @@ def pytest_configure(config):
     config.addinivalue_line("markers", "slow: mark test as slow running")
     config.addinivalue_line("markers", "unit: mark test as unit test")
     config.addinivalue_line("markers", "requires_api: mark test as requiring external API access")
+    config.addinivalue_line("markers", "e2e: mark test as end-to-end test")
 
 
 # Skip slow tests by default unless --runslow is passed

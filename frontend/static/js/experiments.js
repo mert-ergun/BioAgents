@@ -15,6 +15,8 @@ const ExperimentsState = {
     activeRunId: null,
     activeRunData: null,
     pollingTimer: null,
+    /** Set when POST /run succeeds; cleared when the run appears in list_runs (persisted on completion). */
+    pendingRun: null,
     filterCategory: null,
     filterTags: [],
 };
@@ -238,19 +240,53 @@ function renderConfigSelector() {
     });
 }
 
+function updateRunsLiveBanner() {
+    const wrap = document.getElementById('exp-runs-live-status');
+    const textEl = document.getElementById('exp-runs-live-status-text');
+    if (!wrap || !textEl) return;
+    const p = ExperimentsState.pendingRun;
+    if (!p) {
+        wrap.classList.add('hidden');
+        return;
+    }
+    const short = (p.runId || '').substring(0, 8);
+    wrap.classList.remove('hidden');
+    textEl.textContent =
+        `Run ${short}… is executing — results stay hidden until the run finishes and is saved. Watch this row and the server terminal for activity.`;
+}
+
 function renderRunsTable() {
     const container = document.getElementById('exp-runs-table-body');
     if (!container) return;
 
-    if (ExperimentsState.runs.length === 0) {
-        container.innerHTML = `<tr><td colspan="7" class="text-center py-10 text-text-subtle text-sm">
-            <span class="material-symbols-outlined block text-3xl mb-2 text-border-dark">history_toggle_off</span>
-            No experiment runs yet. Run an experiment to see results here.
-        </td></tr>`;
-        return;
+    if (ExperimentsState.pendingRun) {
+        const pid = ExperimentsState.pendingRun.runId;
+        if (ExperimentsState.runs.some(r => r.run_id === pid)) {
+            ExperimentsState.pendingRun = null;
+        }
     }
+    updateRunsLiveBanner();
 
-    container.innerHTML = ExperimentsState.runs.map(run => {
+    const pendingRow = () => {
+        const p = ExperimentsState.pendingRun;
+        if (!p) return '';
+        const shortId = (p.runId || '').substring(0, 8);
+        const dt = p.startedAt ? new Date(p.startedAt).toLocaleString() : '—';
+        return `
+        <tr class="exp-pending-run-row border-b border-primary/30 bg-primary/10">
+            <td class="px-4 py-3 font-mono text-[11px] text-primary">
+                <span class="inline-flex items-center gap-2">
+                    <span class="material-symbols-outlined animate-spin text-base">progress_activity</span>
+                    ${shortId}…
+                </span>
+            </td>
+            <td class="px-4 py-3 text-sm font-medium text-white">${p.configName || '—'}</td>
+            <td class="px-4 py-3 text-xs text-text-subtle">${dt}</td>
+            <td class="px-4 py-3 text-xs text-amber-300/90" colspan="4">Running… (saved when finished)</td>
+        </tr>`;
+    };
+
+    const completedRows = ExperimentsState.runs.map(run => {
         const score = run.mean_score != null ? run.mean_score.toFixed(2) : '—';
         const rate = run.success_rate != null ? `${Math.round(run.success_rate * 100)}%` : '—';
         const time = run.total_execution_time != null ? `${run.total_execution_time.toFixed(0)}s` : '—';
@@ -271,6 +307,16 @@ function renderRunsTable() {
             <td class="px-4 py-3 text-xs text-text-subtle">${tokens}</td>
         </tr>`;
     }).join('');
+
+    if (ExperimentsState.runs.length === 0 && !ExperimentsState.pendingRun) {
+        container.innerHTML = `<tr><td colspan="7" class="text-center py-10 text-text-subtle text-sm">
+            <span class="material-symbols-outlined block text-3xl mb-2 text-border-dark">history_toggle_off</span>
+            No experiment runs yet. Run an experiment to see results here.
+        </td></tr>`;
+        return;
+    }
+
+    container.innerHTML = pendingRow() + completedRows;
 
     container.querySelectorAll('.runs-table-row').forEach(row => {
         row.addEventListener('click', () => openRunDetails(row.dataset.runId));
@@ -656,7 +702,17 @@ async function startExperimentRun() {
         }
 
         const data = await res.json();
-        showExpToast(`Experiment started — ${data.use_case_count} case(s) running in background.`, 'success');
+        ExperimentsState.pendingRun = {
+            runId: data.run_id,
+            configName: config?.name || '—',
+            startedAt: new Date().toISOString(),
+        };
+        await loadRuns();
+        renderRunsTable();
+        showExpToast(
+            `Experiment started (${data.use_case_count} case(s)). A “Running…” row appears until results are saved.`,
+            'success',
+        );
         startPollingRuns(data.run_id);
     } catch (err) {
         showExpToast(`Error: ${err.message}`, 'error');
@@ -669,26 +725,42 @@ async function startExperimentRun() {
 }
 
 function startPollingRuns(runId) {
-    let attempts = 0;
-    const maxAttempts = 60;
+    const POLL_INIT_MS = 3000;
+    const POLL_MAX_MS = 30000;
+    const POLL_MAX_DURATION_MS = 30 * 60 * 1000; // 30 minutes
+    let interval = POLL_INIT_MS;
+    const startedAt = Date.now();
+
+    function stopPolling() {
+        if (ExperimentsState.pollingTimer) {
+            clearTimeout(ExperimentsState.pollingTimer);
+            ExperimentsState.pollingTimer = null;
+        }
+    }
 
     async function poll() {
-        attempts++;
+        if (Date.now() - startedAt > POLL_MAX_DURATION_MS) {
+            stopPolling();
+            showExpToast('Polling timed out after 30 minutes — refresh to check status.', 'warning');
+            return;
+        }
+
         await loadRuns();
         renderRunsTable();
 
         const found = ExperimentsState.runs.find(r => r.run_id === runId);
-        if (found || attempts >= maxAttempts) {
-            clearInterval(ExperimentsState.pollingTimer);
-            ExperimentsState.pollingTimer = null;
-            if (found) {
-                showExpToast('Experiment run complete! Click to view results.', 'success');
-            }
+        if (found) {
+            stopPolling();
+            showExpToast('Experiment run complete — click the row to view results.', 'success');
+            return;
         }
+
+        interval = Math.min(interval * 1.5, POLL_MAX_MS);
+        ExperimentsState.pollingTimer = setTimeout(poll, interval);
     }
 
-    if (ExperimentsState.pollingTimer) clearInterval(ExperimentsState.pollingTimer);
-    ExperimentsState.pollingTimer = setInterval(poll, 3000);
+    stopPolling();
+    void poll();
 }
 
 // ─────────────────────────────────────────────────────────
