@@ -2,12 +2,15 @@
 
 import contextlib
 import importlib.util
+import json
 import os
 import shutil
 import socket
 import subprocess  # nosec B404
 import sys
+import time
 from pathlib import Path
+
 
 # ---------------------------------------------------------------------------
 # Monkey-patch smolagents evaluate_with — upstream stores __enter__() return
@@ -68,7 +71,6 @@ def _patched_evaluate_with(with_node, state, static_tools, custom_tools, authori
 
 
 _lpe.evaluate_with = _patched_evaluate_with
-
 
 def _site_packages_roots() -> list[str]:
     import site
@@ -204,6 +206,14 @@ def create_executor(
         print(f"Using LocalPythonExecutor for {agent_type} (USE_LOCAL_EXECUTOR=true)")
         from bioagents.sandbox.coder_helpers import PermissiveList
 
+        missing_local_modules = sorted(
+            {
+                imp.split(".")[0].replace("*", "")
+                for imp in additional_imports
+                if imp and not is_module_installed(imp)
+            }
+        )
+
         return LocalPythonExecutor(
             additional_authorized_imports=PermissiveList(additional_imports),
             additional_functions=_extra_builtins(),
@@ -306,9 +316,19 @@ def create_executor(
     except Exception as e:
         print(f"Warning: Could not initialize DockerExecutor for {agent_type}: {e}")
         print("Falling back to LocalExecutor (NOT SANDBOXED) for development purposes.")
+    
 
         apply_local_executor_runtime_env()
         from bioagents.sandbox.coder_helpers import PermissiveList
+
+        missing_local_modules = sorted(
+            {
+                imp.split(".")[0].replace("*", "")
+                for imp in additional_imports
+                if imp and not is_module_installed(imp)
+            }
+        )
+    
 
         return LocalPythonExecutor(
             additional_authorized_imports=PermissiveList(additional_imports),

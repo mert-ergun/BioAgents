@@ -1,9 +1,15 @@
 """Helper functions for building tasks for the coder agent."""
 
+import importlib.util
+import json
+import os
+import time
 from pathlib import Path
 from typing import Any
 
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
+
+
 
 DEFAULT_CODER_IMPORTS = [
     "pandas",
@@ -16,7 +22,6 @@ DEFAULT_CODER_IMPORTS = [
     # PyTorch: bare `torch` is required for `import torch` in smolagents; `torch.*` covers submodules.
     "torch",
     "torch.*",
-    "tooluniverse",
     "typing",
     "json",
     "os",
@@ -33,28 +38,45 @@ DEFAULT_CODER_IMPORTS = [
     "pkg_resources",
 ]
 
+_tooluniverse_installed = importlib.util.find_spec("tooluniverse") is not None
+if _tooluniverse_installed:
+    DEFAULT_CODER_IMPORTS.append("tooluniverse")
+
+
 DEFAULT_ML_IMPORTS = [
     *DEFAULT_CODER_IMPORTS,
     "sklearn.*",
-    "xgboost",
-    "lightgbm",
-    "catboost",
-    "seaborn",
     "joblib",
-    "statsmodels.*",
 ]
+
+if os.getenv("BIOAGENTS_ENABLE_OPTIONAL_ML_IMPORTS", "").lower() in ("1", "true", "yes"):
+    DEFAULT_ML_IMPORTS.extend(
+        [
+            "xgboost",
+            "lightgbm",
+            "catboost",
+            "seaborn",
+            "statsmodels.*",
+        ]
+    )
 
 DEFAULT_DL_IMPORTS = [
     *DEFAULT_ML_IMPORTS,
-    "torchvision.*",
-    "torchaudio.*",
-    "tensorflow.*",
-    "keras.*",
-    "tensorboard",
     "transformers",
-    "datasets",
     "tqdm",
 ]
+
+if os.getenv("BIOAGENTS_ENABLE_OPTIONAL_DL_IMPORTS", "").lower() in ("1", "true", "yes"):
+    DEFAULT_DL_IMPORTS.extend(
+        [
+            "torchvision.*",
+            "torchaudio.*",
+            "tensorflow.*",
+            "keras.*",
+            "tensorboard",
+            "datasets",
+        ]
+    )
 
 
 class PermissiveList(list):
