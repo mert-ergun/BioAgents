@@ -22,6 +22,7 @@ from bioagents.workflows.drug_discovery.retrosynth_nodes import RETROSYNTH_NODES
 from bioagents.workflows.drug_discovery.structure_nodes import STRUCTURE_NODES
 from bioagents.workflows.nodes.bioinformatics_fetch_nodes import BIOINFORMATICS_FETCH_NODES
 from bioagents.workflows.nodes.bioinformatics_nodes import BIOINFORMATICS_COMPUTE_NODES
+from bioagents.workflows.nodes.agent_nodes import AGENT_WORKFLOW_NODES
 from bioagents.workflows.nodes.dummy_embedder import DummyEmbedderNode
 from bioagents.workflows.nodes.esm2_embedder import Esm2EmbedderNode
 from bioagents.workflows.nodes.export_extra import (
@@ -83,6 +84,7 @@ _NODE_TYPES: list[type[WorkflowNode]] = [
     TerminalResidueNode,
     SequenceLengthNode,
     CompactBiochemRecordNode,
+    *AGENT_WORKFLOW_NODES,
     *BIOINFORMATICS_COMPUTE_NODES,
     *BIOINFORMATICS_FETCH_NODES,
     *DD_FETCH_NODES,

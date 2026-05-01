@@ -1,6 +1,9 @@
 """Main entry point for the BioAgents multi-agent system."""
 
+import json
 import sys
+import time
+from pathlib import Path
 
 from dotenv import load_dotenv
 from langchain_core.messages import HumanMessage
@@ -14,10 +17,64 @@ from bioagents.llms.langsmith_config import (
     setup_langsmith_environment,
 )
 
+DEBUG_LOG_PATH = Path("debug-9d2b1d.log")
+
+
+# region agent log
+def _debug_log(hypothesis_id: str, location: str, message: str, data: dict) -> None:
+    try:
+        payload = {
+            "sessionId": "9d2b1d",
+            "runId": "pre-fix",
+            "hypothesisId": hypothesis_id,
+            "location": location,
+            "message": message,
+            "data": data,
+            "timestamp": int(time.time() * 1000),
+        }
+        with DEBUG_LOG_PATH.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(payload, ensure_ascii=True) + "\n")
+    except Exception:
+        pass
+
+
+# endregion
+
 
 def print_separator(char="=", length=80):
     """Print a separator line."""
     print(char * length)
+
+
+def _configure_stdout_encoding() -> None:
+    # region agent log
+    _debug_log(
+        "H6",
+        "main.py:_configure_stdout_encoding",
+        "stdout encoding before potential reconfigure",
+        {"stdout_encoding": getattr(sys.stdout, "encoding", None)},
+    )
+    # endregion
+    if hasattr(sys.stdout, "reconfigure"):
+        try:
+            sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+            # region agent log
+            _debug_log(
+                "H6",
+                "main.py:_configure_stdout_encoding",
+                "stdout reconfigured",
+                {"stdout_encoding": getattr(sys.stdout, "encoding", None)},
+            )
+            # endregion
+        except Exception as e:
+            # region agent log
+            _debug_log(
+                "H6",
+                "main.py:_configure_stdout_encoding",
+                "stdout reconfigure failed",
+                {"error_type": type(e).__name__, "error": str(e)},
+            )
+            # endregion
 
 
 def print_message_details(message, index):
@@ -31,6 +88,20 @@ def print_message_details(message, index):
     print("-" * 80)
 
     if hasattr(message, "content") and message.content:
+        # region agent log
+        content = str(message.content)
+        _debug_log(
+            "H5",
+            "main.py:print_message_details",
+            "printing message content",
+            {
+                "message_index": index,
+                "stdout_encoding": getattr(sys.stdout, "encoding", None),
+                "contains_subscript_2": "\u2082" in content,
+                "content_preview": content[:120],
+            },
+        )
+        # endregion
         print(message.content)
 
     if hasattr(message, "tool_calls") and message.tool_calls:
@@ -42,6 +113,7 @@ def print_message_details(message, index):
 
 def main():
     """Execute a demonstration query through the multi-agent workflow."""
+    _configure_stdout_encoding()
     load_dotenv()
 
     # Set up LangSmith monitoring if enabled
