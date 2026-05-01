@@ -9,28 +9,7 @@ from typing import Any
 
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
-DEBUG_LOG_PATH = Path("debug-9d2b1d.log")
 
-
-# region agent log
-def _debug_log(hypothesis_id: str, location: str, message: str, data: dict) -> None:
-    try:
-        payload = {
-            "sessionId": "9d2b1d",
-            "runId": "pre-fix",
-            "hypothesisId": hypothesis_id,
-            "location": location,
-            "message": message,
-            "data": data,
-            "timestamp": int(time.time() * 1000),
-        }
-        with DEBUG_LOG_PATH.open("a", encoding="utf-8") as f:
-            f.write(json.dumps(payload, ensure_ascii=True) + "\n")
-    except Exception:
-        pass
-
-
-# endregion
 
 DEFAULT_CODER_IMPORTS = [
     "pandas",
@@ -63,14 +42,6 @@ _tooluniverse_installed = importlib.util.find_spec("tooluniverse") is not None
 if _tooluniverse_installed:
     DEFAULT_CODER_IMPORTS.append("tooluniverse")
 
-# region agent log
-_debug_log(
-    "H4",
-    "coder_helpers.py:DEFAULT_CODER_IMPORTS",
-    "tooluniverse import authorization decision",
-    {"tooluniverse_installed": _tooluniverse_installed, "imports_count": len(DEFAULT_CODER_IMPORTS)},
-)
-# endregion
 
 DEFAULT_ML_IMPORTS = [
     *DEFAULT_CODER_IMPORTS,

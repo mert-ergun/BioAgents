@@ -11,28 +11,6 @@ import sys
 import time
 from pathlib import Path
 
-DEBUG_LOG_PATH = Path("debug-9d2b1d.log")
-
-
-# region agent log
-def _debug_log(hypothesis_id: str, location: str, message: str, data: dict) -> None:
-    try:
-        payload = {
-            "sessionId": "9d2b1d",
-            "runId": "pre-fix",
-            "hypothesisId": hypothesis_id,
-            "location": location,
-            "message": message,
-            "data": data,
-            "timestamp": int(time.time() * 1000),
-        }
-        with DEBUG_LOG_PATH.open("a", encoding="utf-8") as f:
-            f.write(json.dumps(payload, ensure_ascii=True) + "\n")
-    except Exception:
-        pass
-
-
-# endregion
 
 # ---------------------------------------------------------------------------
 # Monkey-patch smolagents evaluate_with — upstream stores __enter__() return
@@ -222,14 +200,6 @@ def create_executor(
     """
     # Check if local executor should be used (via environment variable)
     use_local = os.getenv("USE_LOCAL_EXECUTOR", "false").lower() in ("true", "1", "yes")
-    # region agent log
-    _debug_log(
-        "H2",
-        "coder_executor.py:create_executor",
-        "executor mode flags",
-        {"agent_type": agent_type, "use_local": use_local},
-    )
-    # endregion
 
     if use_local:
         apply_local_executor_runtime_env()
@@ -243,14 +213,6 @@ def create_executor(
                 if imp and not is_module_installed(imp)
             }
         )
-        # region agent log
-        _debug_log(
-            "H1",
-            "coder_executor.py:create_executor",
-            "local executor missing modules",
-            {"missing_local_modules": missing_local_modules[:20], "imports_count": len(additional_imports)},
-        )
-        # endregion
 
         return LocalPythonExecutor(
             additional_authorized_imports=PermissiveList(additional_imports),
@@ -354,14 +316,7 @@ def create_executor(
     except Exception as e:
         print(f"Warning: Could not initialize DockerExecutor for {agent_type}: {e}")
         print("Falling back to LocalExecutor (NOT SANDBOXED) for development purposes.")
-        # region agent log
-        _debug_log(
-            "H3",
-            "coder_executor.py:create_executor",
-            "docker executor initialization failed",
-            {"error_type": type(e).__name__, "error": str(e)},
-        )
-        # endregion
+    
 
         apply_local_executor_runtime_env()
         from bioagents.sandbox.coder_helpers import PermissiveList
@@ -373,14 +328,7 @@ def create_executor(
                 if imp and not is_module_installed(imp)
             }
         )
-        # region agent log
-        _debug_log(
-            "H1",
-            "coder_executor.py:create_executor",
-            "fallback local executor missing modules",
-            {"missing_local_modules": missing_local_modules[:20], "imports_count": len(additional_imports)},
-        )
-        # endregion
+    
 
         return LocalPythonExecutor(
             additional_authorized_imports=PermissiveList(additional_imports),
