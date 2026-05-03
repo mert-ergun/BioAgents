@@ -2,6 +2,7 @@
 
 import contextlib
 import importlib.util
+import json
 import os
 import shutil
 import socket
@@ -105,7 +106,6 @@ def _patch_json_numpy_serialization() -> None:
     is not JSON serializable``.  This one-time patch makes the default encoder
     fall back to native Python types.
     """
-    import json
 
     _original_default = json.JSONEncoder.default
 
