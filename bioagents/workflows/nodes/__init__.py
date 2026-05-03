@@ -8,8 +8,8 @@ from bioagents.workflows.nodes.fasta_preprocess import FastaPreprocessorNode
 from bioagents.workflows.nodes.uniprot_fasta import UniprotFastaNode
 
 __all__ = [
-    "DummyEmbedderNode",
     "AGENT_WORKFLOW_NODES",
+    "DummyEmbedderNode",
     "Esm2EmbedderNode",
     "ExportJsonNode",
     "FastaPreprocessorNode",

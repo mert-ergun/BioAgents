@@ -3,7 +3,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Callable, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+from langchain_core.messages import HumanMessage
 
 from bioagents.agents.analysis_agent import create_analysis_agent
 from bioagents.agents.coder_agent import create_coder_agent, create_coder_node
@@ -33,7 +38,6 @@ from bioagents.agents.tool_validator_agent import create_tool_validator_agent
 from bioagents.agents.transcriptomics_agent import create_transcriptomics_agent
 from bioagents.agents.visualization_agent import create_visualization_agent
 from bioagents.agents.web_browser_agent import create_web_browser_agent
-from langchain_core.messages import HumanMessage
 from bioagents.workflows.node import WorkflowNode
 from bioagents.workflows.schemas import NodeMetadata
 
