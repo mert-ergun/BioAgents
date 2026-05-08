@@ -143,15 +143,19 @@ UPLOADS_DIR = Path("uploads")
 UPLOADS_DIR.mkdir(exist_ok=True)
 
 
+MAX_UPLOAD_SIZE = 10 * 1024 * 1024  # 10MB
+
+
 @app.post("/api/upload")
 async def upload_file(file: UploadFile = File(...)):
     """Upload a file for processing by agents."""
+    contents = await file.read()
+    if len(contents) > MAX_UPLOAD_SIZE:
+        raise HTTPException(status_code=413, detail="File too large. Maximum size is 10MB.")
     try:
         file_path = UPLOADS_DIR / file.filename
         with file_path.open("wb") as buffer:
-            import shutil
-
-            shutil.copyfileobj(file.file, buffer)
+            buffer.write(contents)
 
         # Return path relative to project root
         try:
