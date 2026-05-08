@@ -270,6 +270,137 @@
         .wb-conn-row { display: flex; align-items: center; justify-content: space-between; gap: 6px; font-size: 10px; padding: 6px 8px; border-radius: 6px; background: rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.06); margin-bottom: 4px; }
         .wb-conn-row button { flex-shrink: 0; padding: 2px 6px; border-radius: 4px; color: #fca5a5; border: 1px solid rgba(248,113,113,0.35); background: transparent; cursor: pointer; font-size: 10px; }
         .wb-conn-row button:hover { background: rgba(248,113,113,0.12); }
+
+        /* Workflow builder — dynamic form fields */
+        .wb-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+        .wb-field-label-row { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; min-width: 0; }
+        .wb-field-label {
+            font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em;
+            color: #cbd5e1; font-family: ui-monospace, monospace;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        .wb-field-type-badge {
+            font-size: 9px; font-family: ui-monospace, monospace;
+            color: #64748b;
+            white-space: nowrap; flex-shrink: 0; line-height: 1.4;
+        }
+        /* Higher-specificity selectors so Tailwind's @forms plugin reset doesn't win. */
+        input.wb-field-input, .wb-field-input {
+            width: 100%; border-radius: 6px;
+            background-color: rgba(15, 23, 30, 0.7);
+            border: 1px solid rgba(255,255,255,0.1);
+            color: #e2e8f0; font-size: 12px; font-family: ui-monospace, monospace;
+            padding: 7px 10px; outline: none; box-shadow: none;
+            transition: border-color 0.15s, background-color 0.15s, box-shadow 0.15s;
+            --tw-ring-shadow: 0 0 #0000; --tw-ring-offset-shadow: 0 0 #0000;
+        }
+        input.wb-field-input:hover { border-color: rgba(255,255,255,0.2); }
+        input.wb-field-input:focus, .wb-field-input:focus {
+            border-color: rgba(7,182,213,0.65);
+            box-shadow: 0 0 0 3px rgba(7,182,213,0.14);
+            background-color: rgba(8, 14, 19, 0.85);
+            --tw-ring-shadow: 0 0 #0000; --tw-ring-offset-shadow: 0 0 #0000;
+        }
+        input.wb-field-input::placeholder { color: #475569; font-style: italic; opacity: 1; }
+        textarea.wb-field-textarea, .wb-field-textarea {
+            width: 100%; border-radius: 6px;
+            background-color: rgba(15, 23, 30, 0.7);
+            border: 1px solid rgba(255,255,255,0.1);
+            color: #e2e8f0; font-size: 12px; font-family: ui-monospace, monospace;
+            padding: 7px 10px; outline: none; resize: vertical; min-height: 2.25rem; line-height: 1.5;
+            transition: border-color 0.15s, background-color 0.15s, box-shadow 0.15s;
+            --tw-ring-shadow: 0 0 #0000; --tw-ring-offset-shadow: 0 0 #0000;
+        }
+        textarea.wb-field-textarea:hover { border-color: rgba(255,255,255,0.2); }
+        textarea.wb-field-textarea:focus, .wb-field-textarea:focus {
+            border-color: rgba(7,182,213,0.65);
+            box-shadow: 0 0 0 3px rgba(7,182,213,0.14);
+            background-color: rgba(8, 14, 19, 0.85);
+            --tw-ring-shadow: 0 0 #0000; --tw-ring-offset-shadow: 0 0 #0000;
+        }
+        textarea.wb-field-textarea::placeholder { color: #475569; font-style: italic; opacity: 1; }
+        .wb-field-bool-wrap {
+            display: flex; align-items: center; gap: 8px; padding: 7px 10px;
+            border-radius: 6px; background: rgba(15, 23, 30, 0.6); border: 1px solid rgba(255,255,255,0.08);
+            cursor: pointer; transition: all 0.15s;
+        }
+        .wb-field-bool-wrap:hover { border-color: rgba(255,255,255,0.16); background: rgba(15, 23, 30, 0.85); }
+        .wb-field-bool-text { font-size: 11px; color: #94a3b8; font-family: ui-monospace, monospace; }
+        .wb-field-check { width: 14px; height: 14px; accent-color: #07b6d5; cursor: pointer; flex-shrink: 0; }
+        .wb-params-toggle { display: flex; gap: 0; border-radius: 6px; overflow: hidden; border: 1px solid rgba(255,255,255,0.1); }
+        .wb-params-toggle button { flex: 1; padding: 3px 10px; font-size: 9px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; cursor: pointer; border: none; background: rgba(0,0,0,0.25); color: #71717a; transition: all 0.15s; }
+        .wb-params-toggle button.active { background: rgba(7,182,213,0.2); color: #22d3ee; }
+
+        /* Form sections — responsive grid */
+        .wb-inputs-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+            gap: 12px;
+            padding: 4px 2px;
+        }
+        .wb-node-inputs-section {
+            position: relative;
+            border: 1px solid rgba(255,255,255,0.06);
+            border-radius: 10px;
+            background: rgba(22, 32, 40, 0.55);
+            overflow: hidden;
+            transition: border-color 0.15s, background-color 0.15s;
+            display: flex; flex-direction: column;
+        }
+        .wb-node-inputs-section:hover {
+            border-color: rgba(255,255,255,0.12);
+            background: rgba(26, 36, 44, 0.65);
+        }
+        .wb-node-inputs-header {
+            display: flex; align-items: center; gap: 8px;
+            padding: 9px 12px;
+            cursor: pointer;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+            user-select: none;
+        }
+        .wb-node-inputs-header:hover { background: rgba(255,255,255,0.02); }
+        .wb-node-inputs-header .wb-nid-cat {
+            width: 6px; height: 6px; border-radius: 9999px;
+            background: var(--wb-cat-color, #64748b);
+            flex-shrink: 0;
+            box-shadow: 0 0 0 2px rgba(255,255,255,0.04);
+        }
+        .wb-node-inputs-header .wb-nid-id {
+            font-family: ui-monospace, monospace; font-size: 10px; font-weight: 600;
+            color: #cbd5e1;
+            flex-shrink: 0;
+        }
+        .wb-node-inputs-header .wb-nid-sep {
+            color: #334155; flex-shrink: 0; font-size: 10px;
+        }
+        .wb-node-inputs-header .wb-nid-name {
+            flex: 1; font-size: 11px; font-weight: 500; color: #94a3b8;
+            overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+        }
+        .wb-node-inputs-header .wb-nid-count {
+            font-size: 9px; color: #64748b; font-family: ui-monospace, monospace;
+            flex-shrink: 0;
+        }
+        .wb-node-inputs-header .wb-nid-chevron {
+            color: #475569; transition: transform 0.2s; flex-shrink: 0;
+        }
+        .wb-node-inputs-body {
+            padding: 12px;
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+            gap: 10px;
+        }
+        .wb-node-inputs-body.collapsed { display: none; }
+        .wb-inputs-empty {
+            grid-column: 1 / -1;
+            text-align: center; padding: 32px 16px;
+            color: #475569; font-size: 12px;
+            border: 1px dashed rgba(255,255,255,0.08);
+            border-radius: 10px; background: rgba(0,0,0,0.15);
+        }
+        .wb-inputs-empty .wb-inputs-empty-icon {
+            display: block; font-size: 28px; color: rgba(7, 182, 213, 0.3); margin-bottom: 8px;
+        }
     </style>
 </head>
 
@@ -923,8 +1054,15 @@
                                     <p id="wb-inspector-desc" class="text-[10px] text-text-subtle mt-1 leading-relaxed"></p>
                                 </div>
                                 <div>
-                                    <label class="text-[9px] text-text-subtle uppercase block mb-1">Parameters (JSON)</label>
-                                    <textarea id="wb-inspector-params" rows="6" class="w-full rounded-lg bg-black/40 border border-white/10 text-[11px] font-mono text-cyan-100/90 px-2 py-1.5 resize-y min-h-[5rem]" spellcheck="false"></textarea>
+                                    <div class="flex items-center justify-between mb-1">
+                                        <label class="text-[9px] text-text-subtle uppercase">Parameters</label>
+                                        <div class="wb-params-toggle">
+                                            <button type="button" id="wb-params-form-btn" class="active">Form</button>
+                                            <button type="button" id="wb-params-json-btn">JSON</button>
+                                        </div>
+                                    </div>
+                                    <div id="wb-inspector-params-form" class="flex flex-col gap-2"></div>
+                                    <textarea id="wb-inspector-params" rows="6" class="hidden w-full rounded-lg bg-black/40 border border-white/10 text-[11px] font-mono text-cyan-100/90 px-2 py-1.5 resize-y min-h-[5rem]" spellcheck="false"></textarea>
                                 </div>
                                 <div id="wb-inspector-connections-wrap" class="hidden">
                                     <label class="text-[9px] text-text-subtle uppercase block mb-1">Connections</label>
@@ -941,12 +1079,14 @@
                     </div>
                     <div class="border-t border-white/5 bg-surface-darker/90 flex-shrink-0 max-h-[38vh] flex flex-col min-h-0">
                         <div class="flex border-b border-white/5 text-[10px] font-medium">
-                            <button type="button" class="wb-bottom-tab px-4 py-2 text-white border-b-2 border-primary bg-white/5" data-wb-tab="inputs">Initial inputs</button>
+                            <button type="button" class="wb-bottom-tab px-4 py-2 text-white border-b-2 border-primary bg-white/5" data-wb-tab="inputs">Form</button>
+                            <button type="button" class="wb-bottom-tab px-4 py-2 text-text-subtle hover:text-white border-b-2 border-transparent" data-wb-tab="inputs-json">JSON</button>
                             <button type="button" class="wb-bottom-tab px-4 py-2 text-text-subtle hover:text-white border-b-2 border-transparent" data-wb-tab="sink">Sink output</button>
                             <button type="button" class="wb-bottom-tab px-4 py-2 text-text-subtle hover:text-white border-b-2 border-transparent" data-wb-tab="nodes">All nodes</button>
                         </div>
                         <div class="flex-1 min-h-0 overflow-hidden p-3 grid">
-                            <textarea id="wb-initial-inputs" class="wb-bottom-panel row-start-1 col-start-1 w-full h-full min-h-[120px] rounded-lg bg-black/40 border border-white/10 text-[11px] font-mono text-cyan-100/90 px-3 py-2 resize-none focus:border-primary/50 custom-scrollbar" spellcheck="false">{}</textarea>
+                            <div id="wb-initial-inputs-form" class="wb-bottom-panel row-start-1 col-start-1 w-full h-full min-h-[120px] overflow-auto custom-scrollbar"></div>
+                            <textarea id="wb-initial-inputs" class="wb-bottom-panel row-start-1 col-start-1 hidden w-full h-full min-h-[120px] rounded-lg bg-black/40 border border-white/10 text-[11px] font-mono text-cyan-100/90 px-3 py-2 resize-none focus:border-primary/50 custom-scrollbar" spellcheck="false">{}</textarea>
                             <pre id="wb-sink-json" class="wb-bottom-panel row-start-1 col-start-1 hidden w-full h-full min-h-[120px] overflow-auto rounded-lg bg-black/40 border border-white/10 text-[11px] font-mono text-cyan-200/90 p-3 custom-scrollbar whitespace-pre-wrap">{}</pre>
                             <pre id="wb-builder-nodes-json" class="wb-bottom-panel row-start-1 col-start-1 hidden w-full h-full min-h-[120px] overflow-auto rounded-lg bg-black/40 border border-white/10 text-[11px] font-mono text-slate-300 p-3 custom-scrollbar whitespace-pre-wrap">// Run to see outputs</pre>
                         </div>
