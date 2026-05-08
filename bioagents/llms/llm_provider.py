@@ -18,10 +18,20 @@ _api_keys_override: ContextVar[dict[str, str] | None] = ContextVar(
     "api_keys_override", default=None
 )
 
+# Context vars for per-request provider/model overrides
+_provider_override: ContextVar[str | None] = ContextVar("provider_override", default=None)
+_model_override: ContextVar[str | None] = ContextVar("model_override", default=None)
+
 
 def set_api_keys_override(api_keys: dict[str, str] | None) -> None:
     """Set API key overrides for the current context (e.g., per-request from frontend)."""
     _api_keys_override.set(api_keys)
+
+
+def set_llm_overrides(provider: str | None = None, model: str | None = None) -> None:
+    """Set provider and model overrides for the current context."""
+    _provider_override.set(provider)
+    _model_override.set(model)
 
 
 def _get_api_key(provider: str) -> str | None:
@@ -55,7 +65,7 @@ def get_structured_output_kwargs_for_routing() -> dict[str, Any]:
 
     LangChain's default ``method='function_calling'`` binds tools and parses
     tool calls into Pydantic models. Newer Gemini models (e.g.
-    ``gemini-3-flash-preview``) often emit responses that do not parse through
+    ``gemini-3.1-flash-lite``) often emit responses that do not parse through
     that path, so ``invoke`` returns ``None`` and routing breaks. Using
     ``method='json_schema'`` enables the Gemini API's native JSON schema
     response mode, which is reliable for structured routing.
@@ -126,7 +136,7 @@ def get_llm(
                - Otherwise provider defaults:
                  * OpenAI: 'gpt-5.1'
                  * Ollama: 'qwen3:14b'
-                 * Gemini: 'gemini-3-flash-preview'
+                 * Gemini: 'gemini-3.1-flash-lite'
         temperature: The temperature for generation (0.0 = deterministic)
         prompt_name: Optional prompt identifier used to look up provider-specific
                      model recommendations in the XML metadata
@@ -156,12 +166,16 @@ def get_llm(
         - BIOAGENTS_RATE_LIMIT_MAX_WAIT_SEC: Max seconds to wait for an RPM slot (default 120; 0 disables).
     """
     if provider is None:
+        provider = _provider_override.get()  # type: ignore[assignment]
+    if provider is None:
         provider_str = os.getenv("LLM_PROVIDER", "openai").lower()
         if provider_str not in ("openai", "ollama", "gemini"):
             raise ValueError(
                 f"Invalid LLM_PROVIDER: {provider_str}. Must be one of: openai, ollama, gemini"
             )
         provider = provider_str  # type: ignore[assignment]
+    if model is None:
+        model = _model_override.get()
     if model is None and prompt_name:
         prompt_model = get_prompt_llm_model(prompt_name, provider)
         if prompt_model:
@@ -223,7 +237,7 @@ def get_llm(
         return llm
 
     elif provider == "gemini":
-        model = model or "gemini-3-flash-preview"
+        model = model or "gemini-3.1-flash-lite"
         api_key = _get_api_key("gemini") or os.getenv("GEMINI_API_KEY")
         if not api_key:
             raise ValueError(

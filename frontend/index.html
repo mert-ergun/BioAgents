@@ -305,7 +305,7 @@
                 </a>
                 <a href="#" id="nav-experiments" class="nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-text-subtle hover:text-white hover:bg-white/5 transition-all">
                     <span class="material-symbols-outlined text-[20px]">experiment</span>
-                    <span class="font-medium text-sm">Experiments</span>
+                    <span class="font-medium text-sm">Benchmarks</span>
                 </a>
                 <a href="#" id="nav-workflows" class="nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-text-subtle hover:text-white hover:bg-white/5 transition-all">
                     <span class="material-symbols-outlined text-[20px]">account_tree</span>
@@ -699,9 +699,9 @@
                 <!-- Experiments header -->
                 <div class="flex items-center justify-between px-6 py-4 border-b border-white/5 flex-shrink-0">
                     <div class="flex items-center gap-3">
-                        <span class="material-symbols-outlined text-primary text-2xl">experiment</span>
+                        <span class="material-symbols-outlined text-primary text-2xl">speed</span>
                         <div>
-                            <h1 class="text-base font-bold text-white">Experiments</h1>
+                            <h1 class="text-base font-bold text-white">Benchmarks</h1>
                             <p class="text-[11px] text-text-subtle">Define, run, and compare use-case evaluations</p>
                         </div>
                     </div>
@@ -747,7 +747,7 @@
                                 Skip judging
                             </label>
                             <label class="flex items-center gap-2 text-xs text-text-subtle cursor-pointer select-none">
-                                <input type="checkbox" id="exp-llm-judge" class="rounded border-white/20 bg-surface-dark text-primary focus:ring-primary">
+                                <input type="checkbox" id="exp-llm-judge" checked class="rounded border-white/20 bg-surface-dark text-primary focus:ring-primary">
                                 LLM judge (vs heuristic)
                             </label>
                             <div class="flex-1 text-xs text-text-subtle" id="exp-selection-count">Select use cases to run</div>
@@ -1082,7 +1082,7 @@
                 hideAllExcept(expView, false);
                 clearActive();
                 navActive(document.getElementById('nav-experiments'));
-                document.getElementById('projectTitle').textContent = 'Experiments';
+                document.getElementById('projectTitle').textContent = 'Benchmarks';
                 await initExperiments();
             }
 

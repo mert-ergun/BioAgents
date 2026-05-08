@@ -74,6 +74,8 @@ const state = {
         notifications: true,
         advancedMode: false,
         theme: 'dark',
+        llmProvider: 'gemini',
+        llmModel: 'gemini-3.1-flash-lite',
         apiKeys: {
             openai: '',
             gemini: '',
@@ -1055,7 +1057,7 @@ async function handleSubmit() {
     try {
         const apiKeys = getApiKeysPayload();
         if (state.isConnected && state.ws?.readyState === WebSocket.OPEN) {
-            state.ws.send(JSON.stringify({ type: 'query', content: query, api_keys: apiKeys, session_id: state.currentSessionId }));
+            state.ws.send(JSON.stringify({ type: 'query', content: query, api_keys: apiKeys, session_id: state.currentSessionId, provider: state.settings.llmProvider || undefined, model: state.settings.llmModel || undefined }));
         } else {
             await sendQueryViaRest(query, apiKeys);
         }
@@ -1095,6 +1097,8 @@ async function sendQueryViaRest(query, apiKeys) {
 
     const body = { query };
     if (apiKeys && Object.keys(apiKeys).length) body.api_keys = apiKeys;
+    if (state.settings.llmProvider) body.provider = state.settings.llmProvider;
+    if (state.settings.llmModel) body.model = state.settings.llmModel;
 
     const response = await fetch(`${CONFIG.apiBaseUrl}/api/query`, {
         method: 'POST',
@@ -3172,14 +3176,47 @@ function initSettings() {
 }
 
 function showSettingsPanel() {
+    const MODELS = {
+        openai: [
+            { id: 'gpt-5.5', name: 'GPT-5.5', desc: 'Newest flagship' },
+            { id: 'gpt-5.5-pro', name: 'GPT-5.5 Pro', desc: 'Smarter & more precise' },
+            { id: 'gpt-5.4', name: 'GPT-5.4', desc: 'Affordable coding & work' },
+            { id: 'gpt-5.4-pro', name: 'GPT-5.4 Pro', desc: 'Smarter GPT-5.4' },
+            { id: 'gpt-5.4-mini', name: 'GPT-5.4 Mini', desc: 'Strong mini for coding' },
+            { id: 'gpt-5.4-nano', name: 'GPT-5.4 Nano', desc: 'Cheapest GPT-5.4' },
+            { id: 'gpt-5', name: 'GPT-5', desc: 'Agentic reasoning' },
+            { id: 'gpt-5-pro', name: 'GPT-5 Pro', desc: 'Smarter GPT-5' },
+            { id: 'gpt-5-mini', name: 'GPT-5 Mini', desc: 'Budget reasoning' },
+            { id: 'gpt-5-nano', name: 'GPT-5 Nano', desc: 'Fast & cheap' },
+            { id: 'o3', name: 'o3', desc: 'Advanced reasoning' },
+            { id: 'o3-pro', name: 'o3 Pro', desc: 'Max compute reasoning' },
+            { id: 'gpt-4.1', name: 'GPT-4.1', desc: 'Production workhorse' },
+            { id: 'gpt-4.1-mini', name: 'GPT-4.1 Mini', desc: 'Mid-tier production' },
+            { id: 'gpt-4.1-nano', name: 'GPT-4.1 Nano', desc: 'Ultra cheap' },
+        ],
+        gemini: [
+            { id: 'gemini-3.1-pro', name: 'Gemini 3.1 Pro', desc: 'Latest reasoning-first' },
+            { id: 'gemini-3-flash', name: 'Gemini 3 Flash', desc: 'Best multimodal' },
+            { id: 'gemini-3.1-flash-lite', name: 'Gemini 3.1 Flash-Lite', desc: 'Most cost-efficient' },
+            { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro', desc: 'Complex reasoning (stable)' },
+            { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash', desc: 'Fast & capable (stable)' },
+            { id: 'gemini-2.5-flash-lite', name: 'Gemini 2.5 Flash-Lite', desc: 'High-throughput (stable)' },
+            { id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash', desc: 'Cost-effective general' },
+            { id: 'gemini-2.0-flash-lite', name: 'Gemini 2.0 Flash-Lite', desc: 'Ultra-efficient simple' },
+        ],
+    };
+
+    const currentProvider = state.settings.llmProvider || 'gemini';
+    const currentModel = state.settings.llmModel || '';
+
     // Create modal
     const modal = document.createElement('div');
     modal.className = 'fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm';
     modal.id = 'settingsModal';
 
     modal.innerHTML = `
-        <div class="bg-surface-dark border border-white/10 rounded-xl shadow-2xl w-full max-w-md mx-4 overflow-hidden animate-fadeIn">
-            <div class="flex items-center justify-between p-4 border-b border-white/5">
+        <div class="bg-surface-dark border border-white/10 rounded-xl shadow-2xl w-full max-w-lg mx-4 overflow-hidden animate-fadeIn max-h-[90vh] flex flex-col">
+            <div class="flex items-center justify-between p-4 border-b border-white/5 flex-shrink-0">
                 <h3 class="text-lg font-bold text-white flex items-center gap-2">
                     <span class="material-symbols-outlined text-primary">settings</span>
                     Settings
@@ -3188,7 +3225,7 @@ function showSettingsPanel() {
                     <span class="material-symbols-outlined">close</span>
                 </button>
             </div>
-            <div class="p-4 space-y-4">
+            <div class="p-4 space-y-4 overflow-y-auto custom-scrollbar flex-1">
                 <div class="flex items-center justify-between py-2">
                     <div>
                         <p class="text-sm font-medium text-white">Auto-scroll</p>
@@ -3207,22 +3244,49 @@ function showSettingsPanel() {
                         <span class="absolute top-1 ${state.settings.notifications ? 'right-1' : 'left-1'} w-4 h-4 bg-white rounded-full transition-all"></span>
                     </button>
                 </div>
+
+                <!-- LLM Provider & Model Selection -->
+                <div class="pt-4 border-t border-white/5 space-y-3">
+                    <p class="text-sm font-medium text-white flex items-center gap-2">
+                        <span class="material-symbols-outlined text-primary text-[18px]">tune</span>
+                        LLM Configuration
+                    </p>
+                    <div>
+                        <label class="block text-xs text-slate-500 mb-1">Provider</label>
+                        <select id="llmProvider" class="w-full px-3 py-2 rounded-lg bg-black/30 border border-white/10 text-sm text-white focus:border-primary/50 focus:ring-1 focus:ring-primary/30 outline-none">
+                            <option value="gemini" ${currentProvider === 'gemini' ? 'selected' : ''}>Google Gemini</option>
+                            <option value="openai" ${currentProvider === 'openai' ? 'selected' : ''}>OpenAI</option>
+                            <option value="ollama" ${currentProvider === 'ollama' ? 'selected' : ''}>Ollama (local)</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs text-slate-500 mb-1">Model</label>
+                        <select id="llmModel" class="w-full px-3 py-2 rounded-lg bg-black/30 border border-white/10 text-sm text-white focus:border-primary/50 focus:ring-1 focus:ring-primary/30 outline-none">
+                        </select>
+                    </div>
+                    <div id="ollamaModelRow" class="${currentProvider === 'ollama' ? '' : 'hidden'}">
+                        <label class="block text-xs text-slate-500 mb-1">Ollama Model Name</label>
+                        <input type="text" id="ollamaModelInput" class="w-full px-3 py-2 rounded-lg bg-black/30 border border-white/10 text-sm text-white placeholder-slate-500 focus:border-primary/50 focus:ring-1 focus:ring-primary/30 outline-none" placeholder="qwen3:14b" value="${currentProvider === 'ollama' ? (currentModel || 'qwen3:14b') : 'qwen3:14b'}" autocomplete="off"/>
+                    </div>
+                </div>
+
+                <!-- API Keys -->
                 <div class="pt-4 border-t border-white/5 space-y-3">
                     <p class="text-sm font-medium text-white flex items-center gap-2">
                         <span class="material-symbols-outlined text-primary text-[18px]">key</span>
                         API Keys (optional)
                     </p>
                     <p class="text-xs text-slate-400">Use your own API keys. Leave blank to use server-configured keys.</p>
-                    <div>
+                    <div id="openaiKeyRow">
                         <label class="block text-xs text-slate-500 mb-1">OpenAI API Key</label>
                         <input type="password" id="apiKeyOpenAI" class="api-key-input w-full px-3 py-2 rounded-lg bg-black/30 border border-white/10 text-sm text-white placeholder-slate-500 focus:border-primary/50 focus:ring-1 focus:ring-primary/30 outline-none" placeholder="sk-..." value="${state.settings.apiKeys?.openai || ''}" autocomplete="off"/>
                     </div>
-                    <div>
+                    <div id="geminiKeyRow">
                         <label class="block text-xs text-slate-500 mb-1">Google Gemini API Key</label>
                         <input type="password" id="apiKeyGemini" class="api-key-input w-full px-3 py-2 rounded-lg bg-black/30 border border-white/10 text-sm text-white placeholder-slate-500 focus:border-primary/50 focus:ring-1 focus:ring-primary/30 outline-none" placeholder="AIza..." value="${state.settings.apiKeys?.gemini || ''}" autocomplete="off"/>
                     </div>
-                    <button class="api-keys-save w-full py-2 px-4 text-sm font-medium bg-primary/20 hover:bg-primary/30 border border-primary/30 text-primary rounded-lg transition-all">
-                        Save API Keys
+                    <button class="settings-save-all w-full py-2 px-4 text-sm font-medium bg-primary/20 hover:bg-primary/30 border border-primary/30 text-primary rounded-lg transition-all">
+                        Save Settings
                     </button>
                 </div>
                 <div class="pt-4 border-t border-white/5">
@@ -3234,6 +3298,33 @@ function showSettingsPanel() {
         </div>
     `;
 
+    // Populate model dropdown
+    function populateModels(provider, selectedModel) {
+        const select = modal.querySelector('#llmModel');
+        if (!select) return;
+        select.innerHTML = '';
+        if (provider === 'ollama') {
+            select.innerHTML = '<option value="qwen3:14b">qwen3:14b (default)</option>';
+            return;
+        }
+        const models = MODELS[provider] || [];
+        models.forEach(m => {
+            const opt = document.createElement('option');
+            opt.value = m.id;
+            opt.textContent = `${m.name} — ${m.desc}`;
+            if (selectedModel && m.id === selectedModel) opt.selected = true;
+            select.appendChild(opt);
+        });
+        // Default selection
+        if (!selectedModel && models.length > 0) {
+            const defaults = { openai: 'gpt-5', gemini: 'gemini-3.1-flash-lite' };
+            const def = defaults[provider] || models[0].id;
+            select.value = def;
+        }
+    }
+
+    populateModels(currentProvider, currentModel);
+
     document.body.appendChild(modal);
 
     // Close button
@@ -3242,6 +3333,13 @@ function showSettingsPanel() {
     // Click outside to close
     modal.addEventListener('click', (e) => {
         if (e.target === modal) modal.remove();
+    });
+
+    // Provider change → repopulate models
+    modal.querySelector('#llmProvider')?.addEventListener('change', (e) => {
+        const provider = e.target.value;
+        populateModels(provider, null);
+        modal.querySelector('#ollamaModelRow')?.classList.toggle('hidden', provider !== 'ollama');
     });
 
     // Toggle buttons
@@ -3261,15 +3359,28 @@ function showSettingsPanel() {
         });
     });
 
-    // Save API keys
-    modal.querySelector('.api-keys-save')?.addEventListener('click', () => {
+    // Save all settings (API keys + provider/model)
+    modal.querySelector('.settings-save-all')?.addEventListener('click', () => {
         const openaiInput = modal.querySelector('#apiKeyOpenAI');
         const geminiInput = modal.querySelector('#apiKeyGemini');
+        const providerSelect = modal.querySelector('#llmProvider');
+        const modelSelect = modal.querySelector('#llmModel');
+        const ollamaInput = modal.querySelector('#ollamaModelInput');
+
         if (!state.settings.apiKeys) state.settings.apiKeys = { openai: '', gemini: '' };
         state.settings.apiKeys.openai = openaiInput?.value?.trim() || '';
         state.settings.apiKeys.gemini = geminiInput?.value?.trim() || '';
+
+        const provider = providerSelect?.value || 'gemini';
+        state.settings.llmProvider = provider;
+        if (provider === 'ollama') {
+            state.settings.llmModel = ollamaInput?.value?.trim() || 'qwen3:14b';
+        } else {
+            state.settings.llmModel = modelSelect?.value || '';
+        }
+
         saveToStorage();
-        showToast('API keys saved', 'success');
+        showToast('Settings saved', 'success');
     });
 
     // Clear all data

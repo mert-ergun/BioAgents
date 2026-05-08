@@ -162,7 +162,7 @@ class TestGetLLM:
 
             mock_gemini.assert_called_once()
             call_kwargs = mock_gemini.call_args[1]
-            assert call_kwargs["model"] == "gemini-3-flash-preview"
+            assert call_kwargs["model"] == "gemini-3.1-flash-lite"
             assert call_kwargs["temperature"] == 0.0
             assert call_kwargs["google_api_key"] == "test-gemini-key"
 
