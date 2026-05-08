@@ -405,22 +405,35 @@ def _extract_tool_calls_from_messages(messages: list) -> list[ToolCallRecord]:
 
 def _extract_token_usage_from_messages(messages: list) -> TokenUsage | None:
     """
-    Aggregate token usage from response_metadata across all AIMessages.
+    Aggregate token usage from AIMessage metadata.
 
-    LangChain stores token counts differently per provider:
-    - OpenAI: response_metadata["token_usage"] -> {"prompt_tokens", "completion_tokens", "total_tokens"}
-    - Gemini: response_metadata["usage_metadata"] -> {"prompt_token_count", "candidates_token_count"}
+    LangChain stores token counts in multiple locations depending on version/provider:
+    - msg.usage_metadata (modern, langchain-core >= 0.2): {"input_tokens", "output_tokens", "total_tokens"}
+    - response_metadata["token_usage"] (OpenAI legacy): {"prompt_tokens", "completion_tokens"}
+    - response_metadata["usage_metadata"] (Gemini legacy): {"prompt_token_count", "candidates_token_count"}
     """
     total_input = 0
     total_output = 0
     found_any = False
 
     for msg in messages:
+        # Modern LangChain: top-level usage_metadata attribute (both OpenAI and Gemini)
+        usage_metadata = getattr(msg, "usage_metadata", None)
+        if usage_metadata and isinstance(usage_metadata, dict):
+            inp = usage_metadata.get("input_tokens")
+            out = usage_metadata.get("output_tokens")
+            if inp is not None or out is not None:
+                total_input += inp or 0
+                total_output += out or 0
+                found_any = True
+                continue
+
+        # Legacy: response_metadata dict
         metadata = getattr(msg, "response_metadata", None)
         if not metadata:
             continue
 
-        # OpenAI format
+        # OpenAI legacy format
         token_usage = metadata.get("token_usage", {})
         if token_usage:
             total_input += token_usage.get("prompt_tokens", 0)
@@ -428,7 +441,7 @@ def _extract_token_usage_from_messages(messages: list) -> TokenUsage | None:
             found_any = True
             continue
 
-        # Gemini format
+        # Gemini legacy format
         usage_meta = metadata.get("usage_metadata", {})
         if usage_meta:
             total_input += usage_meta.get("prompt_token_count", 0)
