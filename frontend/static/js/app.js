@@ -1157,9 +1157,17 @@ function initFileAttachment() {
         fileInput.click();
     });
 
+    const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+
     fileInput.addEventListener('change', async (e) => {
         const file = e.target.files[0];
         if (!file) return;
+
+        if (file.size > MAX_FILE_SIZE) {
+            showToast(`File too large: ${file.name} (${(file.size / 1024 / 1024).toFixed(1)}MB). Maximum size is 10MB.`, 'error');
+            fileInput.value = '';
+            return;
+        }
 
         try {
             showToast(`Uploading: ${file.name}...`, 'info');
