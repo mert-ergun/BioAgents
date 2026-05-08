@@ -25,7 +25,7 @@ from pydantic import BaseModel
 from bioagents.graph import ALL_MEMBERS, create_graph
 from bioagents.graph_streaming import aiter_graph_stream, iter_graph_stream
 from bioagents.limits import TOOL_APPROVAL_TIMEOUT_SEC
-from bioagents.llms.llm_provider import set_api_keys_override
+from bioagents.llms.llm_provider import set_api_keys_override, set_llm_overrides
 from frontend.drug_discovery_routes import include_drug_discovery_routes
 from frontend.workflow_routes import include_workflow_routes
 
@@ -80,6 +80,8 @@ include_drug_discovery_routes(app)
 class QueryRequest(BaseModel):
     query: str
     api_keys: dict[str, str] | None = None
+    provider: str | None = None
+    model: str | None = None
 
 
 class QueryResponse(BaseModel):
@@ -375,6 +377,7 @@ async def query_bioagents(request: QueryRequest):
 
     async def generate():
         set_api_keys_override(request.api_keys)
+        set_llm_overrides(request.provider, request.model)
         from bioagents.references.reference_manager import ReferenceManager
 
         graph = create_graph()
@@ -630,6 +633,8 @@ async def websocket_endpoint(websocket: WebSocket):
                 query = data.get("content", "")
                 api_keys = data.get("api_keys")
                 session_id = data.get("session_id")
+                ws_provider = data.get("provider")
+                ws_model = data.get("model")
                 if query:
                     # Create a steering queue for this query execution
                     steering_queue: asyncio.Queue[str] = asyncio.Queue()
@@ -669,6 +674,8 @@ async def websocket_endpoint(websocket: WebSocket):
                             websocket,
                             api_keys=api_keys,
                             session_id=session_id,
+                            provider=ws_provider,
+                            model=ws_model,
                             steering_queue=steering_queue,
                             approval_queue=approval_queue,
                             engagement_queue=engagement_queue,
@@ -702,6 +709,8 @@ async def run_bioagents_streaming(
     steering_queue: asyncio.Queue[str] | None = None,
     approval_queue: asyncio.Queue[dict] | None = None,
     engagement_queue: asyncio.Queue[dict] | None = None,
+    provider: str | None = None,
+    model: str | None = None,
 ):
     """Execute BioAgents query with WebSocket streaming and optional steering/approval support."""
     import uuid
@@ -713,6 +722,7 @@ async def run_bioagents_streaming(
     from bioagents.tools.tool_policy import ToolPolicy
 
     set_api_keys_override(api_keys)
+    set_llm_overrides(provider, model)
 
     # Build a session-specific tool policy with available API keys
     available_keys: set[str] = set()
