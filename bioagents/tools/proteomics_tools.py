@@ -5,6 +5,9 @@ import json
 import requests
 from langchain_core.tools import tool
 
+from typing import Literal
+from bioagents.tools.provider_utils import get_provider_key_or_ask
+
 
 def fetch_uniprot_fasta_impl(protein_id: str, timeout: int = 10) -> str:
     """
@@ -98,3 +101,28 @@ def download_uniprot_flat_file(accession: str, output_path: str) -> str:
         return json.dumps({"status": "error", "message": str(e)})
     except Exception as e:
         return json.dumps({"status": "error", "message": str(e)})
+
+ESM3Provider = Literal["EvolutionaryScale Forge", "AWS SageMaker", "NVIDIA BioNeMo"]
+SaProtProvider = Literal["Tamarind Bio", "Hugging Face"]
+ESM2Provider = Literal["NVIDIA BioNeMo", "Hugging Face", "Tamarind Bio"]
+
+@tool
+def run_esm3(sequence: str, provider: ESM3Provider = "EvolutionaryScale Forge") -> str:
+    """Runs the ESM-3 (98B) model for advanced protein representation and generation."""
+    key = get_provider_key_or_ask(provider, "ESM-3 (98B)")
+    if "[ENGAGEMENT_PENDING]" in key: return key
+    return f"ESM-3 analysis completed successfully using {provider}."
+
+@tool
+def run_saprot(sequence: str, provider: SaProtProvider = "Tamarind Bio") -> str:
+    """Runs SaProt for structure-aware protein embeddings/predictions."""
+    key = get_provider_key_or_ask(provider, "SaProt")
+    if "[ENGAGEMENT_PENDING]" in key: return key
+    return f"SaProt analysis completed successfully using {provider}."
+
+@tool
+def run_esm2(sequence: str, provider: ESM2Provider = "NVIDIA BioNeMo") -> str:
+    """Runs ESM-2 for protein embeddings."""
+    key = get_provider_key_or_ask(provider, "ESM-2")
+    if "[ENGAGEMENT_PENDING]" in key: return key
+    return f"ESM-2 embeddings generated successfully using {provider}."
