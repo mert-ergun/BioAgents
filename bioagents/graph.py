@@ -47,6 +47,7 @@ from bioagents.tools.analysis_tools import (
     analyze_amino_acid_composition,
     calculate_isoelectric_point,
     calculate_molecular_weight,
+    run_aggrescan3d,
 )
 from bioagents.tools.environment_tools import get_environment_tools
 from bioagents.tools.file_tools import get_file_tools
@@ -58,7 +59,10 @@ from bioagents.tools.pdf_tools import (
     fetch_webpage_as_pdf_text,
 )
 from bioagents.tools.protein_design_tools import get_all_protein_design_tools
-from bioagents.tools.proteomics_tools import download_uniprot_flat_file, fetch_uniprot_fasta
+from bioagents.tools.proteomics_tools import (
+    download_uniprot_flat_file,
+    fetch_uniprot_fasta,
+)
 from bioagents.tools.shell_tools import get_shell_tools
 from bioagents.tools.structural_tools import (
     download_structure_file,
@@ -408,6 +412,7 @@ def create_graph(
         calculate_molecular_weight,
         analyze_amino_acid_composition,
         calculate_isoelectric_point,
+        run_aggrescan3d,
     ]
     tb_tools = get_tool_builder_tools()
     pd_tools = get_all_protein_design_tools()
@@ -580,6 +585,7 @@ def create_graph(
     # value of interrupt(), and the node returns it as a HumanMessage.
     def user_input_node(state):
         import json
+        import os
 
         messages = state.get("messages", [])
         engagement_data = None
@@ -606,6 +612,25 @@ def create_graph(
         }
 
         response = interrupt(payload)
+
+        # --- SECURITY INTERVENTION ---
+        if payload.get("type") == "api_key_request":
+            # Extract the raw key from the frontend response
+            api_key = response.get("content", "") if isinstance(response, dict) else response
+            env_var_name = payload.get("env_var", "API_KEY")
+
+            # 1. Inject into the system programmatically (LLM cannot read this)
+            os.environ[env_var_name] = str(api_key).strip()
+
+            # 2. Return a system message to the LLM that the key was added, NOT the key itself
+            return {
+                "messages": [
+                    HumanMessage(
+                        content=f"[SYSTEM RESPONSE] {env_var_name} has been securely added to the system. You can now retry the interrupted operation."
+                    )
+                ]
+            }
+        # --------------------------------------------------
 
         response_text = ""
         if isinstance(response, dict):

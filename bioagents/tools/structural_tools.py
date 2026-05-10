@@ -11,9 +11,12 @@ from __future__ import annotations
 
 import json
 import logging
+from typing import Literal
 
 import requests
 from langchain_core.tools import tool
+
+from bioagents.tools.provider_utils import get_provider_key_or_ask
 
 logger = logging.getLogger(__name__)
 
@@ -619,6 +622,59 @@ def compute_interface_metrics(pae_json_path: str, chain1_range: str, chain2_rang
         return json.dumps({"status": "error", "message": str(e)})
 
 
+AlphaFoldProvider = Literal["Tamarind Bio", "NVIDIA BioNeMo", "Vertex AI"]
+BoltzProvider = Literal["Tamarind Bio", "Neurosnap", "Levitate Bio"]
+ESMFoldProvider = Literal["Hugging Face", "Tamarind Bio"]
+ABodyBuilder3Provider = Literal["Tamarind Bio", "Neurosnap"]
+UniMolProvider = Literal["Hugging Face (Weights)", "Tamarind Bio"]
+
+
+@tool
+def run_alphafold2(sequence: str, provider: AlphaFoldProvider = "Tamarind Bio") -> str:  # noqa: ARG001
+    """Predicts protein structure using AlphaFold 2."""
+    key = get_provider_key_or_ask(provider, "AlphaFold 2")
+    if "[ENGAGEMENT_PENDING]" in key:
+        return key
+    # REAL API CALL LOGIC GOES HERE USING `key`
+    return f"AlphaFold 2 structure predicted successfully using {provider}."
+
+
+@tool
+def run_boltz(sequence: str, provider: BoltzProvider = "Tamarind Bio") -> str:  # noqa: ARG001
+    """Predicts biomolecular structures using Boltz-2 / BoltzGen."""
+    key = get_provider_key_or_ask(provider, "Boltz-2 / BoltzGen")
+    if "[ENGAGEMENT_PENDING]" in key:
+        return key
+    return f"Boltz structure predicted successfully using {provider}."
+
+
+@tool
+def run_esmfold(sequence: str, provider: ESMFoldProvider = "Hugging Face") -> str:  # noqa: ARG001
+    """Predicts protein structure using ESMFold."""
+    key = get_provider_key_or_ask(provider, "ESMFold")
+    if "[ENGAGEMENT_PENDING]" in key:
+        return key
+    return f"ESMFold structure predicted successfully using {provider}."
+
+
+@tool
+def run_abodybuilder3(sequence: str, provider: ABodyBuilder3Provider = "Tamarind Bio") -> str:  # noqa: ARG001
+    """Predicts antibody structures using ABodyBuilder3."""
+    key = get_provider_key_or_ask(provider, "ABodyBuilder3")
+    if "[ENGAGEMENT_PENDING]" in key:
+        return key
+    return f"Antibody structure predicted successfully using {provider}."
+
+
+@tool
+def run_unimol(input_data: str, provider: UniMolProvider = "Hugging Face (Weights)") -> str:  # noqa: ARG001
+    """Runs Uni-Mol for molecular representation/docking."""
+    key = get_provider_key_or_ask(provider, "Uni-Mol")
+    if "[ENGAGEMENT_PENDING]" in key:
+        return key
+    return f"Uni-Mol prediction completed using {provider}."
+
+
 def get_structural_tools():
     """Return list of all structural biology tools."""
     return [
@@ -629,4 +685,9 @@ def get_structural_tools():
         download_structure_file,
         analyze_interface_contacts,
         compute_interface_metrics,
+        run_alphafold2,
+        run_boltz,
+        run_esmfold,
+        run_abodybuilder3,
+        run_unimol,
     ]

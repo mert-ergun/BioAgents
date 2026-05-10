@@ -305,7 +305,7 @@ class TestCreateGraph:
 
         # Check analysis agent was created with correct tools
         analysis_call_args = mock_analysis.call_args[0][0]
-        assert len(analysis_call_args) == 3  # molecular_weight, composition, pI
+        assert len(analysis_call_args) == 4  # molecular_weight, composition, pI, aggrescan3d
 
         # Check supervisor was created with correct members
         supervisor_call_args = mock_supervisor.call_args[0][0]

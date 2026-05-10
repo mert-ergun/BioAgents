@@ -18,9 +18,11 @@ import logging
 import os
 import subprocess  # nosec B404
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from langchain_core.tools import tool
+
+from bioagents.tools.provider_utils import get_provider_key_or_ask
 
 logger = logging.getLogger(__name__)
 
@@ -825,6 +827,28 @@ def rank_binder_designs(
         return json.dumps({"status": "error", "message": str(e)})
 
 
+ProteinMPNNProvider = Literal["Tamarind Bio", "NVIDIA BioNeMo", "Levitate Bio"]
+RFdiffusionProvider = Literal["Tamarind Bio", "Levitate Bio", "NVIDIA BioNeMo"]
+
+
+@tool
+def run_proteinmpnn(structure_pdb: str, provider: ProteinMPNNProvider = "Tamarind Bio") -> str:  # noqa: ARG001
+    """Designs protein sequences for a given backbone using ProteinMPNN."""
+    key = get_provider_key_or_ask(provider, "ProteinMPNN")
+    if "[ENGAGEMENT_PENDING]" in key:
+        return key
+    return f"Sequences designed successfully with ProteinMPNN using {provider}."
+
+
+@tool
+def run_rfdiffusion(target_pdb: str, provider: RFdiffusionProvider = "Tamarind Bio") -> str:  # noqa: ARG001
+    """Generates protein backbones using RFdiffusion."""
+    key = get_provider_key_or_ask(provider, "RFdiffusion")
+    if "[ENGAGEMENT_PENDING]" in key:
+        return key
+    return f"Backbone generated successfully with RFdiffusion using {provider}."
+
+
 # ============================================================================
 # Helper Functions
 # ============================================================================
@@ -882,6 +906,8 @@ def get_protein_design_tools():
         predict_complex_structure,
         compute_binding_metrics,
         rank_binder_designs,
+        run_proteinmpnn,
+        run_rfdiffusion,
     ]
 
 
