@@ -573,6 +573,14 @@
             </div>
         </div>
 
+            <!-- About Link -->
+            <div class="border-t border-border-subtle-inv pt-2 mt-auto">
+                <a href="#" id="nav-about" class="nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-text-subtle hover:text-text-theme hover:bg-hover-bg transition-all">
+                    <span class="material-symbols-outlined text-[20px]">info</span>
+                    <span class="font-medium text-sm">About</span>
+                </a>
+            </div>
+
         <!-- Settings Footer -->
         <div class="p-4 border-t border-border-subtle-inv">
             <button class="settings-btn flex items-center gap-3 w-full px-3 py-2 text-text-subtle hover:text-text-theme hover:bg-hover-bg rounded-lg transition-all">
@@ -904,6 +912,416 @@
         </div>
         <!-- Panel content (scrollable) -->
         <div id="exp-detail-content" class="flex-1 overflow-y-auto p-6 custom-scrollbar"></div>
+    </div>
+
+    <!-- About Page View -->
+    <div id="about-view" class="hidden fixed inset-0 z-30 bg-background-dark overflow-y-auto">
+        <div class="max-w-6xl mx-auto px-6 py-12 md:py-16">
+
+            <!-- Close button -->
+            <button id="about-close" class="fixed top-5 right-6 z-40 p-2 rounded-lg bg-hover-bg hover:bg-hover-bg-strong border border-border-inverse text-text-subtle hover:text-text-theme transition-all">
+                <span class="material-symbols-outlined">close</span>
+            </button>
+
+            <!-- Hero Section -->
+            <header class="text-center mb-20">
+                <div class="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-primary/10 border border-primary/20 text-primary text-xs font-semibold mb-6">
+                    <span class="material-symbols-outlined text-sm">biotech</span>
+                    BBM479-480 Senior Design Project
+                </div>
+                <h1 class="text-4xl md:text-6xl font-bold text-text-theme tracking-tight leading-tight mb-4">
+                    Bio<span class="text-primary">Agents</span>
+                </h1>
+                <p class="text-lg md:text-xl text-text-subtle max-w-3xl mx-auto leading-relaxed">
+                    A Modular, Hierarchical Multi-Agent System for Automated Computational Biology Workflows
+                </p>
+                <div class="flex items-center justify-center gap-4 mt-8 text-sm text-text-muted">
+                    <span class="flex items-center gap-1.5">
+                        <span class="material-symbols-outlined text-base">school</span>
+                        Hacettepe University
+                    </span>
+                    <span class="w-1 h-1 rounded-full bg-text-muted"></span>
+                    <span class="flex items-center gap-1.5">
+                        <span class="material-symbols-outlined text-base">science</span>
+                        Biological Data Science Lab
+                    </span>
+                </div>
+            </header>
+
+            <!-- Motivation Section -->
+            <section class="mb-20">
+                <div class="grid md:grid-cols-2 gap-8">
+                    <div class="bg-surface-dark border border-border-inverse rounded-xl p-8">
+                        <div class="flex items-center gap-3 mb-4">
+                            <div class="w-10 h-10 rounded-lg bg-red-500/10 flex items-center justify-center">
+                                <span class="material-symbols-outlined text-red-400">warning</span>
+                            </div>
+                            <h2 class="text-xl font-bold text-text-theme">The Problem</h2>
+                        </div>
+                        <p class="text-text-subtle leading-relaxed">
+                            Exponential biomedical data growth has shifted the research bottleneck from generation to interpretation and computation.
+                            Fragmented, siloed tools and generic LLM agents struggle to reliably execute multi-step, high-stakes scientific tasks.
+                        </p>
+                    </div>
+                    <div class="bg-surface-dark border border-border-inverse rounded-xl p-8">
+                        <div class="flex items-center gap-3 mb-4">
+                            <div class="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                                <span class="material-symbols-outlined text-primary">lightbulb</span>
+                            </div>
+                            <h2 class="text-xl font-bold text-text-theme">Our Solution</h2>
+                        </div>
+                        <p class="text-text-subtle leading-relaxed">
+                            BioAgents is a modular, hierarchical Multi-Agent System designed to automate complex computational biology workflows,
+                            providing seamless access to integrated scientific tools and databases to significantly accelerate research.
+                        </p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- System Architecture -->
+            <section class="mb-20">
+                <div class="text-center mb-10">
+                    <h2 class="text-2xl md:text-3xl font-bold text-text-theme mb-2">System Architecture</h2>
+                    <p class="text-text-subtle">Hierarchical MAS built on LangGraph with Supervisor-Specialist orchestration</p>
+                </div>
+                <div class="bg-surface-dark border border-border-inverse rounded-xl overflow-hidden">
+                    <img src="static/screenshots/figure1.png" alt="BioAgents System Architecture" class="w-full h-auto" />
+                    <div class="px-6 py-3 border-t border-border-inverse">
+                        <p class="text-xs text-text-muted text-center">
+                            Fig 1: Comprehensive System Architecture — Supervisor-Specialist orchestration, ACE self-evolution engine, and the Integrated Tool Universe.
+                        </p>
+                    </div>
+                </div>
+                <div class="grid md:grid-cols-3 gap-6 mt-8">
+                    <div class="bg-surface-dark border border-border-inverse rounded-xl p-6">
+                        <div class="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center mb-3">
+                            <span class="material-symbols-outlined text-primary text-lg">hub</span>
+                        </div>
+                        <h3 class="font-bold text-text-theme mb-2">Supervisor-Specialist Pattern</h3>
+                        <p class="text-sm text-text-subtle leading-relaxed">
+                            Autonomous task decomposition and goal planning through specialized agent clusters communicating asynchronously via conditional routing.
+                        </p>
+                    </div>
+                    <div class="bg-surface-dark border border-border-inverse rounded-xl p-6">
+                        <div class="w-8 h-8 rounded-lg bg-purple-500/10 flex items-center justify-center mb-3">
+                            <span class="material-symbols-outlined text-purple-400 text-lg">build_circle</span>
+                        </div>
+                        <h3 class="font-bold text-text-theme mb-2">Integrated Tool Universe</h3>
+                        <p class="text-sm text-text-subtle leading-relaxed">
+                            600+ scientific tools, Docker sandboxes, and cross-database bridges for seamless research execution.
+                        </p>
+                    </div>
+                    <div class="bg-surface-dark border border-border-inverse rounded-xl p-6">
+                        <div class="w-8 h-8 rounded-lg bg-amber-500/10 flex items-center justify-center mb-3">
+                            <span class="material-symbols-outlined text-amber-400 text-lg">auto_awesome</span>
+                        </div>
+                        <h3 class="font-bold text-text-theme mb-2">ACE Self-Evolution</h3>
+                        <p class="text-sm text-text-subtle leading-relaxed">
+                            Generator-Reflector-Curator cycle for autonomous reasoning refinement through incremental delta updates.
+                        </p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Innovative Features -->
+            <section class="mb-20">
+                <div class="text-center mb-10">
+                    <h2 class="text-2xl md:text-3xl font-bold text-text-theme mb-2">Innovative Features</h2>
+                    <p class="text-text-subtle">Core capabilities that distinguish BioAgents from generic LLM agents</p>
+                </div>
+                <div class="grid md:grid-cols-2 gap-6">
+                    <div class="group bg-surface-dark border border-border-inverse rounded-xl p-6 hover:border-primary/30 transition-all">
+                        <div class="flex items-start gap-4">
+                            <div class="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0 group-hover:bg-primary/20 transition-all">
+                                <span class="material-symbols-outlined text-primary">sync</span>
+                            </div>
+                            <div>
+                                <h3 class="font-bold text-text-theme mb-1">ACE Self-Evolution</h3>
+                                <p class="text-sm text-text-subtle leading-relaxed">
+                                    Implements a Generator-Reflector-Curator cycle for autonomous reasoning refinement through incremental delta updates.
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="group bg-surface-dark border border-border-inverse rounded-xl p-6 hover:border-primary/30 transition-all">
+                        <div class="flex items-start gap-4">
+                            <div class="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0 group-hover:bg-primary/20 transition-all">
+                                <span class="material-symbols-outlined text-primary">menu_book</span>
+                            </div>
+                            <div>
+                                <h3 class="font-bold text-text-theme mb-1">Playbook Optimization</h3>
+                                <p class="text-sm text-text-subtle leading-relaxed">
+                                    YAML-based reasoning patterns with helpful/harmful counters to refine strategies without manual prompt engineering.
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="group bg-surface-dark border border-border-inverse rounded-xl p-6 hover:border-primary/30 transition-all">
+                        <div class="flex items-start gap-4">
+                            <div class="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0 group-hover:bg-primary/20 transition-all">
+                                <span class="material-symbols-outlined text-primary">memory</span>
+                            </div>
+                            <div>
+                                <h3 class="font-bold text-text-theme mb-1">Persistent Semantic Memory</h3>
+                                <p class="text-sm text-text-subtle leading-relaxed">
+                                    Vector storage with a Summary Agent to address long-horizon research tasks and optimize token usage.
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="group bg-surface-dark border border-border-inverse rounded-xl p-6 hover:border-primary/30 transition-all">
+                        <div class="flex items-start gap-4">
+                            <div class="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0 group-hover:bg-primary/20 transition-all">
+                                <span class="material-symbols-outlined text-primary">construction</span>
+                            </div>
+                            <div>
+                                <h3 class="font-bold text-text-theme mb-1">Dynamic Tool Synthesis</h3>
+                                <p class="text-sm text-text-subtle leading-relaxed">
+                                    The Tool Builder Agent autonomously generates and registers Python tools to bridge functional gaps in the Tool Universe.
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="mt-8 bg-primary/5 border border-primary/15 rounded-xl p-6 text-center">
+                    <p class="text-text-subtle">
+                        BioAgents targets an <span class="text-primary font-semibold">80% reduction</span> in analysis time with
+                        <span class="text-primary font-semibold">&ge;90% accuracy</span> through automated, citation-linked workflows.
+                    </p>
+                </div>
+            </section>
+
+            <!-- Web Interface -->
+            <section class="mb-20">
+                <div class="text-center mb-10">
+                    <h2 class="text-2xl md:text-3xl font-bold text-text-theme mb-2">Web Interface & Usability</h2>
+                    <p class="text-text-subtle">Built with FastAPI and Tailwind CSS with 3D molecular visualization via NGL.js</p>
+                </div>
+                <div class="grid md:grid-cols-2 gap-6">
+                    <div class="bg-surface-dark border border-border-inverse rounded-xl overflow-hidden">
+                        <img src="static/screenshots/image2.png" alt="Research Chat Interface" class="w-full h-auto" />
+                        <div class="px-5 py-3 border-t border-border-inverse">
+                            <p class="text-xs text-text-muted">Research Tab — Multi-agent chat interface with real-time reasoning logs, 3D molecular visualization, and artifact generation.</p>
+                        </div>
+                    </div>
+                    <div class="bg-surface-dark border border-border-inverse rounded-xl overflow-hidden">
+                        <img src="static/screenshots/image.png" alt="Drug Discovery Scenarios" class="w-full h-auto" />
+                        <div class="px-5 py-3 border-t border-border-inverse">
+                            <p class="text-xs text-text-muted">Drug Discovery Tab — Automated pipeline with 4 configurable scenarios, gate thresholds, and decision logging.</p>
+                        </div>
+                    </div>
+                    <div class="bg-surface-dark border border-border-inverse rounded-xl overflow-hidden">
+                        <img src="static/screenshots/image3.png" alt="Benchmarks Dashboard" class="w-full h-auto" />
+                        <div class="px-5 py-3 border-t border-border-inverse">
+                            <p class="text-xs text-text-muted">Benchmarks Tab — Comprehensive evaluation dashboard for multi-agent execution metrics and performance consistency.</p>
+                        </div>
+                    </div>
+                    <div class="bg-surface-dark border border-border-inverse rounded-xl overflow-hidden">
+                        <img src="static/screenshots/image4.png" alt="Workflow Builder" class="w-full h-auto" />
+                        <div class="px-5 py-3 border-t border-border-inverse">
+                            <p class="text-xs text-text-muted">Workflow Builder Tab — Canvas-based drag-and-drop interface with 140+ bioinformatics node types for custom pipelines.</p>
+                        </div>
+                    </div>
+                    <div class="flex flex-col justify-center">
+                        <h3 class="text-xl font-bold text-text-theme mb-4">Three-Panel Research Environment</h3>
+                        <ul class="space-y-3">
+                            <li class="flex items-start gap-3 text-text-subtle">
+                                <span class="material-symbols-outlined text-primary text-lg mt-0.5">chat</span>
+                                <span>Natural language interaction with real-time agent monitoring</span>
+                            </li>
+                            <li class="flex items-start gap-3 text-text-subtle">
+                                <span class="material-symbols-outlined text-primary text-lg mt-0.5">visibility</span>
+                                <span>Live reasoning logs and execution planning</span>
+                            </li>
+                            <li class="flex items-start gap-3 text-text-subtle">
+                                <span class="material-symbols-outlined text-primary text-lg mt-0.5">view_in_ar</span>
+                                <span>3D molecular visualization and PDB export</span>
+                            </li>
+                            <li class="flex items-start gap-3 text-text-subtle">
+                                <span class="material-symbols-outlined text-primary text-lg mt-0.5">description</span>
+                                <span>Export of generated artifacts including technical reports</span>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Case Study: Drug Discovery -->
+            <section class="mb-20">
+                <div class="text-center mb-10">
+                    <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-green-500/10 border border-green-500/20 text-green-400 text-xs font-semibold mb-4">
+                        <span class="material-symbols-outlined text-sm">medication</span>
+                        Case Study
+                    </div>
+                    <h2 class="text-2xl md:text-3xl font-bold text-text-theme mb-2">Automated Drug Discovery Workflow</h2>
+                    <p class="text-text-subtle max-w-2xl mx-auto">
+                        Evaluated on designing a de novo binder for the human tumor suppressor protein p53 (P04637) using an automated GPU-intensive workflow.
+                    </p>
+                </div>
+                <div class="grid md:grid-cols-4 gap-4">
+                    <div class="bg-surface-dark border border-border-inverse rounded-xl p-5 text-center">
+                        <div class="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-3">
+                            <span class="text-primary font-bold text-lg">1</span>
+                        </div>
+                        <h4 class="font-bold text-text-theme text-sm mb-1">Target Characterization</h4>
+                        <p class="text-xs text-text-subtle leading-relaxed">
+                            Fetching UniProt records, assessing structural readiness via AlphaFold integration and biochemical profiling.
+                        </p>
+                    </div>
+                    <div class="bg-surface-dark border border-border-inverse rounded-xl p-5 text-center">
+                        <div class="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-3">
+                            <span class="text-primary font-bold text-lg">2</span>
+                        </div>
+                        <h4 class="font-bold text-text-theme text-sm mb-1">Hierarchical Screening</h4>
+                        <p class="text-xs text-text-subtle leading-relaxed">
+                            Parallel pipeline for sequence retrieval, virtual docking, and binding affinity predictions.
+                        </p>
+                    </div>
+                    <div class="bg-surface-dark border border-border-inverse rounded-xl p-5 text-center">
+                        <div class="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-3">
+                            <span class="text-primary font-bold text-lg">3</span>
+                        </div>
+                        <h4 class="font-bold text-text-theme text-sm mb-1">ADMET & Safety</h4>
+                        <p class="text-xs text-text-subtle leading-relaxed">
+                            Rigorous ADMET profiling and off-target analysis for metabolic stability and minimized toxicity.
+                        </p>
+                    </div>
+                    <div class="bg-surface-dark border border-border-inverse rounded-xl p-5 text-center">
+                        <div class="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-3">
+                            <span class="text-primary font-bold text-lg">4</span>
+                        </div>
+                        <h4 class="font-bold text-text-theme text-sm mb-1">Decision Logging</h4>
+                        <p class="text-xs text-text-subtle leading-relaxed">
+                            Transparent logs with rationalized verdicts based on gate thresholds and 3D molecular visualizations.
+                        </p>
+                    </div>
+                </div>
+                <div class="mt-6 bg-surface-dark border border-border-inverse rounded-xl p-6">
+                    <p class="text-sm text-text-subtle leading-relaxed">
+                        The pipeline combines <span class="text-primary font-semibold">RFdiffusion</span> for backbone generation,
+                        <span class="text-primary font-semibold">ProteinMPNN</span> for sequence design, and
+                        <span class="text-primary font-semibold">AlphaFold-Multimer</span> for structural validation and binding prediction.
+                        The Protein Design Agent automatically analyzes interface quality metrics and generates reproducible technical reports
+                        with molecular visualizations and reasoning traces.
+                    </p>
+                </div>
+            </section>
+
+            <!-- Future Work -->
+            <section class="mb-20">
+                <div class="text-center mb-10">
+                    <h2 class="text-2xl md:text-3xl font-bold text-text-theme mb-2">Future Work</h2>
+                </div>
+                <div class="grid md:grid-cols-3 gap-6">
+                    <div class="bg-surface-dark border border-border-inverse rounded-xl p-6">
+                        <span class="material-symbols-outlined text-primary text-2xl mb-3">rocket_launch</span>
+                        <h3 class="font-bold text-text-theme mb-2">Expanded Self-Evolution</h3>
+                        <p class="text-sm text-text-subtle leading-relaxed">
+                            Expanding autonomous self-evolution and tool-building capabilities for broader biological domains.
+                        </p>
+                    </div>
+                    <div class="bg-surface-dark border border-border-inverse rounded-xl p-6">
+                        <span class="material-symbols-outlined text-primary text-2xl mb-3">verified</span>
+                        <h3 class="font-bold text-text-theme mb-2">Framework Validation</h3>
+                        <p class="text-sm text-text-subtle leading-relaxed">
+                            Validation using BixBench and BioinfoMCP frameworks for standardized benchmarking.
+                        </p>
+                    </div>
+                    <div class="bg-surface-dark border border-border-inverse rounded-xl p-6">
+                        <span class="material-symbols-outlined text-primary text-2xl mb-3">biotech</span>
+                        <h3 class="font-bold text-text-theme mb-2">Lab Validation</h3>
+                        <p class="text-sm text-text-subtle leading-relaxed">
+                            Real-world testing via experimental biological laboratory validation.
+                        </p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Team Section -->
+            <section class="mb-16">
+                <div class="text-center mb-10">
+                    <h2 class="text-2xl md:text-3xl font-bold text-text-theme mb-2">Project Team</h2>
+                    <p class="text-text-subtle">Biological Data Science Lab, Hacettepe University</p>
+                </div>
+                <div class="grid md:grid-cols-3 gap-6 max-w-4xl mx-auto">
+                    <!-- Supervisor -->
+                    <div class="bg-surface-dark border border-primary/20 rounded-xl p-6 text-center relative">
+                        <div class="absolute top-3 right-3">
+                            <span class="text-[10px] px-2 py-0.5 rounded-full bg-primary/10 text-primary font-semibold">Supervisor</span>
+                        </div>
+                        <img src="static/team/tunca-dogan.jpg" alt="Tunca Dogan" class="w-20 h-20 rounded-full object-cover mx-auto mb-3 border-2 border-primary/30" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';" />
+                        <div class="w-20 h-20 rounded-full bg-gradient-to-tr from-primary/20 to-purple-500/20 items-center justify-center mx-auto mb-3 border-2 border-primary/30" style="display:none;">
+                            <span class="text-2xl font-bold text-primary">TD</span>
+                        </div>
+                        <h3 class="font-bold text-text-theme">Tunca Dogan</h3>
+                        <p class="text-xs text-text-subtle mt-1">Dept. of Computer Engineering</p>
+                        <p class="text-xs text-text-muted">Graduate School of Health Sciences</p>
+                    </div>
+                    <!-- Team Member 1 -->
+                    <div class="bg-surface-dark border border-border-inverse rounded-xl p-6 text-center">
+                        <img src="static/team/arya-zeynep-mete.jpg" alt="Arya Zeynep Mete" class="w-20 h-20 rounded-full object-cover mx-auto mb-3 border-2 border-border-inverse" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';" />
+                        <div class="w-20 h-20 rounded-full bg-gradient-to-tr from-primary/20 to-purple-500/20 items-center justify-center mx-auto mb-3 border-2 border-border-inverse" style="display:none;">
+                            <span class="text-2xl font-bold text-primary">AM</span>
+                        </div>
+                        <h3 class="font-bold text-text-theme">Arya Zeynep Mete</h3>
+                        <p class="text-xs text-text-subtle mt-1">Dept. of Computer Engineering</p>
+                        <p class="text-xs text-text-muted">Hacettepe University</p>
+                    </div>
+                    <!-- Team Member 2 -->
+                    <div class="bg-surface-dark border border-border-inverse rounded-xl p-6 text-center">
+                        <img src="static/team/mert-ergun.jpg" alt="Mert Ergun" class="w-20 h-20 rounded-full object-cover mx-auto mb-3 border-2 border-border-inverse" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';" />
+                        <div class="w-20 h-20 rounded-full bg-gradient-to-tr from-primary/20 to-purple-500/20 items-center justify-center mx-auto mb-3 border-2 border-border-inverse" style="display:none;">
+                            <span class="text-2xl font-bold text-primary">ME</span>
+                        </div>
+                        <h3 class="font-bold text-text-theme">Mert Ergun</h3>
+                        <p class="text-xs text-text-subtle mt-1">Dept. of Computer Engineering</p>
+                        <p class="text-xs text-text-muted">Hacettepe University</p>
+                    </div>
+                </div>
+                <!-- Mentors -->
+                <div class="flex justify-center mt-6">
+                    <div class="flex items-center gap-6">
+                        <div class="bg-surface-dark border border-border-inverse rounded-xl px-6 py-4">
+                            <div class="flex items-center gap-3">
+                                <img src="static/team/atabey-unlu.jpg" alt="Atabey Unlu" class="w-12 h-12 rounded-full object-cover border-2 border-border-inverse" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';" />
+                                <div class="w-12 h-12 rounded-full bg-gradient-to-tr from-primary/20 to-purple-500/20 items-center justify-center border-2 border-border-inverse" style="display:none;">
+                                    <span class="text-lg font-bold text-primary">AU</span>
+                                </div>
+                                <div class="text-left">
+                                    <h3 class="font-bold text-text-theme text-sm">Atabey Unlu</h3>
+                                    <p class="text-xs text-text-muted">Mentor</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="bg-surface-dark border border-border-inverse rounded-xl px-6 py-4">
+                            <div class="flex items-center gap-3">
+                                <img src="static/team/bunyamin-sen.jpg" alt="Bunyamin Sen" class="w-12 h-12 rounded-full object-cover border-2 border-border-inverse" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';" />
+                                <div class="w-12 h-12 rounded-full bg-gradient-to-tr from-primary/20 to-purple-500/20 items-center justify-center border-2 border-border-inverse" style="display:none;">
+                                    <span class="text-lg font-bold text-primary">BS</span>
+                                </div>
+                                <div class="text-left">
+                                    <h3 class="font-bold text-text-theme text-sm">Bunyamin Sen</h3>
+                                    <p class="text-xs text-text-muted">Mentor</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Footer -->
+            <footer class="border-t border-border-inverse pt-8 text-center">
+                <div class="flex items-center justify-center gap-3 text-text-subtle text-sm mb-4">
+                    <span class="material-symbols-outlined text-primary">biotech</span>
+                    <span class="font-bold text-text-theme">BioAgents</span>
+                    <span class="text-text-muted">|</span>
+                    <span>Multi-Agent System v2.0</span>
+                </div>
+                <p class="text-xs text-text-muted">
+                    BBM479-480 Senior Design Project &middot; Biological Data Science Lab &middot; Hacettepe University &middot; 2025-2026
+                </p>
+            </footer>
+        </div>
     </div>
 
     <!-- Scripts -->
@@ -1293,8 +1711,10 @@
                 el.classList.remove('text-text-subtle','hover:text-text-theme','hover:bg-hover-bg');
             }
 
-            const allViews = [researchView, expView, workflowsView, workflowBuilderView, drugDiscoveryView];
-            const allNavIds = ['nav-research','nav-experiments','nav-workflows','nav-workflow-builder','nav-drug-discovery'];
+            const aboutView = document.getElementById('about-view');
+
+            const allViews = [researchView, expView, workflowsView, workflowBuilderView, drugDiscoveryView, aboutView];
+            const allNavIds = ['nav-research','nav-experiments','nav-workflows','nav-workflow-builder','nav-drug-discovery','nav-about'];
 
             function clearActive() {
                 allNavIds.forEach(id => navInactive(document.getElementById(id)));
@@ -1351,6 +1771,17 @@
             document.getElementById('nav-workflows')?.addEventListener('click', e => { e.preventDefault(); showWorkflows(); });
             document.getElementById('nav-workflow-builder')?.addEventListener('click', e => { e.preventDefault(); showWorkflowBuilder(); });
             document.getElementById('nav-drug-discovery')?.addEventListener('click', e => { e.preventDefault(); showDrugDiscovery(); });
+
+            function showAbout() {
+                allViews.forEach(v => v.classList.add('hidden'));
+                aboutView.classList.remove('hidden');
+                aboutView.style.display = '';
+                clearActive();
+                navActive(document.getElementById('nav-about'));
+                document.getElementById('projectTitle').textContent = 'About BioAgents';
+            }
+            document.getElementById('nav-about')?.addEventListener('click', e => { e.preventDefault(); showAbout(); });
+            document.getElementById('about-close')?.addEventListener('click', e => { e.preventDefault(); showResearch(); });
         })();
     </script>
 </body>
