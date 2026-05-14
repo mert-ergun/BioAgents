@@ -5,6 +5,26 @@
     <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
     <title>BioAgents — Multi-Agent Biology Research</title>
 
+    <!-- Anti-flash: set theme class before paint -->
+    <script>
+        (function() {
+            try {
+                var data = JSON.parse(localStorage.getItem('bioagents_sessions'));
+                var theme = data && data.settings && data.settings.theme;
+                if (theme === 'light') {
+                    document.documentElement.classList.remove('dark');
+                } else if (theme === 'dark') {
+                    document.documentElement.classList.add('dark');
+                } else {
+                    // No stored preference: follow system
+                    if (!window.matchMedia('(prefers-color-scheme: dark)').matches) {
+                        document.documentElement.classList.remove('dark');
+                    }
+                }
+            } catch(e) {}
+        })();
+    </script>
+
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
 
@@ -32,13 +52,26 @@
                 extend: {
                     colors: {
                         "primary": "#07b6d5",
-                        "background-light": "#f5f8f8",
-                        "background-dark": "#0f2023",
-                        "surface-dark": "#162a2d",
-                        "surface-darker": "#111f22",
-                        "surface-card": "#1a2628",
-                        "border-dark": "#27373a",
-                        "text-subtle": "#9bb6bb"
+                        "background-light": "var(--tw-bg-main)",
+                        "background-dark": "var(--tw-bg-main)",
+                        "surface-dark": "var(--tw-bg-surface)",
+                        "surface-darker": "var(--tw-bg-surface-low)",
+                        "surface-card": "var(--tw-bg-card)",
+                        "border-dark": "var(--tw-border)",
+                        "text-subtle": "var(--tw-text-secondary)",
+                        "text-theme": "var(--tw-text-primary)",
+                        "text-muted": "var(--tw-text-muted)",
+                        "border-theme": "var(--tw-border)",
+                        "border-inverse": "var(--tw-border-inv)",
+                        "border-subtle-inv": "var(--tw-border-subtle-inv)",
+                        "hover-bg": "var(--tw-hover)",
+                        "hover-bg-strong": "var(--tw-hover-strong)",
+                        "overlay": "var(--tw-overlay)",
+                        "input-bg": "var(--tw-bg-input)",
+                        "code-bg": "var(--tw-bg-code)",
+                        "code-text": "var(--tw-text-code)",
+                        "code-block-bg": "var(--tw-bg-code-block)",
+                        "code-block-text": "var(--tw-text-code-block)",
                     },
                     fontFamily: {
                         "display": ["Space Grotesk", "sans-serif"],
@@ -52,21 +85,75 @@
     </script>
 
     <style>
+        /* ===== Theme CSS Variables ===== */
+        :root {
+            --tw-color-primary: #07b6d5;
+            --tw-bg-main: #f5f8f8;
+            --tw-bg-surface: #ffffff;
+            --tw-bg-surface-low: #f0f4f5;
+            --tw-bg-card: #ffffff;
+            --tw-bg-terminal: #1a1a2e;
+            --tw-bg-input: #ffffff;
+            --tw-border: #dde5e8;
+            --tw-border-inv: rgba(0, 0, 0, 0.08);
+            --tw-border-subtle-inv: rgba(0, 0, 0, 0.04);
+            --tw-border-hover: rgba(0, 0, 0, 0.12);
+            --tw-text-primary: #0f172a;
+            --tw-text-secondary: #475569;
+            --tw-text-muted: #94a3b8;
+            --tw-hover: rgba(0, 0, 0, 0.04);
+            --tw-hover-strong: rgba(0, 0, 0, 0.08);
+            --tw-overlay: rgba(0, 0, 0, 0.3);
+            --tw-bg-code: rgba(0, 0, 0, 0.05);
+            --tw-text-code: #c026d3;
+            --tw-bg-code-block: #f1f5f9;
+            --tw-text-code-block: #1e293b;
+        }
+        html.dark {
+            --tw-color-primary: #07b6d5;
+            --tw-bg-main: #0f2023;
+            --tw-bg-surface: #162a2d;
+            --tw-bg-surface-low: #111f22;
+            --tw-bg-card: #1a2628;
+            --tw-bg-terminal: #0a0f10;
+            --tw-bg-input: #162a2d;
+            --tw-border: #27373a;
+            --tw-border-inv: rgba(255, 255, 255, 0.10);
+            --tw-border-subtle-inv: rgba(255, 255, 255, 0.05);
+            --tw-border-hover: rgba(255, 255, 255, 0.12);
+            --tw-text-primary: #ffffff;
+            --tw-text-secondary: #9bb6bb;
+            --tw-text-muted: #64748b;
+            --tw-hover: rgba(255, 255, 255, 0.05);
+            --tw-hover-strong: rgba(255, 255, 255, 0.10);
+            --tw-overlay: rgba(0, 0, 0, 0.6);
+            --tw-bg-code: rgba(0, 0, 0, 0.4);
+            --tw-text-code: #f0abfc;
+            --tw-bg-code-block: rgba(0, 0, 0, 0.5);
+            --tw-text-code-block: #a5f3fc;
+        }
+
+        /* Theme toggle icon visibility */
+        html.dark .theme-icon-light { display: inline; }
+        html.dark .theme-icon-dark { display: none; }
+        html:not(.dark) .theme-icon-light { display: none; }
+        html:not(.dark) .theme-icon-dark { display: inline; }
+
         body { font-family: 'Space Grotesk', sans-serif; }
 
         .custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
-        .custom-scrollbar::-webkit-scrollbar-track { background: #111f22; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: #27373a; border-radius: 4px; }
-        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #07b6d5; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: var(--tw-bg-surface-low); }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: var(--tw-border); border-radius: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: var(--tw-color-primary); }
 
         .grid-bg {
-            background-image: radial-gradient(#27373a 1px, transparent 1px);
+            background-image: radial-gradient(var(--tw-border) 1px, transparent 1px);
             background-size: 20px 20px;
         }
 
         /* Message content styling */
         .message-content h1, .message-content h2, .message-content h3 {
-            font-weight: 600; margin-top: 1rem; margin-bottom: 0.5rem; color: white;
+            font-weight: 600; margin-top: 1rem; margin-bottom: 0.5rem; color: var(--tw-text-primary);
         }
         .message-content h1 { font-size: 1.25rem; }
         .message-content h2 { font-size: 1.1rem; }
@@ -76,38 +163,38 @@
         .message-content ol { list-style: decimal; }
         .message-content li { margin-bottom: 0.25rem; }
         .message-content code {
-            background: rgba(0,0,0,0.4);
+            background: var(--tw-bg-code);
             padding: 0.125rem 0.5rem;
             border-radius: 0.25rem;
             font-family: ui-monospace, monospace;
             font-size: 0.85em;
-            color: #f0abfc;
+            color: var(--tw-text-code);
         }
         .message-content pre {
-            background: rgba(0,0,0,0.5);
+            background: var(--tw-bg-code-block);
             padding: 1rem;
             border-radius: 0.5rem;
             overflow-x: auto;
             margin: 0.75rem 0;
-            border: 1px solid rgba(255,255,255,0.1);
+            border: 1px solid var(--tw-border-inv);
         }
-        .message-content pre code { background: transparent; padding: 0; color: #a5f3fc; }
-        .message-content strong { font-weight: 600; color: white; }
+        .message-content pre code { background: transparent; padding: 0; color: var(--tw-text-code-block); }
+        .message-content strong { font-weight: 600; color: var(--tw-text-primary); }
         .message-content a { color: #07b6d5; text-decoration: underline; }
         .message-content blockquote {
-            border-left: 3px solid #07b6d5;
+            border-left: 3px solid var(--tw-color-primary);
             padding-left: 1rem;
             margin: 0.5rem 0;
-            color: #9bb6bb;
+            color: var(--tw-text-secondary);
             font-style: italic;
         }
         .message-content table { width: 100%; border-collapse: collapse; margin: 0.5rem 0; }
         .message-content th, .message-content td {
-            border: 1px solid rgba(255,255,255,0.1);
+            border: 1px solid var(--tw-border-inv);
             padding: 0.5rem;
             text-align: left;
         }
-        .message-content th { background: rgba(0,0,0,0.3); }
+        .message-content th { background: var(--tw-bg-code); }
 
         /* Advanced mode: tool call & result cards */
         .tool-card {
@@ -115,7 +202,7 @@
             transition: all 0.2s;
         }
         .tool-card:hover {
-            border-color: rgba(255,255,255,0.12) !important;
+            border-color: var(--tw-border-hover) !important;
         }
         .tool-card details summary {
             cursor: pointer;
@@ -163,7 +250,7 @@
             position: fixed;
             z-index: 1000;
             max-width: 400px;
-            background: #1a2628;
+            background: var(--tw-bg-card);
             border: 1px solid rgba(7, 182, 213, 0.3);
             border-radius: 0.5rem;
             padding: 1rem;
@@ -401,19 +488,24 @@
         .wb-inputs-empty .wb-inputs-empty-icon {
             display: block; font-size: 28px; color: rgba(7, 182, 213, 0.3); margin-bottom: 8px;
         }
+
+        /* Light mode: workflow builder canvas stays dark (graph editor convention) */
+        html:not(.dark) .wb-viewport {
+            background-color: #1a2030;
+        }
     </style>
 </head>
 
-<body class="bg-background-light dark:bg-background-dark text-slate-900 dark:text-slate-50 font-display overflow-hidden h-screen flex w-full">
+<body class="bg-background-dark text-text-theme font-display overflow-hidden h-screen flex w-full">
 
     <!-- Sidebar Navigation -->
-    <aside class="w-64 flex-shrink-0 flex flex-col border-r border-slate-200 dark:border-white/5 bg-background-light dark:bg-surface-darker h-full hidden lg:flex" id="sidebar">
+    <aside class="w-64 flex-shrink-0 flex flex-col border-r border-border-subtle-inv bg-surface-darker h-full hidden lg:flex" id="sidebar">
         <!-- Logo -->
-        <div class="h-16 flex items-center px-6 border-b border-slate-200 dark:border-white/5">
+        <div class="h-16 flex items-center px-6 border-b border-border-subtle-inv">
             <div class="flex items-center gap-3 text-primary">
                 <span class="material-symbols-outlined text-3xl">biotech</span>
                 <div class="flex flex-col">
-                    <span class="text-lg font-bold tracking-tight text-white">BioAgents</span>
+                    <span class="text-lg font-bold tracking-tight text-text-theme">BioAgents</span>
                     <span class="text-[10px] text-text-subtle">Multi-Agent System v2.0</span>
                 </div>
             </div>
@@ -422,7 +514,7 @@
         <!-- Navigation -->
         <div class="flex-1 overflow-y-auto py-4 px-3 custom-scrollbar flex flex-col gap-4">
             <!-- New Research Button -->
-            <button id="newResearchBtn" class="flex items-center justify-center gap-3 w-full px-4 py-3 bg-primary text-background-dark rounded-lg hover:bg-primary/90 transition-all font-bold shadow-[0_0_15px_rgba(7,182,213,0.3)] hover:shadow-[0_0_25px_rgba(7,182,213,0.4)]">
+            <button id="newResearchBtn" class="flex items-center justify-center gap-3 w-full px-4 py-3 bg-primary text-slate-900 rounded-lg hover:bg-primary/90 transition-all font-bold shadow-[0_0_15px_rgba(7,182,213,0.3)] hover:shadow-[0_0_25px_rgba(7,182,213,0.4)]">
                 <span class="material-symbols-outlined">add</span>
                 <span>New Research</span>
             </button>
@@ -434,39 +526,39 @@
                     <span class="material-symbols-outlined text-[20px]">science</span>
                     <span class="font-medium text-sm">Research</span>
                 </a>
-                <a href="#" id="nav-experiments" class="nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-text-subtle hover:text-white hover:bg-white/5 transition-all">
+                <a href="#" id="nav-experiments" class="nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-text-subtle hover:text-text-theme hover:bg-hover-bg transition-all">
                     <span class="material-symbols-outlined text-[20px]">experiment</span>
                     <span class="font-medium text-sm">Benchmarks</span>
                 </a>
-                <a href="#" id="nav-workflows" class="nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-text-subtle hover:text-white hover:bg-white/5 transition-all">
+                <a href="#" id="nav-workflows" class="nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-text-subtle hover:text-text-theme hover:bg-hover-bg transition-all">
                     <span class="material-symbols-outlined text-[20px]">account_tree</span>
                     <span class="font-medium text-sm">Pipelines</span>
                 </a>
-                <a href="#" id="nav-workflow-builder" class="nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-text-subtle hover:text-white hover:bg-white/5 transition-all">
+                <a href="#" id="nav-workflow-builder" class="nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-text-subtle hover:text-text-theme hover:bg-hover-bg transition-all">
                     <span class="material-symbols-outlined text-[20px]">schema</span>
                     <span class="font-medium text-sm">Workflow builder</span>
                 </a>
-                <a href="#" id="nav-drug-discovery" class="nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-text-subtle hover:text-white hover:bg-white/5 transition-all">
+                <a href="#" id="nav-drug-discovery" class="nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-text-subtle hover:text-text-theme hover:bg-hover-bg transition-all">
                     <span class="material-symbols-outlined text-[20px]">medication</span>
                     <span class="font-medium text-sm">Drug Discovery</span>
                 </a>
-                <a href="#" class="nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-text-subtle hover:text-white hover:bg-white/5 transition-all">
+                <a href="#" class="nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-text-subtle hover:text-text-theme hover:bg-hover-bg transition-all">
                     <span class="material-symbols-outlined text-[20px]">folder_open</span>
                     <span class="font-medium text-sm">Project Index</span>
                 </a>
-                <a href="#" class="nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-text-subtle hover:text-white hover:bg-white/5 transition-all">
+                <a href="#" class="nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-text-subtle hover:text-text-theme hover:bg-hover-bg transition-all">
                     <span class="material-symbols-outlined text-[20px]">history</span>
                     <span class="font-medium text-sm">History</span>
                 </a>
-                <a href="#" class="nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-text-subtle hover:text-white hover:bg-white/5 transition-all">
+                <a href="#" class="nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-text-subtle hover:text-text-theme hover:bg-hover-bg transition-all">
                     <span class="material-symbols-outlined text-[20px]">smart_toy</span>
                     <span class="font-medium text-sm">Agent Library</span>
                 </a>
-                <a href="#" class="nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-text-subtle hover:text-white hover:bg-white/5 transition-all">
+                <a href="#" class="nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-text-subtle hover:text-text-theme hover:bg-hover-bg transition-all">
                     <span class="material-symbols-outlined text-[20px]">extension</span>
                     <span class="font-medium text-sm">Tool Registry</span>
                 </a>
-                <a href="#" class="nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-text-subtle hover:text-white hover:bg-white/5 transition-all">
+                <a href="#" class="nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-text-subtle hover:text-text-theme hover:bg-hover-bg transition-all">
                     <span class="material-symbols-outlined text-[20px]">terminal</span>
                     <span class="font-medium text-sm">Sandbox Terminal</span>
                 </a>
@@ -482,15 +574,15 @@
         </div>
 
         <!-- Settings Footer -->
-        <div class="p-4 border-t border-white/5">
-            <button class="settings-btn flex items-center gap-3 w-full px-3 py-2 text-text-subtle hover:text-white hover:bg-white/5 rounded-lg transition-all">
+        <div class="p-4 border-t border-border-subtle-inv">
+            <button class="settings-btn flex items-center gap-3 w-full px-3 py-2 text-text-subtle hover:text-text-theme hover:bg-hover-bg rounded-lg transition-all">
                 <span class="material-symbols-outlined text-[20px]">settings</span>
                 <span class="font-medium text-sm">Settings</span>
             </button>
             <div class="mt-4 flex items-center gap-3 px-3">
                 <div class="size-9 rounded-full bg-gradient-to-tr from-primary to-purple-500 flex items-center justify-center text-white font-bold text-sm">R</div>
                 <div class="flex flex-col">
-                    <span class="text-sm font-bold text-white leading-none">Researcher</span>
+                    <span class="text-sm font-bold text-text-theme leading-none">Researcher</span>
                     <span class="text-[10px] text-text-subtle">Principal Investigator</span>
                 </div>
             </div>
@@ -498,19 +590,19 @@
     </aside>
 
     <!-- Main Content Area -->
-    <main class="flex-1 flex flex-col h-full min-w-0 bg-background-light dark:bg-background-dark overflow-hidden">
+    <main class="flex-1 flex flex-col h-full min-w-0 bg-background-dark overflow-hidden">
         <!-- Header -->
-        <header class="h-14 border-b border-slate-200 dark:border-white/5 flex items-center justify-between px-4 md:px-6 bg-surface-dark/50 backdrop-blur-sm z-20 flex-shrink-0">
+        <header class="h-14 border-b border-border-subtle-inv flex items-center justify-between px-4 md:px-6 bg-surface-dark/50 backdrop-blur-sm z-20 flex-shrink-0">
             <div class="flex items-center gap-3">
                 <!-- Mobile menu button -->
-                <button class="lg:hidden text-text-subtle hover:text-white p-2 rounded-lg hover:bg-white/5 transition-all" id="mobileMenuBtn">
+                <button class="lg:hidden text-text-subtle hover:text-text-theme p-2 rounded-lg hover:bg-hover-bg transition-all" id="mobileMenuBtn">
                     <span class="material-symbols-outlined">menu</span>
                 </button>
                 <div class="flex flex-col">
-                    <h2 class="text-sm font-bold leading-tight tracking-tight text-white truncate max-w-[200px] md:max-w-none" id="projectTitle">BioAgents Research Session</h2>
+                    <h2 class="text-sm font-bold leading-tight tracking-tight text-text-theme truncate max-w-[200px] md:max-w-none" id="projectTitle">BioAgents Research Session</h2>
                     <div class="flex items-center gap-2">
                         <span class="w-2 h-2 rounded-full bg-green-500 animate-pulse" id="statusDot"></span>
-                        <p class="text-[10px] text-slate-400" id="statusText">System Ready • Awaiting Input</p>
+                        <p class="text-[10px] text-text-subtle" id="statusText">System Ready • Awaiting Input</p>
                     </div>
                 </div>
             </div>
@@ -519,15 +611,19 @@
                     <span class="material-symbols-outlined text-[16px]">play_arrow</span>
                     <span>Run Demo</span>
                 </button>
-                <button class="export-btn hidden md:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-medium transition-all hover:border-primary/30">
+                <button class="export-btn hidden md:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-hover-bg hover:bg-hover-bg-strong border border-border-inverse text-xs font-medium transition-all hover:border-primary/30">
                     <span class="material-symbols-outlined text-[16px]">download</span>
                     <span>Export Session</span>
                 </button>
-                <button class="notifications-btn p-2 text-text-subtle hover:text-white transition-all rounded-lg hover:bg-white/5 relative">
+                <button id="themeToggle" class="p-2 text-text-subtle hover:text-text-theme transition-all rounded-lg hover:bg-hover-bg" title="Toggle theme">
+                    <span class="material-symbols-outlined theme-icon-light">light_mode</span>
+                    <span class="material-symbols-outlined theme-icon-dark">dark_mode</span>
+                </button>
+                <button class="notifications-btn p-2 text-text-subtle hover:text-text-theme transition-all rounded-lg hover:bg-hover-bg relative">
                     <span class="material-symbols-outlined">notifications</span>
                     <span class="notifications-badge absolute top-1 right-1 w-2 h-2 bg-primary rounded-full"></span>
                 </button>
-                <button class="help-btn p-2 text-text-subtle hover:text-white transition-all rounded-lg hover:bg-white/5">
+                <button class="help-btn p-2 text-text-subtle hover:text-text-theme transition-all rounded-lg hover:bg-hover-bg">
                     <span class="material-symbols-outlined">help</span>
                 </button>
             </div>
@@ -537,16 +633,16 @@
         <div class="flex-1 grid grid-cols-12 min-h-0 overflow-hidden">
 
             <!-- Left Panel: Agent Workflow -->
-            <div class="hidden lg:flex col-span-3 border-r border-slate-200 dark:border-white/5 bg-surface-darker/50 flex-col min-h-0" id="agentPanel">
-                <div class="p-4 pb-2 border-b border-white/5 flex justify-between items-center flex-shrink-0">
-                    <h3 class="text-white text-xs font-bold tracking-wide uppercase">Active Agents</h3>
-                    <span class="material-symbols-outlined text-slate-500 text-[18px]">hub</span>
+            <div class="hidden lg:flex col-span-3 border-r border-border-subtle-inv bg-surface-darker/50 flex-col min-h-0" id="agentPanel">
+                <div class="p-4 pb-2 border-b border-border-subtle-inv flex justify-between items-center flex-shrink-0">
+                    <h3 class="text-text-theme text-xs font-bold tracking-wide uppercase">Active Agents</h3>
+                    <span class="material-symbols-outlined text-text-muted text-[18px]">hub</span>
                 </div>
                 <div class="flex-1 overflow-y-auto p-3 flex flex-col gap-2 custom-scrollbar min-h-0" id="agentList">
                     <!-- Agents will be rendered here by JS -->
                 </div>
                 <!-- Tool Policy Stats -->
-                <div id="toolPolicyStats" class="hidden px-4 py-2 border-t border-white/5 flex-shrink-0">
+                <div id="toolPolicyStats" class="hidden px-4 py-2 border-t border-border-subtle-inv flex-shrink-0">
                 </div>
             </div>
 
@@ -554,13 +650,13 @@
             <div class="col-span-12 lg:col-span-6 flex flex-col bg-background-dark relative min-h-0">
                 <!-- Chat Header Gradient -->
                 <div class="absolute top-0 w-full z-10 bg-gradient-to-b from-background-dark via-background-dark/95 to-transparent px-4 md:px-6 py-3 pointer-events-none flex items-center justify-between">
-                    <h3 class="text-white/70 text-xs font-medium tracking-wide uppercase">Conversation Stream</h3>
+                    <h3 class="text-text-theme/70 text-xs font-medium tracking-wide uppercase">Conversation Stream</h3>
                     <div class="flex items-center gap-2.5 pointer-events-auto select-none" id="advancedModeToggle">
-                        <span class="text-[10px] font-medium uppercase tracking-wider transition-colors" id="advancedModeLabel" style="color: #64748b;">Advanced</span>
+                        <span class="text-[10px] font-medium uppercase tracking-wider transition-colors" id="advancedModeLabel" style="color: var(--tw-text-muted);">Advanced</span>
                         <button class="w-10 h-[22px] rounded-full relative transition-all duration-300 border" id="advancedModeBtn"
-                                style="background: #334155; border-color: rgba(255,255,255,0.1);"
+                                style="background: var(--tw-bg-surface-low); border-color: var(--tw-border);"
                                 title="Toggle advanced mode to see all agent outputs and tool calls">
-                            <span class="absolute top-[3px] left-[3px] w-4 h-4 rounded-full transition-all duration-300 shadow-sm" style="background: #94a3b8;"></span>
+                            <span class="absolute top-[3px] left-[3px] w-4 h-4 rounded-full transition-all duration-300 shadow-sm" style="background: var(--tw-text-muted);"></span>
                         </button>
                     </div>
                 </div>
@@ -572,29 +668,29 @@
                         <div class="mb-6 p-5 rounded-full bg-primary/5 border border-primary/20 shadow-[0_0_40px_rgba(7,182,213,0.15)]">
                             <span class="material-symbols-outlined text-5xl text-primary">genetics</span>
                         </div>
-                        <h1 class="text-2xl md:text-3xl font-bold text-white mb-3 tracking-tight leading-tight">What research problem<br/>are we solving today?</h1>
+                        <h1 class="text-2xl md:text-3xl font-bold text-text-theme mb-3 tracking-tight leading-tight">What research problem<br/>are we solving today?</h1>
                         <p class="text-text-subtle text-sm max-w-md font-light mb-6">Deploy multi-agent swarms for protein analysis, structure prediction, and literature review.</p>
 
                         <!-- Capabilities -->
                         <div class="flex flex-wrap justify-center gap-3 max-w-lg">
-                            <div class="flex items-center gap-2 px-3 py-2 rounded-lg bg-surface-card/50 border border-border-dark text-xs text-text-subtle">
+                            <div class="flex items-center gap-2 px-3 py-2 rounded-lg bg-surface-dark border border-border-theme text-xs text-text-subtle">
                                 <span class="material-symbols-outlined text-primary text-sm">polymer</span>
                                 Protein Folding
                             </div>
-                            <div class="flex items-center gap-2 px-3 py-2 rounded-lg bg-surface-card/50 border border-border-dark text-xs text-text-subtle">
-                                <span class="material-symbols-outlined text-emerald-400 text-sm">menu_book</span>
+                            <div class="flex items-center gap-2 px-3 py-2 rounded-lg bg-surface-dark border border-border-theme text-xs text-text-subtle">
+                                <span class="material-symbols-outlined text-emerald-500 text-sm">menu_book</span>
                                 Literature Search
                             </div>
-                            <div class="flex items-center gap-2 px-3 py-2 rounded-lg bg-surface-card/50 border border-border-dark text-xs text-text-subtle">
-                                <span class="material-symbols-outlined text-purple-400 text-sm">psychology</span>
+                            <div class="flex items-center gap-2 px-3 py-2 rounded-lg bg-surface-dark border border-border-theme text-xs text-text-subtle">
+                                <span class="material-symbols-outlined text-purple-500 text-sm">psychology</span>
                                 Machine Learning
                             </div>
-                            <div class="flex items-center gap-2 px-3 py-2 rounded-lg bg-surface-card/50 border border-border-dark text-xs text-text-subtle">
-                                <span class="material-symbols-outlined text-cyan-400 text-sm">memory</span>
+                            <div class="flex items-center gap-2 px-3 py-2 rounded-lg bg-surface-dark border border-border-theme text-xs text-text-subtle">
+                                <span class="material-symbols-outlined text-cyan-500 text-sm">memory</span>
                                 Deep Learning
                             </div>
-                            <div class="flex items-center gap-2 px-3 py-2 rounded-lg bg-surface-card/50 border border-border-dark text-xs text-text-subtle">
-                                <span class="material-symbols-outlined text-amber-400 text-sm">code</span>
+                            <div class="flex items-center gap-2 px-3 py-2 rounded-lg bg-surface-dark border border-border-theme text-xs text-text-subtle">
+                                <span class="material-symbols-outlined text-amber-500 text-sm">code</span>
                                 Code Generation
                             </div>
                         </div>
@@ -602,44 +698,44 @@
                 </div>
 
                 <!-- Input Area -->
-                <div class="p-3 md:p-4 bg-background-dark border-t border-white/5 flex-shrink-0">
+                <div class="p-3 md:p-4 bg-background-dark border-t border-border-subtle-inv flex-shrink-0">
                     <!-- Quick Chips -->
                     <div class="flex flex-wrap justify-center gap-2 mb-3" id="quickChips">
-                        <button class="example-chip flex items-center gap-2 px-3 py-1.5 rounded-full bg-surface-card border border-border-dark hover:border-primary/50 text-xs text-text-subtle hover:text-white transition-all" data-query="Analyze the properties of human p53 protein (UniProt: P04637). Fetch the sequence, download the AlphaFold structure, and provide detailed biochemical analysis.">
+                        <button class="example-chip flex items-center gap-2 px-3 py-1.5 rounded-full bg-surface-card border border-border-dark hover:border-primary/50 text-xs text-text-subtle hover:text-text-theme transition-all" data-query="Analyze the properties of human p53 protein (UniProt: P04637). Fetch the sequence, download the AlphaFold structure, and provide detailed biochemical analysis.">
                             <span class="material-symbols-outlined text-sm text-primary">biotech</span>
                             Analyze p53 Protein
                         </button>
-                        <button class="example-chip flex items-center gap-2 px-3 py-1.5 rounded-full bg-surface-card border border-border-dark hover:border-primary/50 text-xs text-text-subtle hover:text-white transition-all" data-query="Fetch and display the 3D structure of human insulin (UniProt: P01308) from AlphaFold.">
-                            <span class="material-symbols-outlined text-sm text-purple-400">view_in_ar</span>
+                        <button class="example-chip flex items-center gap-2 px-3 py-1.5 rounded-full bg-surface-card border border-border-dark hover:border-primary/50 text-xs text-text-subtle hover:text-text-theme transition-all" data-query="Fetch and display the 3D structure of human insulin (UniProt: P01308) from AlphaFold.">
+                            <span class="material-symbols-outlined text-sm text-purple-500">view_in_ar</span>
                             View Insulin 3D
                         </button>
-                        <button class="example-chip flex items-center gap-2 px-3 py-1.5 rounded-full bg-surface-card border border-border-dark hover:border-primary/50 text-xs text-text-subtle hover:text-white transition-all" data-query="Search recent literature on CRISPR-Cas9 applications in cancer immunotherapy. Summarize key findings.">
-                            <span class="material-symbols-outlined text-sm text-green-400">menu_book</span>
+                        <button class="example-chip flex items-center gap-2 px-3 py-1.5 rounded-full bg-surface-card border border-border-dark hover:border-primary/50 text-xs text-text-subtle hover:text-text-theme transition-all" data-query="Search recent literature on CRISPR-Cas9 applications in cancer immunotherapy. Summarize key findings.">
+                            <span class="material-symbols-outlined text-sm text-green-500">menu_book</span>
                             CRISPR Literature
                         </button>
-                        <button class="example-chip flex items-center gap-2 px-3 py-1.5 rounded-full bg-surface-card border border-border-dark hover:border-primary/50 text-xs text-text-subtle hover:text-white transition-all" data-query="Build a machine learning model to predict protein solubility from a CSV containing sequence features. Use XGBoost and provide feature importance.">
-                            <span class="material-symbols-outlined text-sm text-purple-400">psychology</span>
+                        <button class="example-chip flex items-center gap-2 px-3 py-1.5 rounded-full bg-surface-card border border-border-dark hover:border-primary/50 text-xs text-text-subtle hover:text-text-theme transition-all" data-query="Build a machine learning model to predict protein solubility from a CSV containing sequence features. Use XGBoost and provide feature importance.">
+                            <span class="material-symbols-outlined text-sm text-purple-500">psychology</span>
                             ML Solubility Predictor
                         </button>
-                        <button class="example-chip flex items-center gap-2 px-3 py-1.5 rounded-full bg-surface-card border border-border-dark hover:border-primary/50 text-xs text-text-subtle hover:text-white transition-all" data-query="Design a PyTorch neural network to classify protein sequences into families. Use an embedding layer followed by an LSTM.">
-                            <span class="material-symbols-outlined text-sm text-cyan-400">memory</span>
+                        <button class="example-chip flex items-center gap-2 px-3 py-1.5 rounded-full bg-surface-card border border-border-dark hover:border-primary/50 text-xs text-text-subtle hover:text-text-theme transition-all" data-query="Design a PyTorch neural network to classify protein sequences into families. Use an embedding layer followed by an LSTM.">
+                            <span class="material-symbols-outlined text-sm text-cyan-500">memory</span>
                             DL Sequence Classifier
                         </button>
                     </div>
 
                     <!-- Input Box -->
-                    <div class="relative bg-surface-dark border border-white/10 rounded-xl shadow-lg focus-within:border-primary/50 focus-within:ring-1 focus-within:ring-primary/30 transition-all">
-                        <textarea id="queryInput" class="w-full bg-transparent border-none text-sm text-white placeholder-slate-500 p-4 pb-2 focus:ring-0 resize-none font-body" placeholder="Describe a protein, paste a FASTA sequence, or ask a research question..." rows="2"></textarea>
+                    <div class="relative bg-surface-dark border border-border-inverse rounded-xl shadow-lg focus-within:border-primary/50 focus-within:ring-1 focus-within:ring-primary/30 transition-all">
+                        <textarea id="queryInput" class="w-full bg-transparent border-none text-sm text-text-theme placeholder-slate-500 p-4 pb-2 focus:ring-0 resize-none font-body" placeholder="Describe a protein, paste a FASTA sequence, or ask a research question..." rows="2"></textarea>
                         <div class="flex justify-between items-center px-3 pb-3">
                             <div class="flex gap-1">
-                                <button class="p-2 text-slate-500 hover:text-white rounded-lg hover:bg-white/5 transition-all" title="Attach File">
+                                <button class="p-2 text-text-muted hover:text-text-theme rounded-lg hover:bg-hover-bg transition-all" title="Attach File">
                                     <span class="material-symbols-outlined text-[20px]">attach_file</span>
                                 </button>
-                                <button class="p-2 text-slate-500 hover:text-white rounded-lg hover:bg-white/5 transition-all" title="Voice Input">
+                                <button class="p-2 text-text-muted hover:text-text-theme rounded-lg hover:bg-hover-bg transition-all" title="Voice Input">
                                     <span class="material-symbols-outlined text-[20px]">mic</span>
                                 </button>
                             </div>
-                            <button id="submitBtn" class="bg-primary hover:bg-primary/90 text-background-dark text-sm font-bold px-5 py-2.5 rounded-lg flex items-center gap-2 transition-all shadow-[0_0_15px_rgba(7,182,213,0.2)] hover:shadow-[0_0_25px_rgba(7,182,213,0.3)] disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none">
+                            <button id="submitBtn" class="bg-primary hover:bg-primary/90 text-slate-900 text-sm font-bold px-5 py-2.5 rounded-lg flex items-center gap-2 transition-all shadow-[0_0_15px_rgba(7,182,213,0.2)] hover:shadow-[0_0_25px_rgba(7,182,213,0.3)] disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none">
                                 <span>Run Agent</span>
                                 <span class="material-symbols-outlined text-[18px]">send</span>
                             </button>
@@ -649,9 +745,9 @@
             </div>
 
             <!-- Right Panel: Workspace -->
-            <div class="hidden lg:flex col-span-3 bg-surface-darker border-l border-slate-200 dark:border-white/5 flex-col min-h-0">
+            <div class="hidden lg:flex col-span-3 bg-surface-darker border-l border-border-subtle-inv flex-col min-h-0">
                 <!-- 3D Molecular Viewer -->
-                <div class="h-48 min-h-[12rem] max-h-[14rem] bg-black relative border-b border-white/10 group flex-shrink-0" id="viewerContainer">
+                <div class="h-48 min-h-[12rem] max-h-[14rem] bg-black relative border-b border-border-inverse group flex-shrink-0" id="viewerContainer">
                     <!-- Overlay Header -->
                     <div class="absolute top-0 left-0 w-full p-3 flex justify-between items-center z-10 bg-gradient-to-b from-black/80 to-transparent">
                         <span class="text-[10px] font-mono text-white/70 bg-black/50 px-2 py-1 rounded">Molecular Viewer</span>
@@ -678,17 +774,17 @@
                                     <div class="absolute inset-6 border-2 border-white rounded-full animate-[spin_5s_linear_infinite]"></div>
                                 </div>
                                 <p class="text-text-subtle text-xs">No structure loaded</p>
-                                <p class="text-slate-600 text-[10px] mt-1">Drop a PDB file or run a query</p>
+                                <p class="text-text-muted text-[10px] mt-1">Drop a PDB file or run a query</p>
                             </div>
                         </div>
                     </div>
 
                     <!-- Zoom Controls -->
                     <div class="absolute bottom-3 right-3 flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button class="viewer-zoom-in p-1.5 bg-surface-dark/80 border border-white/10 rounded-full text-white hover:bg-primary hover:border-primary transition-all">
+                        <button class="viewer-zoom-in p-1.5 bg-black/60 border border-white/20 rounded-full text-white hover:bg-primary hover:border-primary transition-all">
                             <span class="material-symbols-outlined text-[16px]">add</span>
                         </button>
-                        <button class="viewer-zoom-out p-1.5 bg-surface-dark/80 border border-white/10 rounded-full text-white hover:bg-primary hover:border-primary transition-all">
+                        <button class="viewer-zoom-out p-1.5 bg-black/60 border border-white/20 rounded-full text-white hover:bg-primary hover:border-primary transition-all">
                             <span class="material-symbols-outlined text-[16px]">remove</span>
                         </button>
                     </div>
@@ -697,26 +793,26 @@
                 <!-- Artifacts & Logs Panel -->
                 <div class="flex-1 flex flex-col min-h-0 overflow-hidden">
                     <!-- Tabs -->
-                    <div class="flex border-b border-white/5 flex-shrink-0">
-                        <button class="tab-btn flex-1 py-3 text-xs font-medium text-white border-b-2 border-primary bg-white/5 transition-all" data-tab="artifacts">
+                    <div class="flex border-b border-border-subtle-inv flex-shrink-0">
+                        <button class="tab-btn flex-1 py-3 text-xs font-medium text-text-theme border-b-2 border-primary bg-hover-bg transition-all" data-tab="artifacts">
                             <span class="flex items-center justify-center gap-1.5">
                                 <span class="material-symbols-outlined text-[16px]">folder</span>
                                 Artifacts
                             </span>
                         </button>
-                        <button class="tab-btn flex-1 py-3 text-xs font-medium text-slate-500 hover:text-slate-300 border-b-2 border-transparent transition-all" data-tab="code">
+                        <button class="tab-btn flex-1 py-3 text-xs font-medium text-text-muted hover:text-text-theme border-b-2 border-transparent transition-all" data-tab="code">
                             <span class="flex items-center justify-center gap-1.5">
                                 <span class="material-symbols-outlined text-[16px]">terminal</span>
                                 Code
                             </span>
                         </button>
-                        <button class="tab-btn flex-1 py-3 text-xs font-medium text-slate-500 hover:text-slate-300 border-b-2 border-transparent transition-all" data-tab="logs">
+                        <button class="tab-btn flex-1 py-3 text-xs font-medium text-text-muted hover:text-text-theme border-b-2 border-transparent transition-all" data-tab="logs">
                             <span class="flex items-center justify-center gap-1.5">
                                 <span class="material-symbols-outlined text-[16px]">code</span>
                                 Reasoning
                             </span>
                         </button>
-                        <button class="tab-btn flex-1 py-3 text-xs font-medium text-slate-500 hover:text-slate-300 border-b-2 border-transparent transition-all" data-tab="references">
+                        <button class="tab-btn flex-1 py-3 text-xs font-medium text-text-muted hover:text-text-theme border-b-2 border-transparent transition-all" data-tab="references">
                             <span class="flex items-center justify-center gap-1.5">
                                 <span class="material-symbols-outlined text-[16px]">article</span>
                                 References
@@ -726,7 +822,7 @@
 
                     <!-- Tab Content: Artifacts -->
                     <div class="flex-1 overflow-y-auto p-3 custom-scrollbar tab-content min-h-0" id="artifactsTab">
-                        <h4 class="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-3">Generated Files</h4>
+                        <h4 class="text-[10px] font-bold text-text-muted uppercase tracking-wider mb-3">Generated Files</h4>
                         <div class="flex flex-col gap-2" id="artifactsList">
                             <div class="text-center py-6 text-text-subtle text-xs">
                                 <span class="material-symbols-outlined text-2xl text-border-dark mb-2 block">folder_off</span>
@@ -737,7 +833,7 @@
 
                     <!-- Tab Content: Code -->
                     <div class="flex-1 overflow-y-auto p-3 custom-scrollbar tab-content hidden min-h-0" id="codeTab">
-                        <h4 class="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-3">Code Execution</h4>
+                        <h4 class="text-[10px] font-bold text-text-muted uppercase tracking-wider mb-3">Code Execution</h4>
                         <div class="flex flex-col gap-4" id="codeExecutionList">
                             <div class="text-center py-6 text-text-subtle text-xs">
                                 <span class="material-symbols-outlined text-2xl text-border-dark mb-2 block">terminal</span>
@@ -748,8 +844,8 @@
 
                     <!-- Tab Content: Logs -->
                     <div class="flex-1 overflow-y-auto p-3 custom-scrollbar tab-content hidden min-h-0" id="logsTab">
-                        <h4 class="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-3">Reasoning Trace</h4>
-                        <div class="bg-black/40 rounded-lg p-3 font-mono text-[10px] text-slate-400 border border-white/5 overflow-auto" id="auditLog">
+                        <h4 class="text-[10px] font-bold text-text-muted uppercase tracking-wider mb-3">Reasoning Trace</h4>
+                        <div class="bg-code-block-bg rounded-lg p-3 font-mono text-[10px] text-text-subtle border border-border-subtle-inv overflow-auto" id="auditLog">
                             <pre class="whitespace-pre-wrap">// Reasoning trace will appear here when agents process your query...</pre>
                         </div>
                     </div>
@@ -757,8 +853,8 @@
                     <!-- Tab Content: References -->
                     <div class="flex-1 overflow-y-auto p-3 custom-scrollbar tab-content hidden min-h-0" id="referencesTab">
                         <div class="flex items-center justify-between mb-3">
-                            <h4 class="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Citations</h4>
-                            <span class="text-[10px] text-slate-600" id="referenceCount">0 refs</span>
+                            <h4 class="text-[10px] font-bold text-text-muted uppercase tracking-wider">Citations</h4>
+                            <span class="text-[10px] text-text-muted" id="referenceCount">0 refs</span>
                         </div>
                         <div class="flex flex-col gap-2" id="referenceList">
                             <div class="text-center py-6 text-text-subtle text-xs">
@@ -772,12 +868,12 @@
         </div>
 
         <!-- Terminal Log (Bottom) -->
-        <div class="bg-[#0a0f10] border-t border-border-dark px-4 py-2 font-mono text-[10px] h-14 overflow-hidden flex-shrink-0 hidden lg:block" id="terminalLog">
-            <div class="flex items-center gap-2 mb-1.5 text-text-subtle border-b border-border-dark/50 pb-1">
+        <div style="background-color: var(--tw-bg-terminal)" class="border-t border-white/5 px-4 py-2 font-mono text-[10px] h-14 overflow-hidden flex-shrink-0 hidden lg:block" id="terminalLog">
+            <div class="flex items-center gap-2 mb-1.5 text-slate-400 border-b border-white/5 pb-1">
                 <span class="material-symbols-outlined text-[14px]">terminal</span>
                 <span class="uppercase tracking-wider font-bold text-[9px]">System Log</span>
                 <div class="flex-1"></div>
-                <button class="terminal-clear text-slate-600 hover:text-white transition-all" title="Clear Log">
+                <button class="terminal-clear text-slate-500 hover:text-white transition-all" title="Clear Log">
                     <span class="material-symbols-outlined text-[12px]">delete</span>
                 </button>
             </div>
@@ -791,18 +887,18 @@
     <div class="fixed top-4 right-4 z-50 flex flex-col gap-2 max-w-sm" id="toastContainer"></div>
 
     <!-- Mobile Sidebar Overlay -->
-    <div class="fixed inset-0 bg-black/50 z-40 hidden" id="sidebarOverlay"></div>
+    <div class="fixed inset-0 bg-overlay z-40 hidden" id="sidebarOverlay"></div>
 
     <!-- Experiment Detail Panel (slide-in overlay) -->
-    <div id="exp-detail-overlay" class="hidden fixed inset-0 bg-black/60 z-40 backdrop-blur-sm"></div>
-    <div id="exp-detail-panel" class="hidden fixed right-0 top-0 h-full w-full max-w-3xl z-50 bg-surface-darker border-l border-white/10 flex flex-col shadow-2xl overflow-hidden animate-fadeIn">
+    <div id="exp-detail-overlay" class="hidden fixed inset-0 bg-overlay z-40 backdrop-blur-sm"></div>
+    <div id="exp-detail-panel" class="hidden fixed right-0 top-0 h-full w-full max-w-3xl z-50 bg-surface-darker border-l border-border-inverse flex flex-col shadow-2xl overflow-hidden animate-fadeIn">
         <!-- Panel header -->
-        <div class="flex items-center justify-between px-6 py-4 border-b border-white/10 bg-surface-dark flex-shrink-0">
+        <div class="flex items-center justify-between px-6 py-4 border-b border-border-inverse bg-surface-dark flex-shrink-0">
             <div class="flex items-center gap-3">
                 <span class="material-symbols-outlined text-primary">analytics</span>
-                <h2 class="text-sm font-bold text-white">Experiment Run Details</h2>
+                <h2 class="text-sm font-bold text-text-theme">Experiment Run Details</h2>
             </div>
-            <button id="exp-detail-close" class="p-2 text-text-subtle hover:text-white hover:bg-white/5 rounded-lg transition-all">
+            <button id="exp-detail-close" class="p-2 text-text-subtle hover:text-text-theme hover:bg-hover-bg rounded-lg transition-all">
                 <span class="material-symbols-outlined">close</span>
             </button>
         </div>
@@ -828,16 +924,16 @@
             expView.className = 'hidden flex-1 flex flex-col h-full min-h-0 overflow-hidden bg-background-dark';
             expView.innerHTML = `
                 <!-- Experiments header -->
-                <div class="flex items-center justify-between px-6 py-4 border-b border-white/5 flex-shrink-0">
+                <div class="flex items-center justify-between px-6 py-4 border-b border-border-subtle-inv flex-shrink-0">
                     <div class="flex items-center gap-3">
                         <span class="material-symbols-outlined text-primary text-2xl">speed</span>
                         <div>
-                            <h1 class="text-base font-bold text-white">Benchmarks</h1>
+                            <h1 class="text-base font-bold text-text-theme">Benchmarks</h1>
                             <p class="text-[11px] text-text-subtle">Define, run, and compare use-case evaluations</p>
                         </div>
                     </div>
                     <div class="flex items-center gap-2">
-                        <button id="exp-refresh-runs" title="Refresh runs" class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-xs text-text-subtle hover:text-white transition-all">
+                        <button id="exp-refresh-runs" title="Refresh runs" class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-hover-bg hover:bg-hover-bg-strong border border-border-inverse text-xs text-text-subtle hover:text-text-theme transition-all">
                             <span class="material-symbols-outlined text-[16px]">refresh</span>Refresh
                         </button>
                     </div>
@@ -847,13 +943,13 @@
                 <div class="flex-1 grid grid-cols-12 min-h-0 overflow-hidden">
 
                     <!-- Left: Use Case Selector (5 cols) -->
-                    <div class="col-span-5 border-r border-white/5 flex flex-col min-h-0">
-                        <div class="px-4 py-3 border-b border-white/5 flex-shrink-0">
+                    <div class="col-span-5 border-r border-border-subtle-inv flex flex-col min-h-0">
+                        <div class="px-4 py-3 border-b border-border-subtle-inv flex-shrink-0">
                             <div class="flex items-center justify-between mb-2">
-                                <h3 class="text-xs font-bold text-white uppercase tracking-wide">Use Cases</h3>
+                                <h3 class="text-xs font-bold text-text-theme uppercase tracking-wide">Use Cases</h3>
                                 <div class="flex gap-1">
-                                    <button id="exp-select-all" class="text-[10px] px-2 py-1 rounded bg-white/5 hover:bg-white/10 text-text-subtle hover:text-white transition-all border border-white/10">Select All</button>
-                                    <button id="exp-deselect-all" class="text-[10px] px-2 py-1 rounded bg-white/5 hover:bg-white/10 text-text-subtle hover:text-white transition-all border border-white/10">Clear</button>
+                                    <button id="exp-select-all" class="text-[10px] px-2 py-1 rounded bg-hover-bg hover:bg-hover-bg-strong text-text-subtle hover:text-text-theme transition-all border border-border-inverse">Select All</button>
+                                    <button id="exp-deselect-all" class="text-[10px] px-2 py-1 rounded bg-hover-bg hover:bg-hover-bg-strong text-text-subtle hover:text-text-theme transition-all border border-border-inverse">Clear</button>
                                 </div>
                             </div>
                             <!-- Category filters -->
@@ -866,24 +962,24 @@
                     <div class="col-span-7 flex flex-col min-h-0">
 
                         <!-- Config selector -->
-                        <div class="px-4 py-3 border-b border-white/5 flex-shrink-0">
-                            <h3 class="text-xs font-bold text-white uppercase tracking-wide mb-2">Experiment Config</h3>
+                        <div class="px-4 py-3 border-b border-border-subtle-inv flex-shrink-0">
+                            <h3 class="text-xs font-bold text-text-theme uppercase tracking-wide mb-2">Experiment Config</h3>
                             <div id="exp-config-selector" class="flex gap-2 flex-wrap"></div>
                         </div>
 
                         <!-- Options + run button -->
-                        <div class="px-4 py-3 border-b border-white/5 flex items-center gap-4 flex-shrink-0 flex-wrap">
+                        <div class="px-4 py-3 border-b border-border-subtle-inv flex items-center gap-4 flex-shrink-0 flex-wrap">
                             <label class="flex items-center gap-2 text-xs text-text-subtle cursor-pointer select-none">
-                                <input type="checkbox" id="exp-skip-judge" class="rounded border-white/20 bg-surface-dark text-primary focus:ring-primary">
+                                <input type="checkbox" id="exp-skip-judge" class="rounded border-border-inverse bg-surface-dark text-primary focus:ring-primary">
                                 Skip judging
                             </label>
                             <label class="flex items-center gap-2 text-xs text-text-subtle cursor-pointer select-none">
-                                <input type="checkbox" id="exp-llm-judge" checked class="rounded border-white/20 bg-surface-dark text-primary focus:ring-primary">
+                                <input type="checkbox" id="exp-llm-judge" checked class="rounded border-border-inverse bg-surface-dark text-primary focus:ring-primary">
                                 LLM judge (vs heuristic)
                             </label>
                             <div class="flex-1 text-xs text-text-subtle" id="exp-selection-count">Select use cases to run</div>
                             <button id="exp-run-btn"
-                                class="flex items-center gap-2 px-4 py-2 bg-primary hover:bg-primary/90 text-background-dark font-bold text-sm rounded-lg transition-all shadow-[0_0_15px_rgba(7,182,213,0.2)] hover:shadow-[0_0_25px_rgba(7,182,213,0.3)] disabled:opacity-50 disabled:cursor-not-allowed">
+                                class="flex items-center gap-2 px-4 py-2 bg-primary hover:bg-primary/90 text-slate-900 font-bold text-sm rounded-lg transition-all shadow-[0_0_15px_rgba(7,182,213,0.2)] hover:shadow-[0_0_25px_rgba(7,182,213,0.3)] disabled:opacity-50 disabled:cursor-not-allowed">
                                 <span class="material-symbols-outlined text-[18px]">play_arrow</span>
                                 <span>Run Experiment</span>
                             </button>
@@ -891,8 +987,8 @@
 
                         <!-- Runs history -->
                         <div class="flex-1 flex flex-col min-h-0 overflow-hidden">
-                            <div class="px-4 py-3 border-b border-white/5 flex-shrink-0">
-                                <h3 class="text-xs font-bold text-white uppercase tracking-wide">Recent Runs</h3>
+                            <div class="px-4 py-3 border-b border-border-subtle-inv flex-shrink-0">
+                                <h3 class="text-xs font-bold text-text-theme uppercase tracking-wide">Recent Runs</h3>
                             </div>
                             <div id="exp-runs-live-status" class="hidden shrink-0 px-4 py-2.5 text-[11px] leading-snug border-b border-primary/25 bg-primary/5 text-amber-100/90 flex items-start gap-2">
                                 <span class="material-symbols-outlined animate-spin text-base text-primary shrink-0 mt-0.5">progress_activity</span>
@@ -900,7 +996,7 @@
                             </div>
                             <div class="flex-1 overflow-auto custom-scrollbar min-h-0">
                                 <table class="w-full text-xs">
-                                    <thead class="sticky top-0 bg-surface-darker border-b border-white/5">
+                                    <thead class="sticky top-0 bg-surface-darker border-b border-border-subtle-inv">
                                         <tr class="text-left text-text-subtle">
                                             <th class="px-4 py-2.5 font-medium">Run ID</th>
                                             <th class="px-4 py-2.5 font-medium">Config</th>
@@ -926,36 +1022,36 @@
             workflowsView.id = 'workflows-view';
             workflowsView.className = 'hidden flex-1 flex flex-col h-full min-h-0 overflow-hidden bg-background-dark';
             workflowsView.innerHTML = `
-                <div class="flex items-center justify-between px-6 py-4 border-b border-white/5 flex-shrink-0">
+                <div class="flex items-center justify-between px-6 py-4 border-b border-border-subtle-inv flex-shrink-0">
                     <div class="flex items-center gap-3">
                         <span class="material-symbols-outlined text-primary text-2xl">account_tree</span>
                         <div>
-                            <h1 class="text-base font-bold text-white">Scientific pipelines</h1>
+                            <h1 class="text-base font-bold text-text-theme">Scientific pipelines</h1>
                             <p class="text-[11px] text-text-subtle">Run DAG workflows (fetch → preprocess → model → export)</p>
                         </div>
                     </div>
-                    <span id="wf-status" class="text-xs font-mono px-2 py-1 rounded bg-white/5 text-text-subtle border border-white/10">Idle</span>
+                    <span id="wf-status" class="text-xs font-mono px-2 py-1 rounded bg-hover-bg text-text-subtle border border-border-inverse">Idle</span>
                 </div>
                 <div class="flex-1 overflow-y-auto custom-scrollbar p-6 max-w-3xl w-full mx-auto flex flex-col gap-6">
-                    <div class="rounded-xl border border-white/10 bg-surface-card/40 p-5">
-                        <h2 class="text-xs font-bold text-white uppercase tracking-wide mb-1">Protein embedding</h2>
+                    <div class="rounded-xl border border-border-inverse bg-surface-card/40 p-5">
+                        <h2 class="text-xs font-bold text-text-theme uppercase tracking-wide mb-1">Protein embedding</h2>
                         <p id="wf-preset-description" class="text-[11px] text-text-subtle mb-4 leading-relaxed"></p>
                         <div class="flex flex-col gap-3 mb-3">
                             <div class="w-full">
                                 <label class="text-[10px] text-text-subtle uppercase tracking-wider block mb-1">Preset (<span id="wf-preset-count">…</span>)</label>
                                 <select id="wf-preset-select"
-                                    class="w-full rounded-lg bg-surface-dark border border-white/10 text-sm text-white px-3 py-2 focus:border-primary/50 focus:ring-1 focus:ring-primary/30">
+                                    class="w-full rounded-lg bg-surface-dark border border-border-inverse text-sm text-text-theme px-3 py-2 focus:border-primary/50 focus:ring-1 focus:ring-primary/30">
                                 </select>
                             </div>
                             <div id="wf-kmer-k-row" class="w-full hidden">
                                 <label class="text-[10px] text-text-subtle uppercase tracking-wider block mb-1">K-mer size (uniprot_kmer_profile)</label>
                                 <input type="number" id="wf-kmer-k" value="3" min="1" max="12"
-                                    class="w-full max-w-xs rounded-lg bg-surface-dark border border-white/10 text-sm text-white px-3 py-2 focus:border-primary/50 focus:ring-1 focus:ring-primary/30" />
+                                    class="w-full max-w-xs rounded-lg bg-surface-dark border border-border-inverse text-sm text-text-theme px-3 py-2 focus:border-primary/50 focus:ring-1 focus:ring-primary/30" />
                             </div>
                             <div id="wf-esm-model-row" class="w-full">
                                 <label class="text-[10px] text-text-subtle uppercase tracking-wider block mb-1">ESM-2 checkpoint</label>
                                 <select id="wf-esm-model"
-                                    class="w-full rounded-lg bg-surface-dark border border-white/10 text-sm text-white px-3 py-2 focus:border-primary/50 focus:ring-1 focus:ring-primary/30">
+                                    class="w-full rounded-lg bg-surface-dark border border-border-inverse text-sm text-text-theme px-3 py-2 focus:border-primary/50 focus:ring-1 focus:ring-primary/30">
                                     <option value="esm2_t6_8M_UR50D">esm2_t6_8M_UR50D (fast, 320-d)</option>
                                     <option value="esm2_t12_35M_UR50D">esm2_t12_35M_UR50D</option>
                                     <option value="esm2_t33_650M_UR50D">esm2_t33_650M_UR50D (large)</option>
@@ -964,17 +1060,17 @@
                             <div id="wf-dummy-dim-row" class="w-full hidden">
                                 <label class="text-[10px] text-text-subtle uppercase tracking-wider block mb-1">Placeholder vector length</label>
                                 <input type="number" id="wf-embedding-dim" value="8" min="1" max="1280"
-                                    class="w-full max-w-xs rounded-lg bg-surface-dark border border-white/10 text-sm text-white px-3 py-2 focus:border-primary/50 focus:ring-1 focus:ring-primary/30" />
+                                    class="w-full max-w-xs rounded-lg bg-surface-dark border border-border-inverse text-sm text-text-theme px-3 py-2 focus:border-primary/50 focus:ring-1 focus:ring-primary/30" />
                             </div>
                         </div>
                         <div class="flex flex-col sm:flex-row gap-3 items-end">
                             <div class="flex-1 w-full">
                                 <label class="text-[10px] text-text-subtle uppercase tracking-wider block mb-1">Primary ID</label>
                                 <input type="text" id="wf-protein-id" value="P04637" placeholder="UniProt (P04637) or PDB (1YCR)"
-                                    class="w-full rounded-lg bg-surface-dark border border-white/10 text-sm text-white px-3 py-2 focus:border-primary/50 focus:ring-1 focus:ring-primary/30" />
+                                    class="w-full rounded-lg bg-surface-dark border border-border-inverse text-sm text-text-theme px-3 py-2 focus:border-primary/50 focus:ring-1 focus:ring-primary/30" />
                             </div>
                             <button id="wf-run-btn" type="button"
-                                class="w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-2.5 bg-primary hover:bg-primary/90 text-background-dark font-bold text-sm rounded-lg transition-all shadow-[0_0_15px_rgba(7,182,213,0.2)]">
+                                class="w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-2.5 bg-primary hover:bg-primary/90 text-slate-900 font-bold text-sm rounded-lg transition-all shadow-[0_0_15px_rgba(7,182,213,0.2)]">
                                 <span class="material-symbols-outlined text-[18px]">play_arrow</span>
                                 Run pipeline
                             </button>
@@ -982,11 +1078,11 @@
                     </div>
                     <div>
                         <h3 class="text-[10px] font-bold text-text-subtle uppercase tracking-wider mb-2">Sink outputs</h3>
-                        <pre id="wf-sink-json" class="text-[11px] font-mono text-cyan-200/90 bg-black/50 border border-white/10 rounded-lg p-4 overflow-x-auto min-h-[4rem] whitespace-pre-wrap">{}</pre>
+                        <pre id="wf-sink-json" class="text-[11px] font-mono text-code-block-text bg-code-block-bg border border-border-inverse rounded-lg p-4 overflow-x-auto min-h-[4rem] whitespace-pre-wrap">{}</pre>
                     </div>
                     <div>
                         <h3 class="text-[10px] font-bold text-text-subtle uppercase tracking-wider mb-2">All node outputs</h3>
-                        <pre id="wf-nodes-json" class="text-[11px] font-mono text-slate-300 bg-black/50 border border-white/10 rounded-lg p-4 overflow-x-auto max-h-[40vh] whitespace-pre-wrap">// Run a pipeline to see per-node results</pre>
+                        <pre id="wf-nodes-json" class="text-[11px] font-mono text-text-theme bg-code-block-bg border border-border-inverse rounded-lg p-4 overflow-x-auto max-h-[40vh] whitespace-pre-wrap">// Run a pipeline to see per-node results</pre>
                     </div>
                 </div>
             `;
@@ -996,27 +1092,27 @@
             workflowBuilderView.id = 'workflow-builder-view';
             workflowBuilderView.className = 'hidden flex-1 flex flex-col h-full min-h-0 overflow-hidden bg-background-dark';
             workflowBuilderView.innerHTML = `
-                <div class="flex items-center justify-between px-6 py-4 border-b border-white/5 flex-shrink-0">
+                <div class="flex items-center justify-between px-6 py-4 border-b border-border-subtle-inv flex-shrink-0">
                     <div class="flex items-center gap-3">
                         <span class="material-symbols-outlined text-primary text-2xl">schema</span>
                         <div>
-                            <h1 class="text-base font-bold text-white">Workflow builder</h1>
+                            <h1 class="text-base font-bold text-text-theme">Workflow builder</h1>
                             <p class="text-[11px] text-text-subtle">Canvas editor (n8n-style) · <span id="wb-node-type-count">…</span> node types · drag nodes, wire outputs → inputs</p>
                         </div>
                     </div>
-                    <span id="wb-status" class="text-xs font-mono px-2 py-1 rounded bg-white/5 text-text-subtle border border-white/10">Idle</span>
+                    <span id="wb-status" class="text-xs font-mono px-2 py-1 rounded bg-hover-bg text-text-subtle border border-border-inverse">Idle</span>
                 </div>
-                <div class="flex flex-1 flex-col min-h-0 border-t border-white/5">
-                    <div class="flex items-center gap-2 px-3 py-2 border-b border-white/5 bg-surface-darker/80 flex-shrink-0 flex-wrap">
+                <div class="flex flex-1 flex-col min-h-0 border-t border-border-subtle-inv">
+                    <div class="flex items-center gap-2 px-3 py-2 border-b border-border-subtle-inv bg-surface-darker/80 flex-shrink-0 flex-wrap">
                         <label class="text-[9px] text-text-subtle uppercase tracking-wider shrink-0">Template</label>
-                        <select id="wb-template-select" class="rounded-lg bg-surface-dark border border-white/10 text-xs text-white px-2 py-1.5 max-w-[220px] focus:border-primary/50"></select>
-                        <div class="w-px h-5 bg-white/10 mx-1 hidden sm:block"></div>
-                        <button type="button" id="wb-zoom-out" class="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-text-subtle hover:text-white" title="Zoom out"><span class="material-symbols-outlined text-[18px]">remove</span></button>
-                        <button type="button" id="wb-zoom-in" class="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-text-subtle hover:text-white" title="Zoom in"><span class="material-symbols-outlined text-[18px]">add</span></button>
-                        <button type="button" id="wb-zoom-fit" class="px-2 py-1 rounded-lg bg-white/5 hover:bg-white/10 text-[10px] text-text-subtle hover:text-white" title="Fit view">Fit</button>
+                        <select id="wb-template-select" class="rounded-lg bg-surface-dark border border-border-inverse text-xs text-text-theme px-2 py-1.5 max-w-[220px] focus:border-primary/50"></select>
+                        <div class="w-px h-5 bg-hover-bg-strong mx-1 hidden sm:block"></div>
+                        <button type="button" id="wb-zoom-out" class="p-1.5 rounded-lg bg-hover-bg hover:bg-hover-bg-strong text-text-subtle hover:text-text-theme" title="Zoom out"><span class="material-symbols-outlined text-[18px]">remove</span></button>
+                        <button type="button" id="wb-zoom-in" class="p-1.5 rounded-lg bg-hover-bg hover:bg-hover-bg-strong text-text-subtle hover:text-text-theme" title="Zoom in"><span class="material-symbols-outlined text-[18px]">add</span></button>
+                        <button type="button" id="wb-zoom-fit" class="px-2 py-1 rounded-lg bg-hover-bg hover:bg-hover-bg-strong text-[10px] text-text-subtle hover:text-text-theme" title="Fit view">Fit</button>
                         <span id="wb-zoom-label" class="text-[10px] font-mono text-text-subtle w-12">100%</span>
                         <div class="flex-1"></div>
-                        <button type="button" id="wb-clear-run" class="px-2 py-1 rounded-lg bg-white/5 hover:bg-white/10 text-[10px] text-text-subtle hover:text-white border border-white/10" title="Clear output badges on nodes">Clear results</button>
+                        <button type="button" id="wb-clear-run" class="px-2 py-1 rounded-lg bg-hover-bg hover:bg-hover-bg-strong text-[10px] text-text-subtle hover:text-text-theme border border-border-inverse" title="Clear output badges on nodes">Clear results</button>
                         <span class="text-[10px] text-text-subtle hidden lg:inline max-w-[200px] xl:max-w-none truncate xl:whitespace-normal">Wire: drag output→input · Delete: selected node or selected wire · Click wire to select</span>
                         <button type="button" id="wb-run-btn" class="flex items-center gap-1.5 px-4 py-2 rounded-lg font-bold text-sm text-white shadow-lg transition-all bg-gradient-to-r from-rose-500 to-orange-500 hover:from-rose-400 hover:to-orange-400">
                             <span class="material-symbols-outlined text-[18px]">play_arrow</span>
@@ -1024,9 +1120,9 @@
                         </button>
                     </div>
                     <div class="flex flex-1 min-h-0">
-                        <aside class="w-[min(260px,32vw)] sm:w-[260px] flex-shrink-0 border-r border-white/5 bg-surface-darker flex flex-col min-h-0">
-                            <div class="p-3 border-b border-white/5">
-                                <input type="search" id="wb-palette-search" placeholder="Search nodes…" class="w-full rounded-lg bg-surface-dark border border-white/10 text-xs text-white px-3 py-2 placeholder:text-text-subtle focus:border-primary/50 focus:ring-1 focus:ring-primary/30" />
+                        <aside class="w-[min(260px,32vw)] sm:w-[260px] flex-shrink-0 border-r border-border-subtle-inv bg-surface-darker flex flex-col min-h-0">
+                            <div class="p-3 border-b border-border-subtle-inv">
+                                <input type="search" id="wb-palette-search" placeholder="Search nodes…" class="w-full rounded-lg bg-surface-dark border border-border-inverse text-xs text-text-theme px-3 py-2 placeholder:text-text-subtle focus:border-primary/50 focus:ring-1 focus:ring-primary/30" />
                             </div>
                             <div id="wb-palette-list" class="flex-1 overflow-y-auto custom-scrollbar min-h-0 p-2"></div>
                         </aside>
@@ -1037,7 +1133,7 @@
                             </div>
                         </div>
                         <aside class="wb-inspector-panel w-[min(280px,40vw)] lg:w-[300px] flex-shrink-0 flex flex-col min-h-0 max-md:hidden">
-                            <div class="p-3 border-b border-white/5">
+                            <div class="p-3 border-b border-border-subtle-inv">
                                 <h2 class="text-[10px] font-bold text-text-subtle uppercase tracking-wider" id="wb-inspector-title">Node</h2>
                                 <p id="wb-inspector-hint" class="text-[11px] text-text-subtle mt-1">Select a node or a wire</p>
                                 <p id="wb-inspector-wire-label" class="text-[10px] font-mono text-primary mt-2 hidden"></p>
@@ -1046,7 +1142,7 @@
                             <div id="wb-inspector-fields" class="flex-1 overflow-y-auto custom-scrollbar p-3 space-y-3 hidden">
                                 <div>
                                     <label class="text-[9px] text-text-subtle uppercase block mb-1">Node ID</label>
-                                    <input type="text" id="wb-inspector-id" class="w-full rounded-lg bg-surface-dark border border-white/10 text-xs text-white px-2 py-1.5 font-mono" />
+                                    <input type="text" id="wb-inspector-id" class="w-full rounded-lg bg-surface-dark border border-border-inverse text-xs text-text-theme px-2 py-1.5 font-mono" />
                                 </div>
                                 <div>
                                     <label class="text-[9px] text-text-subtle uppercase block mb-1">Type</label>
@@ -1062,7 +1158,7 @@
                                         </div>
                                     </div>
                                     <div id="wb-inspector-params-form" class="flex flex-col gap-2"></div>
-                                    <textarea id="wb-inspector-params" rows="6" class="hidden w-full rounded-lg bg-black/40 border border-white/10 text-[11px] font-mono text-cyan-100/90 px-2 py-1.5 resize-y min-h-[5rem]" spellcheck="false"></textarea>
+                                    <textarea id="wb-inspector-params" rows="6" class="hidden w-full rounded-lg bg-code-block-bg border border-border-inverse text-[11px] font-mono text-code-block-text px-2 py-1.5 resize-y min-h-[5rem]" spellcheck="false"></textarea>
                                 </div>
                                 <div id="wb-inspector-connections-wrap" class="hidden">
                                     <label class="text-[9px] text-text-subtle uppercase block mb-1">Connections</label>
@@ -1071,24 +1167,24 @@
                                 </div>
                                 <div id="wb-inspector-lastrun-wrap" class="hidden">
                                     <label class="text-[9px] text-text-subtle uppercase block mb-1">Last run output (this node)</label>
-                                    <pre id="wb-inspector-lastrun" class="text-[10px] font-mono text-slate-300 bg-black/40 border border-white/10 rounded-lg p-2 max-h-48 overflow-auto custom-scrollbar whitespace-pre-wrap"></pre>
+                                    <pre id="wb-inspector-lastrun" class="text-[10px] font-mono text-text-theme bg-code-block-bg border border-border-inverse rounded-lg p-2 max-h-48 overflow-auto custom-scrollbar whitespace-pre-wrap"></pre>
                                 </div>
                                 <button type="button" id="wb-inspector-delete" class="w-full py-2 rounded-lg border border-rose-500/40 text-rose-300 text-xs hover:bg-rose-500/10">Remove node</button>
                             </div>
                         </aside>
                     </div>
-                    <div class="border-t border-white/5 bg-surface-darker/90 flex-shrink-0 max-h-[38vh] flex flex-col min-h-0">
-                        <div class="flex border-b border-white/5 text-[10px] font-medium">
-                            <button type="button" class="wb-bottom-tab px-4 py-2 text-white border-b-2 border-primary bg-white/5" data-wb-tab="inputs">Form</button>
-                            <button type="button" class="wb-bottom-tab px-4 py-2 text-text-subtle hover:text-white border-b-2 border-transparent" data-wb-tab="inputs-json">JSON</button>
-                            <button type="button" class="wb-bottom-tab px-4 py-2 text-text-subtle hover:text-white border-b-2 border-transparent" data-wb-tab="sink">Sink output</button>
-                            <button type="button" class="wb-bottom-tab px-4 py-2 text-text-subtle hover:text-white border-b-2 border-transparent" data-wb-tab="nodes">All nodes</button>
+                    <div class="border-t border-border-subtle-inv bg-surface-darker/90 flex-shrink-0 max-h-[38vh] flex flex-col min-h-0">
+                        <div class="flex border-b border-border-subtle-inv text-[10px] font-medium">
+                            <button type="button" class="wb-bottom-tab px-4 py-2 text-text-theme border-b-2 border-primary bg-hover-bg" data-wb-tab="inputs">Form</button>
+                            <button type="button" class="wb-bottom-tab px-4 py-2 text-text-subtle hover:text-text-theme border-b-2 border-transparent" data-wb-tab="inputs-json">JSON</button>
+                            <button type="button" class="wb-bottom-tab px-4 py-2 text-text-subtle hover:text-text-theme border-b-2 border-transparent" data-wb-tab="sink">Sink output</button>
+                            <button type="button" class="wb-bottom-tab px-4 py-2 text-text-subtle hover:text-text-theme border-b-2 border-transparent" data-wb-tab="nodes">All nodes</button>
                         </div>
                         <div class="flex-1 min-h-0 overflow-hidden p-3 grid">
                             <div id="wb-initial-inputs-form" class="wb-bottom-panel row-start-1 col-start-1 w-full h-full min-h-[120px] overflow-auto custom-scrollbar"></div>
-                            <textarea id="wb-initial-inputs" class="wb-bottom-panel row-start-1 col-start-1 hidden w-full h-full min-h-[120px] rounded-lg bg-black/40 border border-white/10 text-[11px] font-mono text-cyan-100/90 px-3 py-2 resize-none focus:border-primary/50 custom-scrollbar" spellcheck="false">{}</textarea>
-                            <pre id="wb-sink-json" class="wb-bottom-panel row-start-1 col-start-1 hidden w-full h-full min-h-[120px] overflow-auto rounded-lg bg-black/40 border border-white/10 text-[11px] font-mono text-cyan-200/90 p-3 custom-scrollbar whitespace-pre-wrap">{}</pre>
-                            <pre id="wb-builder-nodes-json" class="wb-bottom-panel row-start-1 col-start-1 hidden w-full h-full min-h-[120px] overflow-auto rounded-lg bg-black/40 border border-white/10 text-[11px] font-mono text-slate-300 p-3 custom-scrollbar whitespace-pre-wrap">// Run to see outputs</pre>
+                            <textarea id="wb-initial-inputs" class="wb-bottom-panel row-start-1 col-start-1 hidden w-full h-full min-h-[120px] rounded-lg bg-code-block-bg border border-border-inverse text-[11px] font-mono text-code-block-text px-3 py-2 resize-none focus:border-primary/50 custom-scrollbar" spellcheck="false">{}</textarea>
+                            <pre id="wb-sink-json" class="wb-bottom-panel row-start-1 col-start-1 hidden w-full h-full min-h-[120px] overflow-auto rounded-lg bg-code-block-bg border border-border-inverse text-[11px] font-mono text-code-block-text p-3 custom-scrollbar whitespace-pre-wrap">{}</pre>
+                            <pre id="wb-builder-nodes-json" class="wb-bottom-panel row-start-1 col-start-1 hidden w-full h-full min-h-[120px] overflow-auto rounded-lg bg-code-block-bg border border-border-inverse text-[11px] font-mono text-text-theme p-3 custom-scrollbar whitespace-pre-wrap">// Run to see outputs</pre>
                         </div>
                     </div>
                 </div>
@@ -1099,28 +1195,28 @@
             drugDiscoveryView.id = 'drug-discovery-view';
             drugDiscoveryView.className = 'hidden flex-1 flex flex-col h-full min-h-0 overflow-hidden bg-background-dark';
             drugDiscoveryView.innerHTML = `
-                <div class="flex items-center justify-between px-6 py-4 border-b border-white/5 flex-shrink-0">
+                <div class="flex items-center justify-between px-6 py-4 border-b border-border-subtle-inv flex-shrink-0">
                     <div class="flex items-center gap-3">
                         <span class="material-symbols-outlined text-primary text-2xl">medication</span>
                         <div>
-                            <h1 class="text-base font-bold text-white">Drug Discovery</h1>
+                            <h1 class="text-base font-bold text-text-theme">Drug Discovery</h1>
                             <p class="text-[11px] text-text-subtle">Scenario launchers for agentic small-molecule design · docking + Boltz in parallel · ADMET / off-target / retrosynthesis gates</p>
                         </div>
                     </div>
-                    <span id="dd-status" class="text-xs font-mono px-2 py-1 rounded bg-white/5 text-text-subtle border border-white/10">Idle</span>
+                    <span id="dd-status" class="text-xs font-mono px-2 py-1 rounded bg-hover-bg text-text-subtle border border-border-inverse">Idle</span>
                 </div>
                 <div class="flex-1 overflow-y-auto custom-scrollbar p-6 max-w-6xl w-full mx-auto flex flex-col gap-6">
                     <div id="dd-scenario-grid" class="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <!-- Scenario cards injected by drug_discovery.js -->
                     </div>
 
-                    <div id="dd-runner-panel" class="rounded-xl border border-white/10 bg-surface-card/40 p-5 hidden">
+                    <div id="dd-runner-panel" class="rounded-xl border border-border-inverse bg-surface-card/40 p-5 hidden">
                         <div class="flex items-start justify-between gap-3 mb-4">
                             <div>
-                                <h2 id="dd-runner-title" class="text-sm font-bold text-white">Scenario</h2>
+                                <h2 id="dd-runner-title" class="text-sm font-bold text-text-theme">Scenario</h2>
                                 <p id="dd-runner-description" class="text-[11px] text-text-subtle leading-relaxed max-w-2xl"></p>
                             </div>
-                            <button id="dd-runner-close" type="button" class="text-text-subtle hover:text-white" title="Close">
+                            <button id="dd-runner-close" type="button" class="text-text-subtle hover:text-text-theme" title="Close">
                                 <span class="material-symbols-outlined text-[20px]">close</span>
                             </button>
                         </div>
@@ -1136,20 +1232,20 @@
                             <div>
                                 <div class="flex items-center justify-between mb-2">
                                     <h3 class="text-[10px] font-bold text-text-subtle uppercase tracking-wider">Gate thresholds</h3>
-                                    <button id="dd-thresholds-reset" type="button" class="text-[10px] text-text-subtle hover:text-white underline-offset-2 hover:underline">Reset</button>
+                                    <button id="dd-thresholds-reset" type="button" class="text-[10px] text-text-subtle hover:text-text-theme underline-offset-2 hover:underline">Reset</button>
                                 </div>
                                 <div id="dd-threshold-editor" class="flex flex-col gap-3 max-h-[28rem] overflow-y-auto custom-scrollbar pr-1"></div>
                             </div>
                         </div>
 
-                        <div class="flex flex-wrap items-center gap-3 mt-5 pt-4 border-t border-white/5">
+                        <div class="flex flex-wrap items-center gap-3 mt-5 pt-4 border-t border-border-subtle-inv">
                             <button id="dd-run-btn" type="button"
-                                class="flex items-center gap-2 px-5 py-2.5 bg-primary hover:bg-primary/90 text-background-dark font-bold text-sm rounded-lg transition-all shadow-[0_0_15px_rgba(7,182,213,0.2)] disabled:opacity-50 disabled:cursor-not-allowed">
+                                class="flex items-center gap-2 px-5 py-2.5 bg-primary hover:bg-primary/90 text-slate-900 font-bold text-sm rounded-lg transition-all shadow-[0_0_15px_rgba(7,182,213,0.2)] disabled:opacity-50 disabled:cursor-not-allowed">
                                 <span class="material-symbols-outlined text-[18px]">play_arrow</span>
                                 Run scenario
                             </button>
                             <button id="dd-open-in-builder" type="button"
-                                class="flex items-center gap-2 px-3 py-2 bg-white/5 hover:bg-white/10 text-text-subtle hover:text-white border border-white/10 text-xs rounded-lg transition-all">
+                                class="flex items-center gap-2 px-3 py-2 bg-hover-bg hover:bg-hover-bg-strong text-text-subtle hover:text-text-theme border border-border-inverse text-xs rounded-lg transition-all">
                                 <span class="material-symbols-outlined text-[16px]">schema</span>
                                 Open as template in Workflow Builder
                             </button>
@@ -1158,27 +1254,27 @@
                     </div>
 
                     <div id="dd-results-panel" class="hidden flex flex-col gap-4">
-                        <div class="rounded-xl border border-white/10 bg-surface-card/40 p-5">
+                        <div class="rounded-xl border border-border-inverse bg-surface-card/40 p-5">
                             <div class="flex items-center justify-between mb-3">
-                                <h3 class="text-xs font-bold text-white uppercase tracking-wide">Decision log</h3>
+                                <h3 class="text-xs font-bold text-text-theme uppercase tracking-wide">Decision log</h3>
                                 <span id="dd-decision-summary" class="text-[10px] text-text-subtle"></span>
                             </div>
                             <div id="dd-decision-log" class="flex flex-col gap-2"></div>
                         </div>
-                        <div class="rounded-xl border border-white/10 bg-surface-card/40 p-5">
-                            <h3 class="text-xs font-bold text-white uppercase tracking-wide mb-3">Gate verdicts</h3>
+                        <div class="rounded-xl border border-border-inverse bg-surface-card/40 p-5">
+                            <h3 class="text-xs font-bold text-text-theme uppercase tracking-wide mb-3">Gate verdicts</h3>
                             <div id="dd-verdicts-grid" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3"></div>
                         </div>
-                        <div class="rounded-xl border border-white/10 bg-surface-card/40 p-5">
+                        <div class="rounded-xl border border-border-inverse bg-surface-card/40 p-5">
                             <div class="flex items-center justify-between mb-2">
-                                <h3 class="text-xs font-bold text-white uppercase tracking-wide">Target dossier</h3>
+                                <h3 class="text-xs font-bold text-text-theme uppercase tracking-wide">Target dossier</h3>
                                 <span id="dd-dossier-meta" class="text-[10px] text-text-subtle font-mono"></span>
                             </div>
-                            <pre id="dd-dossier-json" class="text-[11px] font-mono text-slate-300 bg-black/50 border border-white/10 rounded-lg p-4 overflow-x-auto max-h-[20rem] whitespace-pre-wrap">{}</pre>
+                            <pre id="dd-dossier-json" class="text-[11px] font-mono text-text-theme bg-code-block-bg border border-border-inverse rounded-lg p-4 overflow-x-auto max-h-[20rem] whitespace-pre-wrap">{}</pre>
                         </div>
-                        <div class="rounded-xl border border-white/10 bg-surface-card/40 p-5">
-                            <h3 class="text-xs font-bold text-white uppercase tracking-wide mb-3">Raw per-node outputs</h3>
-                            <pre id="dd-nodes-json" class="text-[11px] font-mono text-slate-300 bg-black/50 border border-white/10 rounded-lg p-4 overflow-x-auto max-h-[40vh] whitespace-pre-wrap">{}</pre>
+                        <div class="rounded-xl border border-border-inverse bg-surface-card/40 p-5">
+                            <h3 class="text-xs font-bold text-text-theme uppercase tracking-wide mb-3">Raw per-node outputs</h3>
+                            <pre id="dd-nodes-json" class="text-[11px] font-mono text-text-theme bg-code-block-bg border border-border-inverse rounded-lg p-4 overflow-x-auto max-h-[40vh] whitespace-pre-wrap">{}</pre>
                         </div>
                     </div>
                 </div>
@@ -1188,13 +1284,13 @@
             function navInactive(el) {
                 if (!el) return;
                 el.classList.remove('bg-primary/20','border','border-primary/20','text-primary');
-                el.classList.add('text-text-subtle','hover:text-white','hover:bg-white/5');
+                el.classList.add('text-text-subtle','hover:text-text-theme','hover:bg-hover-bg');
             }
 
             function navActive(el) {
                 if (!el) return;
                 el.classList.add('bg-primary/20','border','border-primary/20','text-primary');
-                el.classList.remove('text-text-subtle','hover:text-white','hover:bg-white/5');
+                el.classList.remove('text-text-subtle','hover:text-text-theme','hover:bg-hover-bg');
             }
 
             const allViews = [researchView, expView, workflowsView, workflowBuilderView, drugDiscoveryView];

@@ -263,12 +263,12 @@ function renderReferenceHoverCard(refId, targetElement) {
             <div class="reference-hover-card" id="refCard-${refId}">
                 <div class="flex items-start justify-between mb-2">
                     <span class="text-xs font-bold text-primary">[${displayNum}] Paper</span>
-                    <button onclick="closeHoverCard('${refId}')" class="text-slate-400 hover:text-white">
+                    <button onclick="closeHoverCard('${refId}')" class="text-text-subtle hover:text-text-theme">
                         <span class="material-symbols-outlined text-sm">close</span>
                     </button>
                 </div>
-                <div class="text-sm font-medium text-white mb-1">${ref.title}</div>
-                <div class="text-xs text-slate-400 mb-2">${authors} (${year})${journal}</div>
+                <div class="text-sm font-medium text-text-theme mb-1">${ref.title}</div>
+                <div class="text-xs text-text-subtle mb-2">${authors} (${year})${journal}</div>
                 ${ref.doi ? `<div class="text-xs text-primary mb-1">DOI: ${ref.doi}</div>` : ''}
                 ${ref.pmid ? `<div class="text-xs text-primary mb-1">PMID: ${ref.pmid}</div>` : ''}
                 ${ref.url ? `<a href="${ref.url}" target="_blank" class="text-xs text-primary hover:underline">View paper →</a>` : ''}
@@ -283,13 +283,13 @@ function renderReferenceHoverCard(refId, targetElement) {
             <div class="reference-hover-card" id="refCard-${refId}">
                 <div class="flex items-start justify-between mb-2">
                     <span class="text-xs font-bold text-primary">[${displayNum}] Database</span>
-                    <button onclick="closeHoverCard('${refId}')" class="text-slate-400 hover:text-white">
+                    <button onclick="closeHoverCard('${refId}')" class="text-text-subtle hover:text-text-theme">
                         <span class="material-symbols-outlined text-sm">close</span>
                     </button>
                 </div>
-                <div class="text-sm font-medium text-white mb-1">${ref.title}</div>
-                <div class="text-xs text-slate-400 mb-2">${ref.database_name}</div>
-                ${ids ? `<div class="text-xs text-slate-300 mb-2">IDs: ${ids}</div>` : ''}
+                <div class="text-sm font-medium text-text-theme mb-1">${ref.title}</div>
+                <div class="text-xs text-text-subtle mb-2">${ref.database_name}</div>
+                ${ids ? `<div class="text-xs text-text-theme mb-2">IDs: ${ids}</div>` : ''}
                 ${ref.url ? `<a href="${ref.url}" target="_blank" class="text-xs text-primary hover:underline">View entry →</a>` : ''}
             </div>
         `;
@@ -301,14 +301,14 @@ function renderReferenceHoverCard(refId, targetElement) {
             <div class="reference-hover-card" id="refCard-${refId}">
                 <div class="flex items-start justify-between mb-2">
                     <span class="text-xs font-bold text-primary">[${displayNum}] Structure</span>
-                    <button onclick="closeHoverCard('${refId}')" class="text-slate-400 hover:text-white">
+                    <button onclick="closeHoverCard('${refId}')" class="text-text-subtle hover:text-text-theme">
                         <span class="material-symbols-outlined text-sm">close</span>
                     </button>
                 </div>
-                <div class="text-sm font-medium text-white mb-1">${ref.title}</div>
-                <div class="text-xs text-slate-400 mb-2">${source}${method}</div>
-                ${ref.pdb_id ? `<div class="text-xs text-slate-300 mb-1">PDB: ${ref.pdb_id}</div>` : ''}
-                ${ref.uniprot_id ? `<div class="text-xs text-slate-300 mb-1">UniProt: ${ref.uniprot_id}</div>` : ''}
+                <div class="text-sm font-medium text-text-theme mb-1">${ref.title}</div>
+                <div class="text-xs text-text-subtle mb-2">${source}${method}</div>
+                ${ref.pdb_id ? `<div class="text-xs text-text-theme mb-1">PDB: ${ref.pdb_id}</div>` : ''}
+                ${ref.uniprot_id ? `<div class="text-xs text-text-theme mb-1">UniProt: ${ref.uniprot_id}</div>` : ''}
                 ${ref.url ? `<a href="${ref.url}" target="_blank" class="text-xs text-primary hover:underline">View structure →</a>` : ''}
             </div>
         `;
@@ -317,12 +317,12 @@ function renderReferenceHoverCard(refId, targetElement) {
             <div class="reference-hover-card" id="refCard-${refId}">
                 <div class="flex items-start justify-between mb-2">
                     <span class="text-xs font-bold text-primary">[${displayNum}] Tool</span>
-                    <button onclick="closeHoverCard('${refId}')" class="text-slate-400 hover:text-white">
+                    <button onclick="closeHoverCard('${refId}')" class="text-text-subtle hover:text-text-theme">
                         <span class="material-symbols-outlined text-sm">close</span>
                     </button>
                 </div>
-                <div class="text-sm font-medium text-white mb-1">${ref.title}</div>
-                ${ref.description ? `<div class="text-xs text-slate-400 mb-2">${ref.description}</div>` : ''}
+                <div class="text-sm font-medium text-text-theme mb-1">${ref.title}</div>
+                ${ref.description ? `<div class="text-xs text-text-subtle mb-2">${ref.description}</div>` : ''}
                 ${ref.source_url ? `<a href="${ref.source_url}" target="_blank" class="text-xs text-primary hover:underline">View tool →</a>` : ''}
             </div>
         `;
@@ -333,13 +333,13 @@ function renderReferenceHoverCard(refId, targetElement) {
             <div class="reference-hover-card" id="refCard-${refId}">
                 <div class="flex items-start justify-between mb-2">
                     <span class="text-xs font-bold text-primary">[${displayNum}] Artifact</span>
-                    <button onclick="closeHoverCard('${refId}')" class="text-slate-400 hover:text-white">
+                    <button onclick="closeHoverCard('${refId}')" class="text-text-subtle hover:text-text-theme">
                         <span class="material-symbols-outlined text-sm">close</span>
                     </button>
                 </div>
-                <div class="text-sm font-medium text-white mb-1">${ref.file_name}</div>
-                <div class="text-xs text-slate-400 mb-2">${ref.file_type || 'File'}${size}</div>
-                ${ref.agent ? `<div class="text-xs text-slate-300 mb-1">Generated by: ${ref.agent}</div>` : ''}
+                <div class="text-sm font-medium text-text-theme mb-1">${ref.file_name}</div>
+                <div class="text-xs text-text-subtle mb-2">${ref.file_type || 'File'}${size}</div>
+                ${ref.agent ? `<div class="text-xs text-text-theme mb-1">Generated by: ${ref.agent}</div>` : ''}
             </div>
         `;
     } else {
@@ -348,11 +348,11 @@ function renderReferenceHoverCard(refId, targetElement) {
             <div class="reference-hover-card" id="refCard-${refId}">
                 <div class="flex items-start justify-between mb-2">
                     <span class="text-xs font-bold text-primary">[${displayNum}] Reference</span>
-                    <button onclick="closeHoverCard('${refId}')" class="text-slate-400 hover:text-white">
+                    <button onclick="closeHoverCard('${refId}')" class="text-text-subtle hover:text-text-theme">
                         <span class="material-symbols-outlined text-sm">close</span>
                     </button>
                 </div>
-                <div class="text-sm font-medium text-white mb-1">${ref.title}</div>
+                <div class="text-sm font-medium text-text-theme mb-1">${ref.title}</div>
                 ${ref.url ? `<a href="${ref.url}" target="_blank" class="text-xs text-primary hover:underline">View →</a>` : ''}
             </div>
         `;
@@ -454,7 +454,7 @@ function updateReferencePanel() {
         };
 
         html += `<div class="mb-3">`;
-        html += `<div class="text-[9px] font-bold text-slate-600 uppercase tracking-wider mb-1.5">${typeLabels[type]}</div>`;
+        html += `<div class="text-[9px] font-bold text-text-muted uppercase tracking-wider mb-1.5">${typeLabels[type]}</div>`;
 
         refs.forEach(ref => {
             const displayNum = state.displayNumbers.get(ref.id);
@@ -474,12 +474,12 @@ function updateReferencePanel() {
             }
 
             html += `
-                <div class="reference-item p-2 rounded bg-surface-dark border border-white/5 hover:border-primary/20 mb-1.5 transition-all" data-ref-id="${ref.id}" data-ref-num="${displayNum}">
+                <div class="reference-item p-2 rounded bg-surface-dark border border-border-subtle-inv hover:border-primary/20 mb-1.5 transition-all" data-ref-id="${ref.id}" data-ref-num="${displayNum}">
                     <div class="flex items-start gap-2">
                         <span class="citation-number text-[10px]">[${displayNum}]</span>
                         <div class="flex-1 min-w-0">
-                            <div class="text-[11px] font-medium text-white truncate">${truncTitle}</div>
-                            ${subtitle ? `<div class="text-[10px] text-slate-500 truncate">${subtitle}</div>` : ''}
+                            <div class="text-[11px] font-medium text-text-theme truncate">${truncTitle}</div>
+                            ${subtitle ? `<div class="text-[10px] text-text-muted truncate">${subtitle}</div>` : ''}
                             ${ref.url ? `<a href="${ref.url}" target="_blank" class="text-[10px] text-primary hover:underline" onclick="event.stopPropagation()">View →</a>` : ''}
                         </div>
                     </div>
@@ -582,6 +582,9 @@ function initializeApp() {
     // Load saved data
     loadFromStorage();
 
+    // Apply theme (must happen early to avoid flash)
+    initTheme();
+
     // Initialize all components
     initInputHandlers();
     initExampleChips();
@@ -595,6 +598,7 @@ function initializeApp() {
     initFileAttachment();
     initVoiceInput();
     initAdvancedModeToggle();
+    initThemeToggle();
 
     // Render initial state
     renderAgentList();
@@ -908,8 +912,8 @@ function renderCodeExecution(steps, agentId) {
         if (step.thought) {
             contentHtml += `
                 <div class="mb-3">
-                    <p class="text-[9px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">Reasoning</p>
-                    <div class="bg-surface-dark/50 rounded-lg p-3 border border-white/5 text-xs text-slate-300 italic leading-relaxed">
+                    <p class="text-[9px] font-bold text-text-muted uppercase tracking-widest mb-1.5">Reasoning</p>
+                    <div class="bg-surface-dark/50 rounded-lg p-3 border border-border-subtle-inv text-xs text-text-theme italic leading-relaxed">
                         ${escapeHtml(step.thought)}
                     </div>
                 </div>
@@ -919,8 +923,8 @@ function renderCodeExecution(steps, agentId) {
         if (step.code) {
             contentHtml += `
                 <div class="mb-3">
-                    <p class="text-[9px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">Generated Code</p>
-                    <div class="bg-black/60 rounded-lg p-3 border border-white/5 font-mono text-[11px] text-amber-200/90 overflow-x-auto">
+                    <p class="text-[9px] font-bold text-text-muted uppercase tracking-widest mb-1.5">Generated Code</p>
+                    <div class="bg-overlay rounded-lg p-3 border border-border-subtle-inv font-mono text-[11px] text-amber-200/90 overflow-x-auto">
                         <pre><code>${escapeHtml(step.code)}</code></pre>
                     </div>
                 </div>
@@ -930,8 +934,8 @@ function renderCodeExecution(steps, agentId) {
         if (step.output) {
             contentHtml += `
                 <div class="mb-3">
-                    <p class="text-[9px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">Standard Output</p>
-                    <div class="bg-slate-900/80 rounded-lg p-3 border border-white/5 font-mono text-[11px] text-emerald-400/90 overflow-x-auto whitespace-pre">
+                    <p class="text-[9px] font-bold text-text-muted uppercase tracking-widest mb-1.5">Standard Output</p>
+                    <div class="bg-surface-darker/80 rounded-lg p-3 border border-border-subtle-inv font-mono text-[11px] text-emerald-400/90 overflow-x-auto whitespace-pre">
                         <code>${escapeHtml(step.output)}</code>
                     </div>
                 </div>
@@ -941,8 +945,8 @@ function renderCodeExecution(steps, agentId) {
         if (step.logs && step.logs.length > 50) { // Only show significant logs
             contentHtml += `
                 <div>
-                    <p class="text-[9px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">Execution Logs</p>
-                    <div class="bg-slate-950/50 rounded-lg p-3 border border-white/5 font-mono text-[10px] text-slate-500 overflow-x-auto whitespace-pre">
+                    <p class="text-[9px] font-bold text-text-muted uppercase tracking-widest mb-1.5">Execution Logs</p>
+                    <div class="bg-slate-950/50 rounded-lg p-3 border border-border-subtle-inv font-mono text-[10px] text-text-muted overflow-x-auto whitespace-pre">
                         <code>${escapeHtml(step.logs)}</code>
                     </div>
                 </div>
@@ -950,12 +954,12 @@ function renderCodeExecution(steps, agentId) {
         }
 
         return `
-            <div class="p-4 rounded-xl bg-surface-dark border border-white/5 animate-fadeIn">
+            <div class="p-4 rounded-xl bg-surface-dark border border-border-subtle-inv animate-fadeIn">
                 <div class="flex items-center gap-2 mb-3">
                     <div class="h-6 w-6 rounded-full ${colorClass.bg} flex items-center justify-center border ${colorClass.border}">
                         <span class="text-[10px] font-bold ${colorClass.text}">${step.step}</span>
                     </div>
-                    <span class="text-[11px] font-bold text-white uppercase tracking-tight">Step ${step.step} — ${agent.label}</span>
+                    <span class="text-[11px] font-bold text-text-theme uppercase tracking-tight">Step ${step.step} — ${agent.label}</span>
                 </div>
                 ${contentHtml}
             </div>
@@ -1257,14 +1261,14 @@ function initVoiceInput() {
     recognition.onstart = () => {
         isListening = true;
         voiceBtn.classList.add('text-primary', 'animate-pulse');
-        voiceBtn.classList.remove('text-slate-400');
+        voiceBtn.classList.remove('text-text-subtle');
         logTerminal('Voice input active...');
     };
 
     recognition.onend = () => {
         isListening = false;
         voiceBtn.classList.remove('text-primary', 'animate-pulse');
-        voiceBtn.classList.add('text-slate-400');
+        voiceBtn.classList.add('text-text-subtle');
     };
 
     recognition.onresult = (event) => {
@@ -1281,7 +1285,7 @@ function initVoiceInput() {
         showToast('Voice recognition error', 'error');
         isListening = false;
         voiceBtn.classList.remove('text-primary', 'animate-pulse');
-        voiceBtn.classList.add('text-slate-400');
+        voiceBtn.classList.add('text-text-subtle');
     };
 
     voiceBtn.addEventListener('click', () => {
@@ -1321,7 +1325,7 @@ function addSteeringBanner(steeringText) {
                     </div>
                     <p class="whitespace-pre-wrap text-amber-50">${escapeHtml(steeringText)}</p>
                 </div>
-                <span class="text-[10px] text-slate-500 font-mono">${time}</span>
+                <span class="text-[10px] text-text-muted font-mono">${time}</span>
             </div>
         </div>
     `;
@@ -1397,14 +1401,14 @@ function renderUserMessage(message) {
     const time = formatTime(new Date(message.timestamp));
     const html = `
         <div class="flex flex-row-reverse gap-3 animate-fadeIn">
-            <div class="h-8 w-8 rounded-full bg-slate-700 flex-shrink-0 flex items-center justify-center border border-slate-600">
-                <span class="material-symbols-outlined text-white text-[16px]">person</span>
+            <div class="h-8 w-8 rounded-full bg-hover-bg-strong flex-shrink-0 flex items-center justify-center border border-border-theme">
+                <span class="material-symbols-outlined text-text-theme text-[16px]">person</span>
             </div>
             <div class="max-w-[80%] flex flex-col items-end gap-1">
-                <div class="bg-primary/20 border border-primary/20 text-white px-4 py-3 rounded-2xl rounded-tr-none text-sm leading-relaxed">
+                <div class="bg-primary/20 border border-primary/20 text-text-theme px-4 py-3 rounded-2xl rounded-tr-none text-sm leading-relaxed">
                     <p class="whitespace-pre-wrap">${escapeHtml(message.content)}</p>
                 </div>
-                <span class="text-[10px] text-slate-500 font-mono">${time}</span>
+                <span class="text-[10px] text-text-muted font-mono">${time}</span>
             </div>
         </div>
     `;
@@ -1448,10 +1452,10 @@ function renderAssistantMessage(message) {
                 <div class="flex items-center gap-2 mb-1">
                     <span class="text-[10px] font-bold ${colorClass.bg} ${colorClass.text} px-2 py-0.5 rounded border ${colorClass.border}">${agent.label.toUpperCase()}</span>
                 </div>
-                <div class="bg-surface-dark border border-white/5 text-slate-200 px-4 py-3 rounded-2xl rounded-tl-none text-sm leading-relaxed message-content overflow-x-auto max-w-full">
+                <div class="bg-surface-dark border border-border-subtle-inv text-text-theme px-4 py-3 rounded-2xl rounded-tl-none text-sm leading-relaxed message-content overflow-x-auto max-w-full">
                     ${contentHtml}
                 </div>
-                <span class="text-[10px] text-slate-500 font-mono">${time}</span>
+                <span class="text-[10px] text-text-muted font-mono">${time}</span>
             </div>
         </div>
     `;
@@ -1493,16 +1497,16 @@ function renderToolCallMessage(message) {
                     <div class="flex items-center gap-2 mb-0.5">
                         <span class="material-symbols-outlined text-[14px]" style="color: rgba(251,191,36,0.8)">build</span>
                         <span class="text-[10px] font-bold uppercase tracking-wider" style="color: rgba(251,191,36,0.9)">${escapeHtml(agent.label)}</span>
-                        <span class="material-symbols-outlined text-slate-600 text-[12px]">arrow_forward</span>
-                        <span class="text-[10px] font-mono font-semibold text-white/80">${escapeHtml(message.toolName)}</span>
+                        <span class="material-symbols-outlined text-text-muted text-[12px]">arrow_forward</span>
+                        <span class="text-[10px] font-mono font-semibold text-text-theme/80">${escapeHtml(message.toolName)}</span>
                     </div>
                     <details>
-                        <summary class="flex items-center gap-1 text-[10px] text-slate-500 hover:text-slate-300 transition-colors py-1">
+                        <summary class="flex items-center gap-1 text-[10px] text-text-muted hover:text-text-theme transition-colors py-1">
                             <span class="material-symbols-outlined chevron-icon text-[12px]">chevron_right</span>
                             <span>Arguments</span>
-                            <span class="text-slate-600 font-mono ml-1">${escapeHtml(argsPreview)}</span>
+                            <span class="text-text-muted font-mono ml-1">${escapeHtml(argsPreview)}</span>
                         </summary>
-                        <pre class="mt-1.5 bg-black/30 rounded-lg p-2.5 text-[10px] font-mono overflow-x-auto max-h-40 overflow-y-auto custom-scrollbar border border-white/5" style="color: rgba(253,230,138,0.7)">${escapeHtml(argsStr)}</pre>
+                        <pre class="mt-1.5 bg-hover-bg-strong rounded-lg p-2.5 text-[10px] font-mono overflow-x-auto max-h-40 overflow-y-auto custom-scrollbar border border-border-subtle-inv" style="color: rgba(253,230,138,0.7)">${escapeHtml(argsStr)}</pre>
                     </details>
                 </div>
             </div>
@@ -1530,15 +1534,15 @@ function renderToolResultMessage(message) {
                 <div class="rounded-xl px-3.5 py-2.5 border" style="${cardBg}">
                     <div class="flex items-center gap-2 mb-0.5">
                         <span class="material-symbols-outlined text-[14px]" style="${iconColor}">${iconName}</span>
-                        <span class="text-[10px] font-mono font-semibold text-white/70">${escapeHtml(message.toolName)}</span>
+                        <span class="text-[10px] font-mono font-semibold text-text-theme/70">${escapeHtml(message.toolName)}</span>
                         <span class="text-[10px] font-medium" style="${labelColor}">result</span>
                     </div>
                     <details>
-                        <summary class="flex items-center gap-1 text-[10px] text-slate-500 hover:text-slate-300 transition-colors py-1">
+                        <summary class="flex items-center gap-1 text-[10px] text-text-muted hover:text-text-theme transition-colors py-1">
                             <span class="material-symbols-outlined chevron-icon text-[12px]">chevron_right</span>
-                            <span class="truncate font-mono text-slate-400">${escapeHtml(preview)}</span>
+                            <span class="truncate font-mono text-text-subtle">${escapeHtml(preview)}</span>
                         </summary>
-                        <pre class="mt-1.5 bg-black/30 rounded-lg p-2.5 text-[10px] font-mono overflow-x-auto max-h-48 overflow-y-auto custom-scrollbar border border-white/5" style="${preColor}">${escapeHtml(content)}</pre>
+                        <pre class="mt-1.5 bg-hover-bg-strong rounded-lg p-2.5 text-[10px] font-mono overflow-x-auto max-h-48 overflow-y-auto custom-scrollbar border border-border-subtle-inv" style="${preColor}">${escapeHtml(content)}</pre>
                     </details>
                 </div>
             </div>
@@ -1570,14 +1574,14 @@ function showToolApprovalPanel(data) {
                     <!-- Header -->
                     <div class="px-4 py-3 flex items-center gap-3 border-b" style="border-color: ${risk.border}">
                         <div class="h-9 w-9 rounded-xl flex items-center justify-center" style="background: ${risk.border}">
-                            <span class="material-symbols-outlined text-[18px] text-white">verified_user</span>
+                            <span class="material-symbols-outlined text-[18px] text-text-theme">verified_user</span>
                         </div>
                         <div class="flex-1">
                             <div class="flex items-center gap-2">
-                                <span class="text-xs font-bold text-white/90">Tool Approval Required</span>
+                                <span class="text-xs font-bold text-text-theme/90">Tool Approval Required</span>
                                 <span class="text-[9px] font-bold px-2 py-0.5 rounded-full" style="background: ${risk.border}; color: white">${riskLabel} RISK</span>
                             </div>
-                            <span class="text-[10px] text-slate-400">${escapeHtml(agent.label)} wants to call an external tool</span>
+                            <span class="text-[10px] text-text-subtle">${escapeHtml(agent.label)} wants to call an external tool</span>
                         </div>
                         <div class="approval-pulse h-3 w-3 rounded-full animate-pulse" style="background: ${risk.text}"></div>
                     </div>
@@ -1585,26 +1589,26 @@ function showToolApprovalPanel(data) {
                     <!-- Tool info -->
                     <div class="px-4 py-3 space-y-2.5">
                         <div class="flex items-center gap-2">
-                            <span class="material-symbols-outlined text-[14px] text-slate-400">build</span>
-                            <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Tool</span>
-                            <span class="text-xs font-mono font-semibold text-white/90">${escapeHtml(data.tool_name)}</span>
+                            <span class="material-symbols-outlined text-[14px] text-text-subtle">build</span>
+                            <span class="text-[10px] font-bold text-text-subtle uppercase tracking-wider">Tool</span>
+                            <span class="text-xs font-mono font-semibold text-text-theme/90">${escapeHtml(data.tool_name)}</span>
                         </div>
 
                         <div class="flex items-start gap-2">
-                            <span class="material-symbols-outlined text-[14px] text-slate-400 mt-0.5">info</span>
+                            <span class="material-symbols-outlined text-[14px] text-text-subtle mt-0.5">info</span>
                             <div>
-                                <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Reason</span>
-                                <span class="text-xs text-white/70">${escapeHtml(data.reason || 'External API tool — requires user approval')}</span>
+                                <span class="text-[10px] font-bold text-text-subtle uppercase tracking-wider block">Reason</span>
+                                <span class="text-xs text-text-theme/70">${escapeHtml(data.reason || 'External API tool — requires user approval')}</span>
                             </div>
                         </div>
 
-                        <div class="bg-black/20 rounded-xl p-3 border border-white/5">
+                        <div class="bg-hover-bg rounded-xl p-3 border border-border-subtle-inv">
                             <details>
-                                <summary class="flex items-center gap-1 text-[10px] text-slate-500 hover:text-slate-300 transition-colors cursor-pointer">
+                                <summary class="flex items-center gap-1 text-[10px] text-text-muted hover:text-text-theme transition-colors cursor-pointer">
                                     <span class="material-symbols-outlined chevron-icon text-[12px]">chevron_right</span>
                                     <span>View full message</span>
                                 </summary>
-                                <pre class="mt-2 text-[10px] font-mono text-slate-400 whitespace-pre-wrap leading-relaxed">${escapeHtml(data.content || '')}</pre>
+                                <pre class="mt-2 text-[10px] font-mono text-text-subtle whitespace-pre-wrap leading-relaxed">${escapeHtml(data.content || '')}</pre>
                             </details>
                         </div>
                     </div>
@@ -1717,14 +1721,14 @@ function showEngagementPanel(data) {
                     <!-- Header -->
                     <div class="px-4 py-3 flex items-center gap-3 border-b" style="border-color: ${colors.border}">
                         <div class="h-9 w-9 rounded-xl flex items-center justify-center" style="background: ${colors.accent}">
-                            <span class="material-symbols-outlined text-[18px] text-white">${agent.icon}</span>
+                            <span class="material-symbols-outlined text-[18px] text-text-theme">${agent.icon}</span>
                         </div>
                         <div class="flex-1">
                             <div class="flex items-center gap-2">
-                                <span class="text-xs font-bold text-white/90">${agent.label}</span>
+                                <span class="text-xs font-bold text-text-theme/90">${agent.label}</span>
                                 <span class="text-[9px] font-bold px-2 py-0.5 rounded-full" style="background: ${colors.accent}; color: white">${colors.label}</span>
                             </div>
-                            <span class="text-[10px] text-slate-400">has a question for you</span>
+                            <span class="text-[10px] text-text-subtle">has a question for you</span>
                         </div>
                         <div class="h-3 w-3 rounded-full animate-pulse" style="background: ${colors.accent}"></div>
                     </div>
@@ -1734,8 +1738,8 @@ function showEngagementPanel(data) {
                         <div class="flex items-start gap-2.5">
                             <span class="material-symbols-outlined text-[18px] mt-0.5" style="color: ${colors.accent}">${colors.icon}</span>
                             <div>
-                                <p class="text-sm text-white/90 font-medium leading-relaxed">${escapeHtml(data.question)}</p>
-                                ${data.context ? `<p class="text-[11px] text-slate-400 mt-1.5">${escapeHtml(data.context)}</p>` : ''}
+                                <p class="text-sm text-text-theme/90 font-medium leading-relaxed">${escapeHtml(data.question)}</p>
+                                ${data.context ? `<p class="text-[11px] text-text-subtle mt-1.5">${escapeHtml(data.context)}</p>` : ''}
                             </div>
                         </div>
 
@@ -1748,7 +1752,7 @@ function showEngagementPanel(data) {
                         ${showFreeText ? `
                         <div class="relative">
                             <textarea id="engagement-input-${data.id}"
-                                class="w-full bg-black/20 rounded-xl px-3 py-2.5 text-xs text-white/90 placeholder-slate-500 border border-white/5 focus:border-white/15 focus:outline-none resize-none transition-colors"
+                                class="w-full bg-hover-bg rounded-xl px-3 py-2.5 text-xs text-text-theme/90 placeholder-slate-500 border border-border-subtle-inv focus:border-border-inverse focus:outline-none resize-none transition-colors"
                                 rows="2"
                                 placeholder="${hasOptions ? 'Or type a custom response...' : 'Type your response...'}"></textarea>
                         </div>
@@ -1915,9 +1919,9 @@ function updateToolPolicyStats(data) {
     container.classList.remove('hidden');
     container.innerHTML = `
         <div class="flex items-center gap-1.5 text-[9px]">
-            <span class="material-symbols-outlined text-[12px] text-slate-500">shield</span>
-            <span class="text-slate-500">Tool Policy:</span>
-            ${parts.join('<span class="text-slate-600">|</span>')}
+            <span class="material-symbols-outlined text-[12px] text-text-muted">shield</span>
+            <span class="text-text-muted">Tool Policy:</span>
+            ${parts.join('<span class="text-text-muted">|</span>')}
         </div>
     `;
 }
@@ -1967,7 +1971,7 @@ function resetChatUI() {
             <div class="mb-6 p-4 rounded-full bg-primary/5 border border-primary/20 shadow-[0_0_30px_rgba(7,182,213,0.1)]">
                 <span class="material-symbols-outlined text-4xl text-primary">genetics</span>
             </div>
-            <h1 class="text-2xl md:text-3xl font-bold text-white mb-3 tracking-tight">What research problem<br/>are we solving today?</h1>
+            <h1 class="text-2xl md:text-3xl font-bold text-text-theme mb-3 tracking-tight">What research problem<br/>are we solving today?</h1>
             <p class="text-text-subtle text-sm max-w-md font-light">Deploy multi-agent swarms for protein folding, docking simulations, and literature review.</p>
         </div>
     `;
@@ -2004,9 +2008,9 @@ function renderAgentList() {
             let trainingVisual = '';
             if (agent.isTraining) {
                 trainingVisual = `
-                    <div class="mt-3 p-3 bg-black/40 rounded-lg border border-white/5 overflow-hidden relative">
+                    <div class="mt-3 p-3 bg-surface-darker rounded-lg border border-border-subtle-inv overflow-hidden relative">
                         <div class="flex justify-between items-center mb-2">
-                            <span class="text-[10px] font-mono text-slate-400 uppercase tracking-wider">Live Monitor</span>
+                            <span class="text-[10px] font-mono text-text-subtle uppercase tracking-wider">Live Monitor</span>
                             <div class="flex gap-1">
                                 <span class="w-1 h-3 bg-primary/40 animate-[bounce_1s_infinite]"></span>
                                 <span class="w-1 h-3 bg-primary/60 animate-[bounce_1.2s_infinite]"></span>
@@ -2015,17 +2019,17 @@ function renderAgentList() {
                         </div>
                         <div class="space-y-2">
                             <div class="flex justify-between text-[10px] font-mono">
-                                <span class="text-slate-500">Loss</span>
+                                <span class="text-text-muted">Loss</span>
                                 <span class="text-rose-400" id="live-loss">0.0000</span>
                             </div>
-                            <div class="h-1 w-full bg-slate-800 rounded-full overflow-hidden">
+                            <div class="h-1 w-full bg-hover-bg-strong rounded-full overflow-hidden">
                                 <div class="h-full bg-rose-500/50 transition-all duration-1000" id="loss-bar" style="width: 0%"></div>
                             </div>
                             <div class="flex justify-between text-[10px] font-mono">
-                                <span class="text-slate-500">Accuracy</span>
-                                <span class="text-emerald-400" id="live-accuracy">0.00%</span>
+                                <span class="text-text-muted">Accuracy</span>
+                                <span class="text-emerald-500" id="live-accuracy">0.00%</span>
                             </div>
-                            <div class="h-1 w-full bg-slate-800 rounded-full overflow-hidden">
+                            <div class="h-1 w-full bg-hover-bg-strong rounded-full overflow-hidden">
                                 <div class="h-full bg-emerald-500/50 transition-all duration-1000" id="accuracy-bar" style="width: 0%"></div>
                             </div>
                         </div>
@@ -2046,29 +2050,29 @@ function renderAgentList() {
                     </div>
                     <div class="flex items-center gap-2">
                         <span class="material-symbols-outlined text-primary text-[20px]">${agent.icon}</span>
-                        <span class="text-sm font-bold text-white">${agent.label}</span>
+                        <span class="text-sm font-bold text-text-theme">${agent.label}</span>
                     </div>
-                    <div class="h-1.5 w-full bg-slate-800 rounded-full overflow-hidden">
+                    <div class="h-1.5 w-full bg-hover-bg-strong rounded-full overflow-hidden">
                         <div class="h-full bg-primary transition-all duration-500" style="width: ${progress || 50}%"></div>
                     </div>
                     <p class="text-xs text-primary font-medium">${agent.description}</p>
                     ${trainingVisual}
                     <div class="flex gap-2 mt-1">
-                        <span class="text-[10px] font-mono text-slate-400 bg-black/20 px-1.5 py-0.5 rounded border border-white/5">CPU: ${Math.floor(Math.random() * 30 + 60)}%</span>
+                        <span class="text-[10px] font-mono text-text-subtle bg-hover-bg px-1.5 py-0.5 rounded border border-border-subtle-inv">CPU: ${Math.floor(Math.random() * 30 + 60)}%</span>
                     </div>
                 </div>
             `;
         } else {
             return `
-                <div class="flex flex-col gap-2 p-3 rounded-lg border border-slate-700 bg-surface-dark opacity-60 hover:opacity-80 transition-opacity">
+                <div class="flex flex-col gap-2 p-3 rounded-lg border border-border-theme bg-surface-dark opacity-80 hover:opacity-100 transition-opacity">
                     <div class="flex justify-between items-start">
                         <div class="flex items-center gap-2">
-                            <span class="material-symbols-outlined text-slate-400 text-[18px]">${agent.icon}</span>
-                            <span class="text-sm font-semibold text-slate-300">${agent.label}</span>
+                            <span class="material-symbols-outlined text-text-subtle text-[18px]">${agent.icon}</span>
+                            <span class="text-sm font-semibold text-text-theme">${agent.label}</span>
                         </div>
-                        <span class="text-[10px] bg-slate-800 text-slate-400 px-1.5 py-0.5 rounded">IDLE</span>
+                        <span class="text-[10px] bg-hover-bg-strong text-text-subtle px-1.5 py-0.5 rounded">IDLE</span>
                     </div>
-                    <p class="text-xs text-slate-500">Waiting...</p>
+                    <p class="text-xs text-text-muted">Waiting...</p>
                 </div>
             `;
         }
@@ -2184,25 +2188,25 @@ function renderArtifacts() {
 
         // Add a subtle category header if multiple types
         if (sortedTypes.length > 1) {
-            html += `<p class="text-[9px] font-bold text-slate-600 uppercase tracking-wider mt-2 mb-1 first:mt-0">${iconInfo.label || type.toUpperCase()}</p>`;
+            html += `<p class="text-[9px] font-bold text-text-muted uppercase tracking-wider mt-2 mb-1 first:mt-0">${iconInfo.label || type.toUpperCase()}</p>`;
         }
 
         artifacts.forEach((artifact, idx) => {
             const globalIndex = state.artifacts.indexOf(artifact);
             html += `
-                <div class="artifact-item flex items-center gap-3 p-2.5 rounded-lg bg-surface-dark/80 border border-white/5 hover:border-primary/30 transition-all group cursor-pointer" data-index="${globalIndex}">
+                <div class="artifact-item flex items-center gap-3 p-2.5 rounded-lg bg-surface-dark/80 border border-border-subtle-inv hover:border-primary/30 transition-all group cursor-pointer" data-index="${globalIndex}">
                     <div class="h-9 w-9 rounded-lg ${iconInfo.bg} ${iconInfo.text} flex items-center justify-center border ${iconInfo.border} flex-shrink-0">
                         <span class="material-symbols-outlined text-[18px]">${iconInfo.icon}</span>
                     </div>
                     <div class="flex-1 min-w-0">
-                        <p class="text-xs font-medium text-white truncate group-hover:text-primary transition-colors">${escapeHtml(artifact.name)}</p>
-                        <p class="text-[10px] text-slate-500">${formatBytes(artifact.size)}${artifact.preview ? ' • Click to preview' : ''}</p>
+                        <p class="text-xs font-medium text-text-theme truncate group-hover:text-primary transition-colors">${escapeHtml(artifact.name)}</p>
+                        <p class="text-[10px] text-text-muted">${formatBytes(artifact.size)}${artifact.preview ? ' • Click to preview' : ''}</p>
                     </div>
                     <div class="flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button class="artifact-view p-1.5 text-slate-500 hover:text-white hover:bg-white/10 rounded transition-colors" title="Preview">
+                        <button class="artifact-view p-1.5 text-text-muted hover:text-text-theme hover:bg-hover-bg-strong rounded transition-colors" title="Preview">
                             <span class="material-symbols-outlined text-[16px]">visibility</span>
                         </button>
-                        <button class="artifact-download p-1.5 text-slate-500 hover:text-primary hover:bg-primary/10 rounded transition-colors" title="Download">
+                        <button class="artifact-download p-1.5 text-text-muted hover:text-primary hover:bg-primary/10 rounded transition-colors" title="Download">
                             <span class="material-symbols-outlined text-[16px]">download</span>
                         </button>
                     </div>
@@ -2213,9 +2217,9 @@ function renderArtifacts() {
 
     // Add summary at top
     const summary = `
-        <div class="flex items-center justify-between mb-2 pb-2 border-b border-white/5">
-            <span class="text-[10px] text-slate-400">${state.artifacts.length} file${state.artifacts.length !== 1 ? 's' : ''} generated</span>
-            <button class="clear-artifacts text-[10px] text-slate-500 hover:text-red-400 transition-colors">Clear</button>
+        <div class="flex items-center justify-between mb-2 pb-2 border-b border-border-subtle-inv">
+            <span class="text-[10px] text-text-subtle">${state.artifacts.length} file${state.artifacts.length !== 1 ? 's' : ''} generated</span>
+            <button class="clear-artifacts text-[10px] text-text-muted hover:text-red-400 transition-colors">Clear</button>
         </div>
     `;
 
@@ -2271,7 +2275,7 @@ function previewArtifact(artifact) {
 
 function showArtifactPreviewModal(artifact) {
     const modal = document.createElement('div');
-    modal.className = 'fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4';
+    modal.className = 'fixed inset-0 z-50 flex items-center justify-center bg-overlay backdrop-blur-sm p-4';
 
     // Determine icon and color based on type
     const typeConfig = {
@@ -2299,21 +2303,21 @@ function showArtifactPreviewModal(artifact) {
             previewHtml += '<thead class="bg-surface-dark"><tr>';
             const headers = lines[0].split(',');
             headers.forEach(h => {
-                previewHtml += `<th class="border border-white/10 px-3 py-2 text-left text-slate-300 font-medium">${escapeHtml(h)}</th>`;
+                previewHtml += `<th class="border border-border-inverse px-3 py-2 text-left text-text-theme font-medium">${escapeHtml(h)}</th>`;
             });
             previewHtml += '</tr></thead><tbody>';
 
             for (let i = 1; i < Math.min(lines.length, 15); i++) {
-                previewHtml += '<tr class="hover:bg-white/5">';
+                previewHtml += '<tr class="hover:bg-hover-bg">';
                 const cells = lines[i].split(',');
                 cells.forEach(c => {
-                    previewHtml += `<td class="border border-white/10 px-3 py-2 text-slate-400">${escapeHtml(c)}</td>`;
+                    previewHtml += `<td class="border border-border-inverse px-3 py-2 text-text-subtle">${escapeHtml(c)}</td>`;
                 });
                 previewHtml += '</tr>';
             }
             previewHtml += '</tbody></table></div>';
             if (lines.length > 15) {
-                previewHtml += `<p class="text-xs text-slate-500 mt-2">... and ${lines.length - 15} more rows</p>`;
+                previewHtml += `<p class="text-xs text-text-muted mt-2">... and ${lines.length - 15} more rows</p>`;
             }
         }
     } else if (artifact.type === 'png' || artifact.type === 'jpg' || artifact.type === 'jpeg') {
@@ -2321,8 +2325,8 @@ function showArtifactPreviewModal(artifact) {
         const imgUrl = `${CONFIG.apiBaseUrl}/api/download?path=${encodeURIComponent(artifact.path)}`;
         previewHtml = `
             <div class="flex flex-col items-center justify-center p-4">
-                <img src="${imgUrl}" class="max-w-full max-h-[60vh] rounded shadow-lg border border-white/10" alt="${escapeHtml(artifact.name)}" />
-                <p class="text-[10px] text-slate-500 mt-4 font-mono">${artifact.path}</p>
+                <img src="${imgUrl}" class="max-w-full max-h-[60vh] rounded shadow-lg border border-border-inverse" alt="${escapeHtml(artifact.name)}" />
+                <p class="text-[10px] text-text-muted mt-4 font-mono">${artifact.path}</p>
             </div>
         `;
     } else if (artifact.type === 'json') {
@@ -2342,19 +2346,19 @@ function showArtifactPreviewModal(artifact) {
         }
     } else {
         // Code or text
-        previewHtml = `<pre class="text-xs font-mono whitespace-pre-wrap overflow-auto max-h-96 text-slate-300">${escapeHtml(preview)}</pre>`;
+        previewHtml = `<pre class="text-xs font-mono whitespace-pre-wrap overflow-auto max-h-96 text-text-theme">${escapeHtml(preview)}</pre>`;
     }
 
     modal.innerHTML = `
-        <div class="bg-surface-dark border border-white/10 rounded-xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-hidden animate-fadeIn flex flex-col">
-            <div class="flex items-center justify-between p-4 border-b border-white/5 flex-shrink-0">
+        <div class="bg-surface-dark border border-border-inverse rounded-xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-hidden animate-fadeIn flex flex-col">
+            <div class="flex items-center justify-between p-4 border-b border-border-subtle-inv flex-shrink-0">
                 <div class="flex items-center gap-3">
                     <div class="h-10 w-10 rounded-lg bg-${config.color}-500/20 flex items-center justify-center border border-${config.color}-500/30">
                         <span class="material-symbols-outlined text-${config.color}-400">${config.icon}</span>
                     </div>
                     <div>
-                        <h3 class="text-base font-bold text-white">${escapeHtml(artifact.name)}</h3>
-                        <p class="text-xs text-slate-400">${config.label} • ${formatBytes(artifact.size)}</p>
+                        <h3 class="text-base font-bold text-text-theme">${escapeHtml(artifact.name)}</h3>
+                        <p class="text-xs text-text-subtle">${config.label} • ${formatBytes(artifact.size)}</p>
                     </div>
                 </div>
                 <div class="flex gap-2">
@@ -2362,13 +2366,13 @@ function showArtifactPreviewModal(artifact) {
                         <span class="material-symbols-outlined text-[16px]">download</span>
                         Download
                     </button>
-                    <button class="modal-close p-2 text-slate-400 hover:text-white hover:bg-white/10 rounded-lg transition-all">
+                    <button class="modal-close p-2 text-text-subtle hover:text-text-theme hover:bg-hover-bg-strong rounded-lg transition-all">
                         <span class="material-symbols-outlined">close</span>
                     </button>
                 </div>
             </div>
-            <div class="flex-1 overflow-auto p-4 bg-black/20">
-                ${previewHtml || '<p class="text-slate-500 text-sm">No preview available</p>'}
+            <div class="flex-1 overflow-auto p-4 bg-hover-bg">
+                ${previewHtml || '<p class="text-text-muted text-sm">No preview available</p>'}
             </div>
         </div>
     `;
@@ -2399,7 +2403,7 @@ function getFileIconInfo(type) {
         'jpg': { icon: 'image', bg: 'bg-pink-500/20', text: 'text-pink-400', border: 'border-pink-500/30', label: 'Image' },
         'jpeg': { icon: 'image', bg: 'bg-pink-500/20', text: 'text-pink-400', border: 'border-pink-500/30', label: 'Image' },
         'json': { icon: 'data_object', bg: 'bg-amber-500/20', text: 'text-amber-400', border: 'border-amber-500/30', label: 'Data' },
-        'txt': { icon: 'article', bg: 'bg-slate-500/20', text: 'text-slate-400', border: 'border-slate-500/30', label: 'Text' },
+        'txt': { icon: 'article', bg: 'bg-slate-500/20', text: 'text-text-subtle', border: 'border-slate-500/30', label: 'Text' },
         'fasta': { icon: 'genetics', bg: 'bg-primary/20', text: 'text-primary', border: 'border-primary/30', label: 'Sequence' },
         'md': { icon: 'description', bg: 'bg-blue-500/20', text: 'text-blue-400', border: 'border-blue-500/30', label: 'Report' },
         'pdf': { icon: 'picture_as_pdf', bg: 'bg-rose-500/20', text: 'text-rose-400', border: 'border-rose-500/30', label: 'PDF Document' },
@@ -2430,7 +2434,7 @@ function updateAuditLog(entries) {
         .replace(/: "([^"]+)"/g, ': <span class="text-amber-300">"$1"</span>')
         .replace(/: (\d+)/g, ': <span class="text-emerald-400">$1</span>')
         .replace(/: (true|false)/g, ': <span class="text-purple-400">$1</span>')
-        .replace(/: (null)/g, ': <span class="text-slate-500">$1</span>');
+        .replace(/: (null)/g, ': <span class="text-text-muted">$1</span>');
 
     elements.auditLog.innerHTML = `<pre class="whitespace-pre-wrap text-[10px] leading-relaxed">${highlighted}</pre>`;
 }
@@ -2563,7 +2567,7 @@ function loadStructure(pdbContent) {
 
         // Create new stage
         state.nglStage = new NGL.Stage(viewer, {
-            backgroundColor: '#000000',
+            backgroundColor: state.settings.theme === 'dark' ? '#000000' : '#f0f5f6',
             quality: 'high',
         });
 
@@ -2679,18 +2683,18 @@ function renderRecentSessions() {
     const recentHtml = state.sessions.slice(0, 5).map(session => {
         const isActive = session.id === state.currentSessionId;
         return `
-            <div class="session-item flex items-center gap-2 group ${isActive ? 'bg-white/5' : ''}" data-id="${session.id}">
-                <button class="session-load flex-1 text-left px-3 py-2 text-sm ${isActive ? 'text-primary' : 'text-text-subtle'} hover:text-white rounded-lg truncate transition-colors">
+            <div class="session-item flex items-center gap-2 group ${isActive ? 'bg-hover-bg' : ''}" data-id="${session.id}">
+                <button class="session-load flex-1 text-left px-3 py-2 text-sm ${isActive ? 'text-primary' : 'text-text-subtle'} hover:text-text-theme rounded-lg truncate transition-colors">
                     ${escapeHtml(session.title)}
                 </button>
-                <button class="session-delete hidden group-hover:block p-1 text-slate-600 hover:text-red-400 rounded transition-colors" title="Delete">
+                <button class="session-delete hidden group-hover:block p-1 text-text-muted hover:text-red-400 rounded transition-colors" title="Delete">
                     <span class="material-symbols-outlined text-[16px]">close</span>
                 </button>
             </div>
         `;
     }).join('');
 
-    elements.recentSessions.innerHTML = recentHtml || '<p class="px-3 py-2 text-xs text-slate-600">No recent sessions</p>';
+    elements.recentSessions.innerHTML = recentHtml || '<p class="px-3 py-2 text-xs text-text-muted">No recent sessions</p>';
 
     // Add event listeners
     elements.recentSessions.querySelectorAll('.session-item').forEach(item => {
@@ -2712,31 +2716,31 @@ function renderRecentSessions() {
 function showHistoryPanel() {
     // Create modal
     const modal = document.createElement('div');
-    modal.className = 'fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm';
+    modal.className = 'fixed inset-0 z-50 flex items-center justify-center bg-overlay backdrop-blur-sm';
 
     const sessionsHtml = state.sessions.length > 0
         ? state.sessions.map(s => `
-            <div class="session-row flex items-center gap-3 p-3 hover:bg-white/5 rounded-lg cursor-pointer transition-all group" data-id="${s.id}">
-                <span class="material-symbols-outlined text-slate-400 text-[18px]">description</span>
+            <div class="session-row flex items-center gap-3 p-3 hover:bg-hover-bg rounded-lg cursor-pointer transition-all group" data-id="${s.id}">
+                <span class="material-symbols-outlined text-text-subtle text-[18px]">description</span>
                 <div class="flex-1 min-w-0">
-                    <p class="text-sm font-medium text-white truncate">${escapeHtml(s.title)}</p>
-                    <p class="text-[10px] text-slate-400">${new Date(s.createdAt).toLocaleString()} • ${s.messages?.length || 0} messages</p>
+                    <p class="text-sm font-medium text-text-theme truncate">${escapeHtml(s.title)}</p>
+                    <p class="text-[10px] text-text-subtle">${new Date(s.createdAt).toLocaleString()} • ${s.messages?.length || 0} messages</p>
                 </div>
-                <button class="session-delete opacity-0 group-hover:opacity-100 p-1 text-slate-400 hover:text-red-400 transition-all">
+                <button class="session-delete opacity-0 group-hover:opacity-100 p-1 text-text-subtle hover:text-red-400 transition-all">
                     <span class="material-symbols-outlined text-[16px]">delete</span>
                 </button>
             </div>
         `).join('')
-        : '<p class="text-center py-8 text-slate-400">No sessions in history</p>';
+        : '<p class="text-center py-8 text-text-subtle">No sessions in history</p>';
 
     modal.innerHTML = `
-        <div class="bg-surface-dark border border-white/10 rounded-xl shadow-2xl w-full max-w-lg mx-4 overflow-hidden animate-fadeIn">
-            <div class="flex items-center justify-between p-4 border-b border-white/5">
-                <h3 class="text-lg font-bold text-white flex items-center gap-2">
+        <div class="bg-surface-dark border border-border-inverse rounded-xl shadow-2xl w-full max-w-lg mx-4 overflow-hidden animate-fadeIn">
+            <div class="flex items-center justify-between p-4 border-b border-border-subtle-inv">
+                <h3 class="text-lg font-bold text-text-theme flex items-center gap-2">
                     <span class="material-symbols-outlined text-primary">history</span>
                     Session History
                 </h3>
-                <button class="modal-close p-1.5 text-slate-400 hover:text-white hover:bg-white/10 rounded-lg transition-all">
+                <button class="modal-close p-1.5 text-text-subtle hover:text-text-theme hover:bg-hover-bg-strong rounded-lg transition-all">
                     <span class="material-symbols-outlined">close</span>
                 </button>
             </div>
@@ -2771,7 +2775,7 @@ function showHistoryPanel() {
 
 function showAgentLibrary() {
     const modal = document.createElement('div');
-    modal.className = 'fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm';
+    modal.className = 'fixed inset-0 z-50 flex items-center justify-center bg-overlay backdrop-blur-sm';
 
     const categories = {};
     Object.entries(AGENTS).forEach(([id, agent]) => {
@@ -2782,33 +2786,33 @@ function showAgentLibrary() {
 
     let agentsHtml = '';
     for (const [category, agents] of Object.entries(categories)) {
-        agentsHtml += `<h4 class="text-xs font-bold text-slate-400 uppercase tracking-wider mt-3 mb-2">${category} (${agents.length})</h4>`;
+        agentsHtml += `<h4 class="text-xs font-bold text-text-subtle uppercase tracking-wider mt-3 mb-2">${category} (${agents.length})</h4>`;
         agentsHtml += agents.map(agent => {
             const colorClass = getColorClass(agent.color);
             return `
-                <div class="flex items-center gap-3 p-3 rounded-lg border border-white/5 bg-surface-card/50 hover:border-primary/30 transition-all">
+                <div class="flex items-center gap-3 p-3 rounded-lg border border-border-subtle-inv bg-surface-card/50 hover:border-primary/30 transition-all">
                     <div class="h-10 w-10 rounded-lg ${colorClass.bg} flex items-center justify-center border ${colorClass.border}">
                         <span class="material-symbols-outlined ${colorClass.text}">${agent.icon}</span>
                     </div>
                     <div class="flex-1">
-                        <p class="text-sm font-bold text-white">${agent.label}</p>
-                        <p class="text-xs text-slate-400">${agent.description}</p>
+                        <p class="text-sm font-bold text-text-theme">${agent.label}</p>
+                        <p class="text-xs text-text-subtle">${agent.description}</p>
                     </div>
-                    <span class="text-[10px] px-2 py-0.5 rounded-full bg-white/5 text-slate-400">${agent.id}</span>
+                    <span class="text-[10px] px-2 py-0.5 rounded-full bg-hover-bg text-text-subtle">${agent.id}</span>
                 </div>
             `;
         }).join('');
     }
 
     modal.innerHTML = `
-        <div class="bg-surface-dark border border-white/10 rounded-xl shadow-2xl w-full max-w-2xl mx-4 overflow-hidden animate-fadeIn">
-            <div class="flex items-center justify-between p-4 border-b border-white/5">
-                <h3 class="text-lg font-bold text-white flex items-center gap-2">
+        <div class="bg-surface-dark border border-border-inverse rounded-xl shadow-2xl w-full max-w-2xl mx-4 overflow-hidden animate-fadeIn">
+            <div class="flex items-center justify-between p-4 border-b border-border-subtle-inv">
+                <h3 class="text-lg font-bold text-text-theme flex items-center gap-2">
                     <span class="material-symbols-outlined text-primary">smart_toy</span>
                     Agent Library
-                    <span class="text-xs font-normal text-slate-400 ml-2">${Object.keys(AGENTS).length} agents</span>
+                    <span class="text-xs font-normal text-text-subtle ml-2">${Object.keys(AGENTS).length} agents</span>
                 </h3>
-                <button class="modal-close p-1.5 text-slate-400 hover:text-white hover:bg-white/10 rounded-lg transition-all">
+                <button class="modal-close p-1.5 text-text-subtle hover:text-text-theme hover:bg-hover-bg-strong rounded-lg transition-all">
                     <span class="material-symbols-outlined">close</span>
                 </button>
             </div>
@@ -2825,33 +2829,33 @@ function showAgentLibrary() {
 
 function showProjectIndex() {
     const modal = document.createElement('div');
-    modal.className = 'fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm';
+    modal.className = 'fixed inset-0 z-50 flex items-center justify-center bg-overlay backdrop-blur-sm';
 
     const artifactsHtml = state.artifacts.length > 0
         ? state.artifacts.map(a => {
             const iconInfo = getFileIconInfo(a.type);
             return `
-                <div class="flex items-center gap-3 p-3 rounded-lg border border-white/5 hover:border-primary/30 transition-all cursor-pointer" onclick="window.BioAgents.downloadArtifact && window.open('${CONFIG.apiBaseUrl}/api/download?path=${encodeURIComponent(a.path)}')">
+                <div class="flex items-center gap-3 p-3 rounded-lg border border-border-subtle-inv hover:border-primary/30 transition-all cursor-pointer" onclick="window.BioAgents.downloadArtifact && window.open('${CONFIG.apiBaseUrl}/api/download?path=${encodeURIComponent(a.path)}')">
                     <div class="h-10 w-10 rounded-lg ${iconInfo.bg} flex items-center justify-center border ${iconInfo.border}">
                         <span class="material-symbols-outlined ${iconInfo.text}">${iconInfo.icon}</span>
                     </div>
                     <div class="flex-1">
-                        <p class="text-sm font-medium text-white">${escapeHtml(a.name)}</p>
-                        <p class="text-xs text-slate-400">${formatBytes(a.size)}</p>
+                        <p class="text-sm font-medium text-text-theme">${escapeHtml(a.name)}</p>
+                        <p class="text-xs text-text-subtle">${formatBytes(a.size)}</p>
                     </div>
                 </div>
             `;
         }).join('')
-        : '<p class="text-center py-8 text-slate-400">No artifacts in this project</p>';
+        : '<p class="text-center py-8 text-text-subtle">No artifacts in this project</p>';
 
     modal.innerHTML = `
-        <div class="bg-surface-dark border border-white/10 rounded-xl shadow-2xl w-full max-w-lg mx-4 overflow-hidden animate-fadeIn">
-            <div class="flex items-center justify-between p-4 border-b border-white/5">
-                <h3 class="text-lg font-bold text-white flex items-center gap-2">
+        <div class="bg-surface-dark border border-border-inverse rounded-xl shadow-2xl w-full max-w-lg mx-4 overflow-hidden animate-fadeIn">
+            <div class="flex items-center justify-between p-4 border-b border-border-subtle-inv">
+                <h3 class="text-lg font-bold text-text-theme flex items-center gap-2">
                     <span class="material-symbols-outlined text-primary">folder_open</span>
                     Project Files
                 </h3>
-                <button class="modal-close p-1.5 text-slate-400 hover:text-white hover:bg-white/10 rounded-lg transition-all">
+                <button class="modal-close p-1.5 text-text-subtle hover:text-text-theme hover:bg-hover-bg-strong rounded-lg transition-all">
                     <span class="material-symbols-outlined">close</span>
                 </button>
             </div>
@@ -2868,30 +2872,30 @@ function showProjectIndex() {
 
 async function showToolRegistry() {
     const modal = document.createElement('div');
-    modal.className = 'fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm';
+    modal.className = 'fixed inset-0 z-50 flex items-center justify-center bg-overlay backdrop-blur-sm';
 
-    let toolsHtml = '<p class="text-center py-8 text-slate-400">Loading tools...</p>';
+    let toolsHtml = '<p class="text-center py-8 text-text-subtle">Loading tools...</p>';
 
     try {
         const res = await fetch(`${CONFIG.apiBaseUrl}/api/tools/registry`);
         const data = await res.json();
         if (data.tools && data.tools.length > 0) {
             toolsHtml = data.tools.map(t => `
-                <div class="flex items-center gap-3 p-3 rounded-lg border border-white/5 bg-surface-card/50">
+                <div class="flex items-center gap-3 p-3 rounded-lg border border-border-subtle-inv bg-surface-card/50">
                     <div class="h-10 w-10 rounded-lg bg-indigo-500/10 flex items-center justify-center border border-indigo-500/20">
                         <span class="material-symbols-outlined text-indigo-400">extension</span>
                     </div>
                     <div class="flex-1">
-                        <p class="text-sm font-bold text-white">${escapeHtml(t.name || t)}</p>
-                        <p class="text-xs text-slate-400">${escapeHtml(t.description || 'Custom tool')}</p>
+                        <p class="text-sm font-bold text-text-theme">${escapeHtml(t.name || t)}</p>
+                        <p class="text-xs text-text-subtle">${escapeHtml(t.description || 'Custom tool')}</p>
                     </div>
                 </div>
             `).join('');
         } else {
-            toolsHtml = '<p class="text-center py-8 text-slate-400">No custom tools registered yet</p>';
+            toolsHtml = '<p class="text-center py-8 text-text-subtle">No custom tools registered yet</p>';
         }
     } catch (e) {
-        toolsHtml = '<p class="text-center py-8 text-slate-400">Could not load tool registry</p>';
+        toolsHtml = '<p class="text-center py-8 text-text-subtle">Could not load tool registry</p>';
     }
 
     const builtInHtml = Object.entries(AGENTS)
@@ -2899,29 +2903,29 @@ async function showToolRegistry() {
         .map(([id, agent]) => {
             const colorClass = getColorClass(agent.color);
             return `
-                <div class="flex items-center gap-3 p-2 rounded-lg border border-white/5 bg-surface-card/30">
+                <div class="flex items-center gap-3 p-2 rounded-lg border border-border-subtle-inv bg-surface-card/30">
                     <span class="material-symbols-outlined text-sm ${colorClass.text}">${agent.icon}</span>
-                    <span class="text-xs text-white font-medium">${agent.label}</span>
-                    <span class="text-[10px] text-slate-500 ml-auto">${agent.category}</span>
+                    <span class="text-xs text-text-theme font-medium">${agent.label}</span>
+                    <span class="text-[10px] text-text-muted ml-auto">${agent.category}</span>
                 </div>
             `;
         }).join('');
 
     modal.innerHTML = `
-        <div class="bg-surface-dark border border-white/10 rounded-xl shadow-2xl w-full max-w-2xl mx-4 overflow-hidden animate-fadeIn">
-            <div class="flex items-center justify-between p-4 border-b border-white/5">
-                <h3 class="text-lg font-bold text-white flex items-center gap-2">
+        <div class="bg-surface-dark border border-border-inverse rounded-xl shadow-2xl w-full max-w-2xl mx-4 overflow-hidden animate-fadeIn">
+            <div class="flex items-center justify-between p-4 border-b border-border-subtle-inv">
+                <h3 class="text-lg font-bold text-text-theme flex items-center gap-2">
                     <span class="material-symbols-outlined text-primary">extension</span>
                     Tool Registry
                 </h3>
-                <button class="modal-close p-1.5 text-slate-400 hover:text-white hover:bg-white/10 rounded-lg transition-all">
+                <button class="modal-close p-1.5 text-text-subtle hover:text-text-theme hover:bg-hover-bg-strong rounded-lg transition-all">
                     <span class="material-symbols-outlined">close</span>
                 </button>
             </div>
             <div class="max-h-[70vh] overflow-y-auto custom-scrollbar p-4">
-                <h4 class="text-sm font-bold text-slate-300 mb-3">Custom Tools</h4>
+                <h4 class="text-sm font-bold text-text-theme mb-3">Custom Tools</h4>
                 <div class="grid gap-3 mb-6">${toolsHtml}</div>
-                <h4 class="text-sm font-bold text-slate-300 mb-3">Built-in Agent Tools</h4>
+                <h4 class="text-sm font-bold text-text-theme mb-3">Built-in Agent Tools</h4>
                 <div class="grid grid-cols-2 gap-2">${builtInHtml}</div>
             </div>
         </div>
@@ -2934,42 +2938,42 @@ async function showToolRegistry() {
 
 async function showSandboxTerminal() {
     const modal = document.createElement('div');
-    modal.className = 'fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm';
+    modal.className = 'fixed inset-0 z-50 flex items-center justify-center bg-overlay backdrop-blur-sm';
 
-    let statusHtml = '<p class="text-slate-400">Loading sandbox status...</p>';
+    let statusHtml = '<p class="text-text-subtle">Loading sandbox status...</p>';
     try {
         const res = await fetch(`${CONFIG.apiBaseUrl}/api/sandbox/status`);
         const data = await res.json();
         statusHtml = `
             <div class="grid gap-2 text-sm">
-                <div class="flex justify-between"><span class="text-slate-400">Status:</span><span class="text-emerald-400 font-bold">${data.status}</span></div>
-                <div class="flex justify-between"><span class="text-slate-400">Workspace:</span><span class="text-white font-mono text-xs">${escapeHtml(data.workspace_dir || 'N/A')}</span></div>
-                <div class="flex justify-between"><span class="text-slate-400">Commands Run:</span><span class="text-white">${data.command_history_count || 0}</span></div>
+                <div class="flex justify-between"><span class="text-text-subtle">Status:</span><span class="text-emerald-400 font-bold">${data.status}</span></div>
+                <div class="flex justify-between"><span class="text-text-subtle">Workspace:</span><span class="text-text-theme font-mono text-xs">${escapeHtml(data.workspace_dir || 'N/A')}</span></div>
+                <div class="flex justify-between"><span class="text-text-subtle">Commands Run:</span><span class="text-text-theme">${data.command_history_count || 0}</span></div>
             </div>
         `;
     } catch (e) {
-        statusHtml = '<p class="text-slate-400">Sandbox is not running</p>';
+        statusHtml = '<p class="text-text-subtle">Sandbox is not running</p>';
     }
 
     modal.innerHTML = `
-        <div class="bg-surface-dark border border-white/10 rounded-xl shadow-2xl w-full max-w-2xl mx-4 overflow-hidden animate-fadeIn">
-            <div class="flex items-center justify-between p-4 border-b border-white/5">
-                <h3 class="text-lg font-bold text-white flex items-center gap-2">
+        <div class="bg-surface-dark border border-border-inverse rounded-xl shadow-2xl w-full max-w-2xl mx-4 overflow-hidden animate-fadeIn">
+            <div class="flex items-center justify-between p-4 border-b border-border-subtle-inv">
+                <h3 class="text-lg font-bold text-text-theme flex items-center gap-2">
                     <span class="material-symbols-outlined text-primary">terminal</span>
                     Sandbox Terminal
                 </h3>
-                <button class="modal-close p-1.5 text-slate-400 hover:text-white hover:bg-white/10 rounded-lg transition-all">
+                <button class="modal-close p-1.5 text-text-subtle hover:text-text-theme hover:bg-hover-bg-strong rounded-lg transition-all">
                     <span class="material-symbols-outlined">close</span>
                 </button>
             </div>
             <div class="p-4">
-                <div class="bg-black/50 rounded-lg p-4 border border-white/5 mb-4">
+                <div class="bg-surface-darker rounded-lg p-4 border border-border-subtle-inv mb-4">
                     ${statusHtml}
                 </div>
-                <div class="bg-black rounded-lg p-4 font-mono text-sm text-green-400 min-h-[200px] border border-white/10">
+                <div class="bg-black rounded-lg p-4 font-mono text-sm text-green-400 min-h-[200px] border border-border-inverse">
                     <div id="sandbox-output" class="space-y-1">
-                        <p class="text-slate-500">$ # Sandbox terminal - commands run by agents will appear here</p>
-                        <p class="text-slate-500">$ # Use the Shell agent to execute commands</p>
+                        <p class="text-text-muted">$ # Sandbox terminal - commands run by agents will appear here</p>
+                        <p class="text-text-muted">$ # Use the Shell agent to execute commands</p>
                     </div>
                 </div>
             </div>
@@ -3108,21 +3112,21 @@ function showNotifications() {
                 <div class="flex items-start gap-3 p-3 ${colors} rounded-lg">
                     <span class="material-symbols-outlined text-[16px] mt-0.5">${n.type === 'success' ? 'check_circle' : n.type === 'error' ? 'error' : 'info'}</span>
                     <div class="flex-1 min-w-0">
-                        <p class="text-sm text-white">${escapeHtml(n.message)}</p>
-                        <p class="text-[10px] text-slate-400 mt-0.5">${new Date(n.timestamp).toLocaleTimeString()}</p>
+                        <p class="text-sm text-text-theme">${escapeHtml(n.message)}</p>
+                        <p class="text-[10px] text-text-subtle mt-0.5">${new Date(n.timestamp).toLocaleTimeString()}</p>
                     </div>
                 </div>
             `;
         }).join('')
-        : '<p class="text-center py-8 text-slate-400 text-sm">No notifications</p>';
+        : '<p class="text-center py-8 text-text-subtle text-sm">No notifications</p>';
 
     modal.innerHTML = `
-        <div class="bg-surface-dark border border-white/10 rounded-xl shadow-2xl w-80 overflow-hidden pointer-events-auto animate-fadeIn mt-12">
-            <div class="flex items-center justify-between p-3 border-b border-white/5">
-                <h3 class="text-sm font-bold text-white">Notifications</h3>
+        <div class="bg-surface-dark border border-border-inverse rounded-xl shadow-2xl w-80 overflow-hidden pointer-events-auto animate-fadeIn mt-12">
+            <div class="flex items-center justify-between p-3 border-b border-border-subtle-inv">
+                <h3 class="text-sm font-bold text-text-theme">Notifications</h3>
                 <div class="flex gap-1">
-                    <button class="notif-clear text-[10px] text-slate-400 hover:text-white px-2 py-1 hover:bg-white/5 rounded transition-all">Clear all</button>
-                    <button class="notif-close p-1 text-slate-400 hover:text-white hover:bg-white/10 rounded transition-all">
+                    <button class="notif-clear text-[10px] text-text-subtle hover:text-text-theme px-2 py-1 hover:bg-hover-bg rounded transition-all">Clear all</button>
+                    <button class="notif-close p-1 text-text-subtle hover:text-text-theme hover:bg-hover-bg-strong rounded transition-all">
                         <span class="material-symbols-outlined text-[16px]">close</span>
                     </button>
                 </div>
@@ -3164,6 +3168,69 @@ function showNotifications() {
 // =====================================================
 // SETTINGS
 // =====================================================
+
+// =====================================================
+// THEME (light/dark mode)
+// =====================================================
+
+function setTheme(theme, { explicit = false } = {}) {
+    state.settings.theme = theme;
+    if (explicit) state.settings._themeExplicit = true;
+    const html = document.documentElement;
+    if (theme === 'dark') {
+        html.classList.add('dark');
+    } else {
+        html.classList.remove('dark');
+    }
+    saveToStorage();
+    updateNglBackground(theme);
+}
+
+function updateNglBackground(theme) {
+    if (state.nglStage) {
+        try {
+            state.nglStage.setParameters({
+                backgroundColor: theme === 'dark' ? '#000000' : '#f0f5f6',
+            });
+        } catch (e) {
+            // NGL may not support setParameters in all versions
+        }
+    }
+}
+
+function initTheme() {
+    const stored = state.settings && state.settings.theme;
+    if (stored === 'light' || stored === 'dark') {
+        setTheme(stored);
+    } else {
+        const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+        setTheme(prefersDark ? 'dark' : 'light');
+    }
+}
+
+function initThemeToggle() {
+    const btn = document.getElementById('themeToggle');
+    if (btn) {
+        btn.addEventListener('click', () => {
+            const next = state.settings.theme === 'dark' ? 'light' : 'dark';
+            setTheme(next, { explicit: true });
+            showToast(`Theme: ${next}`, 'success');
+        });
+    }
+
+    // React to system preference if user hasn't explicitly chosen
+    try {
+        window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
+            // Only auto-switch if the user hasn't made an explicit choice in this session
+            // (Setting persists, so once set it stays set.)
+            if (!state.settings._themeExplicit) {
+                setTheme(e.matches ? 'dark' : 'light');
+            }
+        });
+    } catch (e) {
+        // Older browsers may not support addEventListener on MediaQueryList
+    }
+}
 
 function initSettings() {
     const settingsBtn = document.querySelector('.settings-btn');
@@ -3219,85 +3286,94 @@ function showSettingsPanel() {
 
     // Create modal
     const modal = document.createElement('div');
-    modal.className = 'fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm';
+    modal.className = 'fixed inset-0 z-50 flex items-center justify-center bg-overlay backdrop-blur-sm';
     modal.id = 'settingsModal';
 
     modal.innerHTML = `
-        <div class="bg-surface-dark border border-white/10 rounded-xl shadow-2xl w-full max-w-lg mx-4 overflow-hidden animate-fadeIn max-h-[90vh] flex flex-col">
-            <div class="flex items-center justify-between p-4 border-b border-white/5 flex-shrink-0">
-                <h3 class="text-lg font-bold text-white flex items-center gap-2">
+        <div class="bg-surface-dark border border-border-inverse rounded-xl shadow-2xl w-full max-w-lg mx-4 overflow-hidden animate-fadeIn max-h-[90vh] flex flex-col">
+            <div class="flex items-center justify-between p-4 border-b border-border-subtle-inv flex-shrink-0">
+                <h3 class="text-lg font-bold text-text-theme flex items-center gap-2">
                     <span class="material-symbols-outlined text-primary">settings</span>
                     Settings
                 </h3>
-                <button class="settings-close p-1.5 text-slate-400 hover:text-white hover:bg-white/10 rounded-lg transition-all">
+                <button class="settings-close p-1.5 text-text-subtle hover:text-text-theme hover:bg-hover-bg-strong rounded-lg transition-all">
                     <span class="material-symbols-outlined">close</span>
                 </button>
             </div>
             <div class="p-4 space-y-4 overflow-y-auto custom-scrollbar flex-1">
                 <div class="flex items-center justify-between py-2">
                     <div>
-                        <p class="text-sm font-medium text-white">Auto-scroll</p>
-                        <p class="text-xs text-slate-400">Scroll to new messages automatically</p>
+                        <p class="text-sm font-medium text-text-theme">Theme</p>
+                        <p class="text-xs text-text-subtle">Switch between light and dark mode</p>
                     </div>
-                    <button class="setting-toggle w-12 h-6 rounded-full ${state.settings.autoScroll ? 'bg-primary' : 'bg-slate-700'} relative transition-colors" data-setting="autoScroll">
+                    <button class="setting-toggle w-12 h-6 rounded-full ${state.settings.theme === 'dark' ? 'bg-primary' : 'bg-hover-bg-strong'} relative transition-colors" data-setting="theme">
+                        <span class="absolute top-1 ${state.settings.theme === 'dark' ? 'right-1' : 'left-1'} w-4 h-4 bg-white rounded-full transition-all"></span>
+                    </button>
+                </div>
+                <div class="flex items-center justify-between py-2">
+                    <div>
+                        <p class="text-sm font-medium text-text-theme">Auto-scroll</p>
+                        <p class="text-xs text-text-subtle">Scroll to new messages automatically</p>
+                    </div>
+                    <button class="setting-toggle w-12 h-6 rounded-full ${state.settings.autoScroll ? 'bg-primary' : 'bg-hover-bg-strong'} relative transition-colors" data-setting="autoScroll">
                         <span class="absolute top-1 ${state.settings.autoScroll ? 'right-1' : 'left-1'} w-4 h-4 bg-white rounded-full transition-all"></span>
                     </button>
                 </div>
                 <div class="flex items-center justify-between py-2">
                     <div>
-                        <p class="text-sm font-medium text-white">Notifications</p>
-                        <p class="text-xs text-slate-400">Show toast notifications</p>
+                        <p class="text-sm font-medium text-text-theme">Notifications</p>
+                        <p class="text-xs text-text-subtle">Show toast notifications</p>
                     </div>
-                    <button class="setting-toggle w-12 h-6 rounded-full ${state.settings.notifications ? 'bg-primary' : 'bg-slate-700'} relative transition-colors" data-setting="notifications">
+                    <button class="setting-toggle w-12 h-6 rounded-full ${state.settings.notifications ? 'bg-primary' : 'bg-hover-bg-strong'} relative transition-colors" data-setting="notifications">
                         <span class="absolute top-1 ${state.settings.notifications ? 'right-1' : 'left-1'} w-4 h-4 bg-white rounded-full transition-all"></span>
                     </button>
                 </div>
 
                 <!-- LLM Provider & Model Selection -->
-                <div class="pt-4 border-t border-white/5 space-y-3">
-                    <p class="text-sm font-medium text-white flex items-center gap-2">
+                <div class="pt-4 border-t border-border-subtle-inv space-y-3">
+                    <p class="text-sm font-medium text-text-theme flex items-center gap-2">
                         <span class="material-symbols-outlined text-primary text-[18px]">tune</span>
                         LLM Configuration
                     </p>
                     <div>
-                        <label class="block text-xs text-slate-500 mb-1">Provider</label>
-                        <select id="llmProvider" class="w-full px-3 py-2 rounded-lg bg-black/30 border border-white/10 text-sm text-white focus:border-primary/50 focus:ring-1 focus:ring-primary/30 outline-none">
+                        <label class="block text-xs text-text-muted mb-1">Provider</label>
+                        <select id="llmProvider" class="w-full px-3 py-2 rounded-lg bg-hover-bg-strong border border-border-inverse text-sm text-text-theme focus:border-primary/50 focus:ring-1 focus:ring-primary/30 outline-none">
                             <option value="gemini" ${currentProvider === 'gemini' ? 'selected' : ''}>Google Gemini</option>
                             <option value="openai" ${currentProvider === 'openai' ? 'selected' : ''}>OpenAI</option>
                             <option value="ollama" ${currentProvider === 'ollama' ? 'selected' : ''}>Ollama (local)</option>
                         </select>
                     </div>
                     <div>
-                        <label class="block text-xs text-slate-500 mb-1">Model</label>
-                        <select id="llmModel" class="w-full px-3 py-2 rounded-lg bg-black/30 border border-white/10 text-sm text-white focus:border-primary/50 focus:ring-1 focus:ring-primary/30 outline-none">
+                        <label class="block text-xs text-text-muted mb-1">Model</label>
+                        <select id="llmModel" class="w-full px-3 py-2 rounded-lg bg-hover-bg-strong border border-border-inverse text-sm text-text-theme focus:border-primary/50 focus:ring-1 focus:ring-primary/30 outline-none">
                         </select>
                     </div>
                     <div id="ollamaModelRow" class="${currentProvider === 'ollama' ? '' : 'hidden'}">
-                        <label class="block text-xs text-slate-500 mb-1">Ollama Model Name</label>
-                        <input type="text" id="ollamaModelInput" class="w-full px-3 py-2 rounded-lg bg-black/30 border border-white/10 text-sm text-white placeholder-slate-500 focus:border-primary/50 focus:ring-1 focus:ring-primary/30 outline-none" placeholder="qwen3:14b" value="${currentProvider === 'ollama' ? (currentModel || 'qwen3:14b') : 'qwen3:14b'}" autocomplete="off"/>
+                        <label class="block text-xs text-text-muted mb-1">Ollama Model Name</label>
+                        <input type="text" id="ollamaModelInput" class="w-full px-3 py-2 rounded-lg bg-hover-bg-strong border border-border-inverse text-sm text-text-theme placeholder-slate-500 focus:border-primary/50 focus:ring-1 focus:ring-primary/30 outline-none" placeholder="qwen3:14b" value="${currentProvider === 'ollama' ? (currentModel || 'qwen3:14b') : 'qwen3:14b'}" autocomplete="off"/>
                     </div>
                 </div>
 
                 <!-- API Keys -->
-                <div class="pt-4 border-t border-white/5 space-y-3">
-                    <p class="text-sm font-medium text-white flex items-center gap-2">
+                <div class="pt-4 border-t border-border-subtle-inv space-y-3">
+                    <p class="text-sm font-medium text-text-theme flex items-center gap-2">
                         <span class="material-symbols-outlined text-primary text-[18px]">key</span>
                         API Keys (optional)
                     </p>
-                    <p class="text-xs text-slate-400">Use your own API keys. Leave blank to use server-configured keys.</p>
+                    <p class="text-xs text-text-subtle">Use your own API keys. Leave blank to use server-configured keys.</p>
                     <div id="openaiKeyRow">
-                        <label class="block text-xs text-slate-500 mb-1">OpenAI API Key</label>
-                        <input type="password" id="apiKeyOpenAI" class="api-key-input w-full px-3 py-2 rounded-lg bg-black/30 border border-white/10 text-sm text-white placeholder-slate-500 focus:border-primary/50 focus:ring-1 focus:ring-primary/30 outline-none" placeholder="sk-..." value="${state.settings.apiKeys?.openai || ''}" autocomplete="off"/>
+                        <label class="block text-xs text-text-muted mb-1">OpenAI API Key</label>
+                        <input type="password" id="apiKeyOpenAI" class="api-key-input w-full px-3 py-2 rounded-lg bg-hover-bg-strong border border-border-inverse text-sm text-text-theme placeholder-slate-500 focus:border-primary/50 focus:ring-1 focus:ring-primary/30 outline-none" placeholder="sk-..." value="${state.settings.apiKeys?.openai || ''}" autocomplete="off"/>
                     </div>
                     <div id="geminiKeyRow">
-                        <label class="block text-xs text-slate-500 mb-1">Google Gemini API Key</label>
-                        <input type="password" id="apiKeyGemini" class="api-key-input w-full px-3 py-2 rounded-lg bg-black/30 border border-white/10 text-sm text-white placeholder-slate-500 focus:border-primary/50 focus:ring-1 focus:ring-primary/30 outline-none" placeholder="AIza..." value="${state.settings.apiKeys?.gemini || ''}" autocomplete="off"/>
+                        <label class="block text-xs text-text-muted mb-1">Google Gemini API Key</label>
+                        <input type="password" id="apiKeyGemini" class="api-key-input w-full px-3 py-2 rounded-lg bg-hover-bg-strong border border-border-inverse text-sm text-text-theme placeholder-slate-500 focus:border-primary/50 focus:ring-1 focus:ring-primary/30 outline-none" placeholder="AIza..." value="${state.settings.apiKeys?.gemini || ''}" autocomplete="off"/>
                     </div>
                     <button class="settings-save-all w-full py-2 px-4 text-sm font-medium bg-primary/20 hover:bg-primary/30 border border-primary/30 text-primary rounded-lg transition-all">
                         Save Settings
                     </button>
                 </div>
-                <div class="pt-4 border-t border-white/5">
+                <div class="pt-4 border-t border-border-subtle-inv">
                     <button class="clear-all-data w-full py-2.5 px-4 text-sm font-medium text-red-400 hover:text-red-300 hover:bg-red-500/10 border border-red-500/30 rounded-lg transition-all">
                         Clear All Data
                     </button>
@@ -3354,12 +3430,26 @@ function showSettingsPanel() {
     modal.querySelectorAll('.setting-toggle').forEach(btn => {
         btn.addEventListener('click', () => {
             const setting = btn.dataset.setting;
+
+            if (setting === 'theme') {
+                // Theme is light/dark, not boolean
+                const next = state.settings.theme === 'dark' ? 'light' : 'dark';
+                setTheme(next, { explicit: true });
+                const isDark = next === 'dark';
+                btn.classList.toggle('bg-primary', isDark);
+                btn.classList.toggle('bg-hover-bg-strong', !isDark);
+                btn.querySelector('span').classList.toggle('right-1', isDark);
+                btn.querySelector('span').classList.toggle('left-1', !isDark);
+                showToast(`Theme: ${next}`, 'success');
+                return;
+            }
+
             state.settings[setting] = !state.settings[setting];
             saveToStorage();
 
             // Update toggle visual
             btn.classList.toggle('bg-primary', state.settings[setting]);
-            btn.classList.toggle('bg-slate-700', !state.settings[setting]);
+            btn.classList.toggle('bg-hover-bg-strong', !state.settings[setting]);
             btn.querySelector('span').classList.toggle('right-1', state.settings[setting]);
             btn.querySelector('span').classList.toggle('left-1', !state.settings[setting]);
 
@@ -3443,13 +3533,13 @@ function updateAdvancedToggleVisual(btn, label, isOn) {
             label.style.color = '#07b6d5';
         }
     } else {
-        btn.style.background = '#334155';
-        btn.style.borderColor = 'rgba(255,255,255,0.1)';
+        btn.style.background = 'var(--tw-bg-surface-low)';
+        btn.style.borderColor = 'var(--tw-border)';
         knob.style.transform = 'translateX(0)';
-        knob.style.background = '#94a3b8';
+        knob.style.background = 'var(--tw-text-muted)';
         knob.style.boxShadow = 'none';
         if (label) {
-            label.style.color = '#64748b';
+            label.style.color = 'var(--tw-text-muted)';
         }
     }
 }
@@ -3465,11 +3555,11 @@ function initTabSwitcher() {
 
             // Update button states
             document.querySelectorAll('.tab-btn').forEach(b => {
-                b.classList.remove('text-white', 'border-primary', 'bg-white/5');
-                b.classList.add('text-slate-500', 'border-transparent');
+                b.classList.remove('text-text-theme', 'border-primary', 'bg-hover-bg');
+                b.classList.add('text-text-muted', 'border-transparent');
             });
-            btn.classList.add('text-white', 'border-primary', 'bg-white/5');
-            btn.classList.remove('text-slate-500', 'border-transparent');
+            btn.classList.add('text-text-theme', 'border-primary', 'bg-hover-bg');
+            btn.classList.remove('text-text-muted', 'border-transparent');
 
             // Show/hide content
             document.querySelectorAll('.tab-content').forEach(c => c.classList.add('hidden'));
@@ -3550,7 +3640,7 @@ function logTerminal(message) {
 
     const time = new Date().toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
     const line = document.createElement('p');
-    line.innerHTML = `<span class="text-slate-500">&gt;</span> <span class="text-slate-600">[${time}]</span> ${escapeHtml(message)}`;
+    line.innerHTML = `<span class="text-text-muted">&gt;</span> <span class="text-text-muted">[${time}]</span> ${escapeHtml(message)}`;
     elements.terminalContent.appendChild(line);
 
     // Keep only last 15 lines
@@ -3580,7 +3670,7 @@ function showToast(message, type = 'info') {
     toast.innerHTML = `
         <span class="material-symbols-outlined text-[18px]">${icons[type]}</span>
         <span class="flex-1">${escapeHtml(message)}</span>
-        <button class="toast-close p-1 hover:bg-white/10 rounded transition-colors">
+        <button class="toast-close p-1 hover:bg-hover-bg-strong rounded transition-colors">
             <span class="material-symbols-outlined text-[14px]">close</span>
         </button>
     `;
@@ -3606,7 +3696,7 @@ function showToast(message, type = 'info') {
 function getColorClass(color) {
     const colors = {
         primary: { bg: 'bg-primary/10', text: 'text-primary', border: 'border-primary/30' },
-        slate: { bg: 'bg-slate-800', text: 'text-slate-400', border: 'border-slate-700' },
+        slate: { bg: 'bg-hover-bg-strong', text: 'text-text-subtle', border: 'border-border-theme' },
         blue: { bg: 'bg-blue-500/10', text: 'text-blue-400', border: 'border-blue-500/30' },
         emerald: { bg: 'bg-emerald-500/10', text: 'text-emerald-400', border: 'border-emerald-500/30' },
         amber: { bg: 'bg-amber-500/10', text: 'text-amber-400', border: 'border-amber-500/30' },

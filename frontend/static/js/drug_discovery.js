@@ -51,7 +51,7 @@ function ddSetStatus(text, kind) {
     if (!el) return;
     const base = 'text-xs font-mono px-2 py-1 rounded border';
     const styles = {
-        idle: 'bg-white/5 text-text-subtle border-white/10',
+        idle: 'bg-hover-bg text-text-subtle border-border-inverse',
         running: 'bg-primary/20 text-primary border-primary/30',
         success: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30',
         error: 'bg-rose-500/20 text-rose-300 border-rose-500/30',
@@ -107,11 +107,11 @@ function renderScenarioGrid() {
         const card = document.createElement('button');
         card.type = 'button';
         card.className =
-            'dd-scenario-card text-left rounded-xl border border-white/10 bg-surface-card/50 hover:border-primary/40 hover:bg-primary/5 p-4 flex flex-col gap-2 transition-all';
+            'dd-scenario-card text-left rounded-xl border border-border-inverse bg-surface-card/50 hover:border-primary/40 hover:bg-primary/5 p-4 flex flex-col gap-2 transition-all';
         card.innerHTML = `
             <div class="flex items-center gap-2">
                 <span class="material-symbols-outlined text-primary text-[22px]">${icon}</span>
-                <h3 class="text-sm font-bold text-white">${sc.name || sc.id}</h3>
+                <h3 class="text-sm font-bold text-text-theme">${sc.name || sc.id}</h3>
             </div>
             <p class="text-[11px] text-text-subtle leading-relaxed">${sc.description || ''}</p>
             <div class="flex items-center gap-1.5 mt-auto pt-2 text-[10px] text-text-subtle">
@@ -206,7 +206,7 @@ function renderScenarioInputs() {
         input.dataset.ddKey = f.key;
         input.placeholder = f.example || '';
         input.className =
-            'w-full rounded-lg bg-surface-dark border border-white/10 text-sm text-white px-3 py-2 focus:border-primary/50 focus:ring-1 focus:ring-primary/30';
+            'w-full rounded-lg bg-surface-dark border border-border-inverse text-sm text-text-theme px-3 py-2 focus:border-primary/50 focus:ring-1 focus:ring-primary/30';
         if (f.example && !input.value) input.value = f.example;
         row.append(label, input);
         wrap.appendChild(row);
@@ -238,7 +238,7 @@ function renderScenarioOptions() {
             input.value = String(meta.default ?? 1);
         }
         input.className =
-            'w-full max-w-xs rounded-lg bg-surface-dark border border-white/10 text-sm text-white px-3 py-2 focus:border-primary/50 focus:ring-1 focus:ring-primary/30';
+            'w-full max-w-xs rounded-lg bg-surface-dark border border-border-inverse text-sm text-text-theme px-3 py-2 focus:border-primary/50 focus:ring-1 focus:ring-primary/30';
         row.append(label, input);
         wrap.appendChild(row);
     });
@@ -254,9 +254,9 @@ function renderThresholdEditor() {
         if (!base) return;
         const override = ddState.thresholdOverrides[gateKey] || {};
         const block = document.createElement('div');
-        block.className = 'rounded-lg border border-white/10 bg-black/20 p-3';
+        block.className = 'rounded-lg border border-border-inverse bg-hover-bg p-3';
         const head = document.createElement('div');
-        head.className = 'text-[11px] font-bold text-white mb-2 flex items-center gap-2';
+        head.className = 'text-[11px] font-bold text-text-theme mb-2 flex items-center gap-2';
         head.innerHTML = `<span class="material-symbols-outlined text-[14px] text-primary">rule</span>${DD_GATE_LABEL[gateKey] || gateKey}`;
         block.appendChild(head);
         Object.entries(base).forEach(([k, v]) => {
@@ -272,23 +272,23 @@ function renderThresholdEditor() {
             if (typeof v === 'boolean') {
                 input.type = 'checkbox';
                 input.checked = Boolean(current);
-                input.className = 'rounded border-white/20 bg-surface-dark text-primary focus:ring-primary';
+                input.className = 'rounded border-border-inverse bg-surface-dark text-primary focus:ring-primary';
             } else if (Array.isArray(v)) {
                 input.type = 'text';
                 input.value = (current || []).join(', ');
                 input.className =
-                    'rounded-md bg-surface-dark border border-white/10 text-[11px] font-mono text-cyan-100 px-2 py-1 flex-[2]';
+                    'rounded-md bg-surface-dark border border-border-inverse text-[11px] font-mono text-cyan-100 px-2 py-1 flex-[2]';
             } else if (typeof v === 'number') {
                 input.type = 'number';
                 input.step = Number.isInteger(v) ? '1' : '0.01';
                 input.value = String(current);
                 input.className =
-                    'rounded-md bg-surface-dark border border-white/10 text-[11px] font-mono text-white px-2 py-1 w-24';
+                    'rounded-md bg-surface-dark border border-border-inverse text-[11px] font-mono text-text-theme px-2 py-1 w-24';
             } else {
                 input.type = 'text';
                 input.value = String(current ?? '');
                 input.className =
-                    'rounded-md bg-surface-dark border border-white/10 text-[11px] font-mono text-white px-2 py-1 flex-[2]';
+                    'rounded-md bg-surface-dark border border-border-inverse text-[11px] font-mono text-text-theme px-2 py-1 flex-[2]';
             }
             input.addEventListener('change', () => captureThresholdChange(gateKey, k, v, input));
             row.append(label, input);
@@ -445,14 +445,14 @@ function renderDecisionLog(entries) {
     }
     entries.forEach((entry) => {
         const row = document.createElement('div');
-        row.className = 'dd-decision-row rounded-lg border border-white/10 bg-black/20 p-3';
+        row.className = 'dd-decision-row rounded-lg border border-border-inverse bg-hover-bg p-3';
         const header = document.createElement('div');
         header.className = 'flex items-center gap-2 mb-2';
         const tierBadge = document.createElement('span');
         tierBadge.className = `dd-tier-badge dd-tier-${entry.tier || 'reject'}`;
         tierBadge.textContent = entry.tier || 'reject';
         const cid = document.createElement('span');
-        cid.className = 'text-[11px] font-mono text-white';
+        cid.className = 'text-[11px] font-mono text-text-theme';
         cid.textContent = entry.candidate_id || '—';
         header.append(tierBadge, cid);
         row.appendChild(header);
@@ -494,9 +494,9 @@ function renderVerdicts(verdictsByGate) {
     DD_GATE_ORDER.forEach((gateKey) => {
         const list = verdictsByGate[gateKey] || [];
         const block = document.createElement('div');
-        block.className = 'rounded-lg border border-white/10 bg-black/20 p-3';
+        block.className = 'rounded-lg border border-border-inverse bg-hover-bg p-3';
         const title = document.createElement('div');
-        title.className = 'text-[11px] font-bold text-white flex items-center gap-2 mb-2';
+        title.className = 'text-[11px] font-bold text-text-theme flex items-center gap-2 mb-2';
         title.innerHTML = `<span class="material-symbols-outlined text-[14px] text-primary">rule</span>${DD_GATE_LABEL[gateKey] || gateKey} <span class="text-[10px] text-text-subtle">(${list.length})</span>`;
         block.appendChild(title);
         if (list.length === 0) {
