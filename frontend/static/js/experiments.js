@@ -15,6 +15,8 @@ const ExperimentsState = {
     activeRunId: null,
     activeRunData: null,
     pollingTimer: null,
+    /** Set when POST /run succeeds; cleared when the run appears in list_runs (persisted on completion). */
+    pendingRun: null,
     filterCategory: null,
     filterTags: [],
 };
@@ -86,7 +88,7 @@ function getCategories() {
 }
 
 function scoreColor(score) {
-    if (score === null || score === undefined) return 'text-slate-400';
+    if (score === null || score === undefined) return 'text-text-subtle';
     if (score >= 4.0) return 'text-green-400';
     if (score >= 3.0) return 'text-yellow-400';
     if (score >= 2.0) return 'text-orange-400';
@@ -96,7 +98,7 @@ function scoreColor(score) {
 const AGENT_COLORS = {
     supervisor:      { bg: 'bg-purple-500/20',  text: 'text-purple-400',  border: 'border-purple-500/30' },
     analysis:        { bg: 'bg-cyan-500/20',     text: 'text-cyan-400',    border: 'border-cyan-500/30' },
-    analysis_tools:  { bg: 'bg-slate-500/20',    text: 'text-slate-300',   border: 'border-slate-500/30' },
+    analysis_tools:  { bg: 'bg-slate-500/20',    text: 'text-text-theme',   border: 'border-slate-500/30' },
     research:        { bg: 'bg-blue-500/20',      text: 'text-blue-400',    border: 'border-blue-500/30' },
     report:          { bg: 'bg-yellow-500/20',    text: 'text-yellow-400',  border: 'border-yellow-500/30' },
     summary:         { bg: 'bg-yellow-500/20',    text: 'text-yellow-400',  border: 'border-yellow-500/30' },
@@ -110,13 +112,13 @@ const AGENT_COLORS = {
 };
 
 function agentColor(agent) {
-    return AGENT_COLORS[agent] || { bg: 'bg-white/10', text: 'text-slate-300', border: 'border-white/10' };
+    return AGENT_COLORS[agent] || { bg: 'bg-hover-bg-strong', text: 'text-text-theme', border: 'border-border-inverse' };
 }
 
 function scoreBar(score, max = 5) {
     const pct = score != null ? Math.round((score / max) * 100) : 0;
     const color = score >= 4 ? 'bg-green-500' : score >= 3 ? 'bg-yellow-500' : score >= 2 ? 'bg-orange-500' : 'bg-red-500';
-    return `<div class="w-full bg-white/10 rounded-full h-1.5 mt-1">
+    return `<div class="w-full bg-hover-bg-strong rounded-full h-1.5 mt-1">
         <div class="${color} h-1.5 rounded-full transition-all" style="width:${pct}%"></div>
     </div>`;
 }
@@ -127,7 +129,7 @@ function failureBadge(mode) {
         timeout:   ['bg-yellow-500/20 text-yellow-400 border-yellow-500/30', 'timer_off'],
         max_steps: ['bg-orange-500/20 text-orange-400 border-orange-500/30', 'repeat'],
         exception: ['bg-red-500/20 text-red-400 border-red-500/30', 'error'],
-        incomplete:['bg-slate-500/20 text-slate-400 border-slate-500/30', 'help'],
+        incomplete:['bg-slate-500/20 text-text-subtle border-slate-500/30', 'help'],
     };
     const [cls, icon] = map[mode] || map.incomplete;
     return `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium border ${cls}">
@@ -141,11 +143,11 @@ function renderCategoryFilters() {
     const cats = getCategories();
     container.innerHTML = `
         <button class="category-filter px-2.5 py-1 rounded-full text-[11px] font-medium border transition-all
-            ${!ExperimentsState.filterCategory ? 'bg-primary text-background-dark border-primary' : 'border-white/10 text-text-subtle hover:border-primary/50 hover:text-white'}"
+            ${!ExperimentsState.filterCategory ? 'bg-primary text-slate-900 border-primary' : 'border-border-inverse text-text-subtle hover:border-primary/50 hover:text-text-theme'}"
             data-cat="">All</button>
         ${cats.map(cat => `
         <button class="category-filter px-2.5 py-1 rounded-full text-[11px] font-medium border transition-all
-            ${ExperimentsState.filterCategory === cat ? 'bg-primary text-background-dark border-primary' : 'border-white/10 text-text-subtle hover:border-primary/50 hover:text-white'}"
+            ${ExperimentsState.filterCategory === cat ? 'bg-primary text-slate-900 border-primary' : 'border-border-inverse text-text-subtle hover:border-primary/50 hover:text-text-theme'}"
             data-cat="${cat}">${cat.replace(/_/g, ' ')}</button>`).join('')}
     `;
     container.querySelectorAll('.category-filter').forEach(btn => {
@@ -179,19 +181,19 @@ function renderUseCaseList() {
         const isSelected = ExperimentsState.selectedUseCaseIds.has(uc.id);
         return `
         <div class="exp-use-case-card group flex items-start gap-3 p-3 rounded-lg border transition-all cursor-pointer
-            ${isSelected ? 'bg-primary/10 border-primary/40' : 'border-white/5 hover:border-white/15 bg-surface-card/30 hover:bg-surface-card/60'}"
+            ${isSelected ? 'bg-primary/10 border-primary/40' : 'border-border-subtle-inv hover:border-border-inverse bg-surface-card/30 hover:bg-surface-card/60'}"
             data-id="${uc.id}">
             <div class="mt-0.5 flex-shrink-0 w-4 h-4 rounded border-2 flex items-center justify-center transition-all
-                ${isSelected ? 'bg-primary border-primary' : 'border-white/20 group-hover:border-primary/60'}">
-                ${isSelected ? '<span class="material-symbols-outlined text-[12px] text-background-dark">check</span>' : ''}
+                ${isSelected ? 'bg-primary border-primary' : 'border-border-inverse group-hover:border-primary/60'}">
+                ${isSelected ? '<span class="material-symbols-outlined text-[12px] text-slate-900">check</span>' : ''}
             </div>
             <div class="flex-1 min-w-0">
                 <div class="flex items-center gap-2 flex-wrap mb-0.5">
-                    <span class="text-sm font-semibold text-white truncate">${uc.name}</span>
-                    ${uc.category ? `<span class="text-[10px] px-1.5 py-0.5 rounded bg-white/10 text-text-subtle">${uc.category.replace(/_/g,' ')}</span>` : ''}
+                    <span class="text-sm font-semibold text-text-theme truncate">${uc.name}</span>
+                    ${uc.category ? `<span class="text-[10px] px-1.5 py-0.5 rounded bg-hover-bg-strong text-text-subtle">${uc.category.replace(/_/g,' ')}</span>` : ''}
                 </div>
                 <p class="text-xs text-text-subtle line-clamp-2">${uc.description || uc.prompt.substring(0, 120)}</p>
-                ${uc.tags && uc.tags.length ? `<div class="flex gap-1 mt-1.5 flex-wrap">${uc.tags.map(t=>`<span class="text-[10px] px-1.5 py-0.5 rounded-full border border-white/10 text-slate-500">${t}</span>`).join('')}</div>` : ''}
+                ${uc.tags && uc.tags.length ? `<div class="flex gap-1 mt-1.5 flex-wrap">${uc.tags.map(t=>`<span class="text-[10px] px-1.5 py-0.5 rounded-full border border-border-inverse text-text-muted">${t}</span>`).join('')}</div>` : ''}
             </div>
         </div>`;
     }).join('');
@@ -224,7 +226,7 @@ function renderConfigSelector() {
     if (!container) return;
     container.innerHTML = ExperimentsState.configs.map(c => `
         <button class="config-btn flex-1 px-3 py-2 rounded-lg text-xs font-medium border transition-all text-left
-            ${ExperimentsState.selectedConfigId === c.id ? 'bg-primary/20 border-primary/50 text-white' : 'border-white/10 text-text-subtle hover:border-white/25 hover:text-white'}"
+            ${ExperimentsState.selectedConfigId === c.id ? 'bg-primary/20 border-primary/50 text-text-theme' : 'border-border-inverse text-text-subtle hover:border-white/25 hover:text-text-theme'}"
             data-id="${c.id}" title="${c.description || ''}">
             <div class="font-semibold">${c.name}</div>
             <div class="text-[10px] opacity-70 mt-0.5">${c.description || `steps: ${c.max_steps}, timeout: ${c.timeout}s`}</div>
@@ -238,19 +240,53 @@ function renderConfigSelector() {
     });
 }
 
+function updateRunsLiveBanner() {
+    const wrap = document.getElementById('exp-runs-live-status');
+    const textEl = document.getElementById('exp-runs-live-status-text');
+    if (!wrap || !textEl) return;
+    const p = ExperimentsState.pendingRun;
+    if (!p) {
+        wrap.classList.add('hidden');
+        return;
+    }
+    const short = (p.runId || '').substring(0, 8);
+    wrap.classList.remove('hidden');
+    textEl.textContent =
+        `Run ${short}… is executing — results stay hidden until the run finishes and is saved. Watch this row and the server terminal for activity.`;
+}
+
 function renderRunsTable() {
     const container = document.getElementById('exp-runs-table-body');
     if (!container) return;
 
-    if (ExperimentsState.runs.length === 0) {
-        container.innerHTML = `<tr><td colspan="7" class="text-center py-10 text-text-subtle text-sm">
-            <span class="material-symbols-outlined block text-3xl mb-2 text-border-dark">history_toggle_off</span>
-            No experiment runs yet. Run an experiment to see results here.
-        </td></tr>`;
-        return;
+    if (ExperimentsState.pendingRun) {
+        const pid = ExperimentsState.pendingRun.runId;
+        if (ExperimentsState.runs.some(r => r.run_id === pid)) {
+            ExperimentsState.pendingRun = null;
+        }
     }
+    updateRunsLiveBanner();
 
-    container.innerHTML = ExperimentsState.runs.map(run => {
+    const pendingRow = () => {
+        const p = ExperimentsState.pendingRun;
+        if (!p) return '';
+        const shortId = (p.runId || '').substring(0, 8);
+        const dt = p.startedAt ? new Date(p.startedAt).toLocaleString() : '—';
+        return `
+        <tr class="exp-pending-run-row border-b border-primary/30 bg-primary/10">
+            <td class="px-4 py-3 font-mono text-[11px] text-primary">
+                <span class="inline-flex items-center gap-2">
+                    <span class="material-symbols-outlined animate-spin text-base">progress_activity</span>
+                    ${shortId}…
+                </span>
+            </td>
+            <td class="px-4 py-3 text-sm font-medium text-text-theme">${p.configName || '—'}</td>
+            <td class="px-4 py-3 text-xs text-text-subtle">${dt}</td>
+            <td class="px-4 py-3 text-xs text-amber-300/90" colspan="4">Running… (saved when finished)</td>
+        </tr>`;
+    };
+
+    const completedRows = ExperimentsState.runs.map(run => {
         const score = run.mean_score != null ? run.mean_score.toFixed(2) : '—';
         const rate = run.success_rate != null ? `${Math.round(run.success_rate * 100)}%` : '—';
         const time = run.total_execution_time != null ? `${run.total_execution_time.toFixed(0)}s` : '—';
@@ -258,9 +294,9 @@ function renderRunsTable() {
         const dt = run.started_at ? new Date(run.started_at).toLocaleString() : '—';
         const shortId = (run.run_id || '').substring(0, 8);
         return `
-        <tr class="runs-table-row border-b border-white/5 hover:bg-white/3 cursor-pointer transition-all" data-run-id="${run.run_id}">
+        <tr class="runs-table-row border-b border-border-subtle-inv hover:bg-white/3 cursor-pointer transition-all" data-run-id="${run.run_id}">
             <td class="px-4 py-3 font-mono text-[11px] text-text-subtle">${shortId}…</td>
-            <td class="px-4 py-3 text-sm font-medium text-white">${run.config_name || '—'}</td>
+            <td class="px-4 py-3 text-sm font-medium text-text-theme">${run.config_name || '—'}</td>
             <td class="px-4 py-3 text-xs text-text-subtle">${dt}</td>
             <td class="px-4 py-3">
                 <span class="font-mono font-bold ${scoreColor(run.mean_score)}">${score}</span>
@@ -271,6 +307,16 @@ function renderRunsTable() {
             <td class="px-4 py-3 text-xs text-text-subtle">${tokens}</td>
         </tr>`;
     }).join('');
+
+    if (ExperimentsState.runs.length === 0 && !ExperimentsState.pendingRun) {
+        container.innerHTML = `<tr><td colspan="7" class="text-center py-10 text-text-subtle text-sm">
+            <span class="material-symbols-outlined block text-3xl mb-2 text-border-dark">history_toggle_off</span>
+            No experiment runs yet. Run an experiment to see results here.
+        </td></tr>`;
+        return;
+    }
+
+    container.innerHTML = pendingRow() + completedRows;
 
     container.querySelectorAll('.runs-table-row').forEach(row => {
         row.addEventListener('click', () => openRunDetails(row.dataset.runId));
@@ -311,12 +357,12 @@ function showDetailPanel(data) {
         <!-- Header -->
         <div class="mb-6">
             <div class="flex items-center gap-3 mb-1">
-                <h2 class="text-lg font-bold text-white">Run: <span class="font-mono text-primary">${(data.run_id||'').substring(0,12)}…</span></h2>
+                <h2 class="text-lg font-bold text-text-theme">Run: <span class="font-mono text-primary">${(data.run_id||'').substring(0,12)}…</span></h2>
             </div>
             <div class="flex flex-wrap gap-4 text-xs text-text-subtle">
-                <span><span class="text-white font-medium">Config:</span> ${cfg.name || '—'}</span>
-                <span><span class="text-white font-medium">Started:</span> ${data.started_at ? new Date(data.started_at).toLocaleString() : '—'}</span>
-                <span><span class="text-white font-medium">Duration:</span> ${agg.total_execution_time != null ? agg.total_execution_time.toFixed(1)+'s' : '—'}</span>
+                <span><span class="text-text-theme font-medium">Config:</span> ${cfg.name || '—'}</span>
+                <span><span class="text-text-theme font-medium">Started:</span> ${data.started_at ? new Date(data.started_at).toLocaleString() : '—'}</span>
+                <span><span class="text-text-theme font-medium">Duration:</span> ${agg.total_execution_time != null ? agg.total_execution_time.toFixed(1)+'s' : '—'}</span>
             </div>
         </div>
 
@@ -332,7 +378,7 @@ function showDetailPanel(data) {
         ${renderFailureModeBar(agg.failure_mode_counts || {})}
 
         <!-- Results table -->
-        <h3 class="text-sm font-bold text-white mb-3 mt-6">Per-Case Results</h3>
+        <h3 class="text-sm font-bold text-text-theme mb-3 mt-6">Per-Case Results</h3>
         <div class="flex flex-col gap-3">
             ${results.map(r => renderResultCard(r)).join('')}
         </div>
@@ -350,12 +396,12 @@ function showDetailPanel(data) {
 }
 
 function metricCard(label, value, icon, colorCls) {
-    return `<div class="bg-surface-card/50 border border-white/5 rounded-lg p-3">
+    return `<div class="bg-surface-card/50 border border-border-subtle-inv rounded-lg p-3">
         <div class="flex items-center gap-2 mb-1">
             <span class="material-symbols-outlined text-[16px] ${colorCls}">${icon}</span>
             <span class="text-[10px] text-text-subtle uppercase tracking-wider">${label}</span>
         </div>
-        <div class="text-lg font-bold text-white">${value}</div>
+        <div class="text-lg font-bold text-text-theme">${value}</div>
     </div>`;
 }
 
@@ -387,12 +433,12 @@ function renderResultCard(result) {
     const tu = result.token_usage;
 
     return `
-    <div class="border border-white/5 rounded-xl overflow-hidden bg-surface-card/30">
+    <div class="border border-border-subtle-inv rounded-xl overflow-hidden bg-surface-card/30">
         <div class="flex items-center gap-3 px-4 py-3 cursor-pointer result-card-toggle" data-target="${cardId}">
             <div class="w-2 h-2 rounded-full flex-shrink-0 ${result.workflow_completed ? 'bg-green-500' : 'bg-red-500'}"></div>
             <div class="flex-1 min-w-0">
                 <div class="flex items-center gap-2 flex-wrap">
-                    <span class="text-sm font-semibold text-white truncate">${result.use_case_name}</span>
+                    <span class="text-sm font-semibold text-text-theme truncate">${result.use_case_name}</span>
                     ${failureBadge(result.failure_mode)}
                 </div>
                 <div class="flex items-center gap-3 mt-0.5 text-[11px] text-text-subtle flex-wrap">
@@ -406,14 +452,14 @@ function renderResultCard(result) {
                 <div class="text-[10px] text-text-subtle">/ 5.0</div>
                 ${result.judge_score != null ? scoreBar(result.judge_score) : ''}
             </div>
-            <span class="material-symbols-outlined text-slate-500 text-[20px] flex-shrink-0 expand-icon">expand_more</span>
+            <span class="material-symbols-outlined text-text-muted text-[20px] flex-shrink-0 expand-icon">expand_more</span>
         </div>
 
-        <div id="${cardId}" class="hidden border-t border-white/5 px-4 pb-4 pt-3 space-y-4">
+        <div id="${cardId}" class="hidden border-t border-border-subtle-inv px-4 pb-4 pt-3 space-y-4">
             <!-- Prompt -->
             <div>
                 <p class="text-[10px] text-text-subtle uppercase tracking-wider mb-1">Prompt</p>
-                <p class="text-xs text-white/80 bg-black/20 rounded p-2 font-mono whitespace-pre-wrap">${escHtml(result.prompt || '')}</p>
+                <p class="text-xs text-text-theme/80 bg-hover-bg rounded p-2 font-mono whitespace-pre-wrap">${escHtml(result.prompt || '')}</p>
             </div>
 
             <!-- Agents & Tools row -->
@@ -430,7 +476,7 @@ function renderResultCard(result) {
                 <div>
                     <p class="text-[10px] text-text-subtle uppercase tracking-wider mb-1">Tools Called (${tools.length})</p>
                     <div class="flex flex-wrap gap-1">
-                        ${uniqueTools.length ? uniqueTools.map(t => `<span class="text-[10px] px-2 py-0.5 rounded-full bg-white/5 border border-white/10 text-text-subtle">${t}</span>`).join('') : '<span class="text-xs text-text-subtle">—</span>'}
+                        ${uniqueTools.length ? uniqueTools.map(t => `<span class="text-[10px] px-2 py-0.5 rounded-full bg-hover-bg border border-border-inverse text-text-subtle">${t}</span>`).join('') : '<span class="text-xs text-text-subtle">—</span>'}
                     </div>
                 </div>
             </div>
@@ -448,7 +494,7 @@ function renderResultCard(result) {
             ${result.judge_reasoning ? `
             <div>
                 <p class="text-[10px] text-text-subtle uppercase tracking-wider mb-1">Judge Reasoning</p>
-                <p class="text-xs text-white/80 bg-black/20 rounded p-2 italic leading-relaxed">${escHtml(result.judge_reasoning)}</p>
+                <p class="text-xs text-text-theme/80 bg-hover-bg rounded p-2 italic leading-relaxed">${escHtml(result.judge_reasoning)}</p>
             </div>` : ''}
 
             <!-- Judge breakdown -->
@@ -458,7 +504,7 @@ function renderResultCard(result) {
             ${result.raw_output ? `
             <div>
                 <p class="text-[10px] text-text-subtle uppercase tracking-wider mb-1">Full Output</p>
-                <pre class="text-[11px] text-white/70 bg-black/30 rounded p-2 overflow-auto max-h-64 whitespace-pre-wrap font-mono">${escHtml(result.raw_output)}</pre>
+                <pre class="text-[11px] text-text-theme/70 bg-hover-bg-strong rounded p-2 overflow-auto max-h-64 whitespace-pre-wrap font-mono">${escHtml(result.raw_output)}</pre>
             </div>` : ''}
 
             <!-- Error -->
@@ -489,16 +535,16 @@ function renderAgentCallFlow(steps) {
                 ? 'text-amber-300/80 font-mono'
                 : isTool
                 ? 'text-primary/80'
-                : 'text-white/75';
+                : 'text-text-theme/75';
             const preview = m.content.length > 400 ? m.content.substring(0, 400) + '…' : m.content;
-            return `<div class="bg-black/20 rounded p-2 mt-1.5 text-[11px]">
+            return `<div class="bg-hover-bg rounded p-2 mt-1.5 text-[11px]">
                 <span class="text-[9px] uppercase tracking-wider text-text-subtle mr-1.5">${typeLabel}</span>
                 <span class="${contentCls} whitespace-pre-wrap">${escHtml(preview)}</span>
             </div>`;
         }).join('');
 
         const routeHtml = step.routing_decision
-            ? `<span class="ml-2 text-[10px] text-text-subtle">→ <span class="text-white/60">${escHtml(step.routing_decision)}</span></span>`
+            ? `<span class="ml-2 text-[10px] text-text-subtle">→ <span class="text-text-theme/60">${escHtml(step.routing_decision)}</span></span>`
             : '';
 
         return `<div class="flex gap-3">
@@ -531,7 +577,7 @@ function renderToolCallDetails(toolCalls) {
             ${toolCalls.map((tc, i) => {
                 const argsStr = JSON.stringify(tc.args || {}, null, 2);
                 const result = tc.result_preview || '';
-                return `<div class="bg-black/20 rounded-lg p-3 space-y-2">
+                return `<div class="bg-hover-bg rounded-lg p-3 space-y-2">
                     <div class="flex items-center gap-2">
                         <span class="material-symbols-outlined text-[14px] text-amber-400">build</span>
                         <span class="text-xs font-semibold text-amber-400 font-mono">${escHtml(tc.tool_name)}</span>
@@ -540,12 +586,12 @@ function renderToolCallDetails(toolCalls) {
                     ${argsStr && argsStr !== '{}' ? `
                     <div>
                         <p class="text-[9px] text-text-subtle uppercase mb-0.5">Arguments</p>
-                        <pre class="text-[10px] text-white/60 bg-black/30 rounded p-1.5 overflow-auto max-h-24 font-mono">${escHtml(argsStr)}</pre>
+                        <pre class="text-[10px] text-text-theme/60 bg-hover-bg-strong rounded p-1.5 overflow-auto max-h-24 font-mono">${escHtml(argsStr)}</pre>
                     </div>` : ''}
                     ${result ? `
                     <div>
                         <p class="text-[9px] text-text-subtle uppercase mb-0.5">Result</p>
-                        <pre class="text-[10px] text-amber-200/70 bg-black/30 rounded p-1.5 overflow-auto max-h-48 whitespace-pre-wrap font-mono">${escHtml(result)}</pre>
+                        <pre class="text-[10px] text-amber-200/70 bg-hover-bg-strong rounded p-1.5 overflow-auto max-h-48 whitespace-pre-wrap font-mono">${escHtml(result)}</pre>
                     </div>` : ''}
                 </div>`;
             }).join('')}
@@ -555,8 +601,8 @@ function renderToolCallDetails(toolCalls) {
 
 function renderTokenUsage(tokenUsage) {
     if (!tokenUsage) {
-        return `<div class="flex items-center gap-2 px-3 py-2 bg-black/10 border border-white/5 rounded-lg">
-            <span class="material-symbols-outlined text-[14px] text-slate-500">token</span>
+        return `<div class="flex items-center gap-2 px-3 py-2 bg-black/10 border border-border-subtle-inv rounded-lg">
+            <span class="material-symbols-outlined text-[14px] text-text-muted">token</span>
             <span class="text-[10px] text-text-subtle uppercase tracking-wider">Token Usage</span>
             <span class="text-[11px] text-text-subtle ml-auto">Not available — LLM did not return usage metadata</span>
         </div>`;
@@ -566,15 +612,15 @@ function renderTokenUsage(tokenUsage) {
     return `<div>
         <p class="text-[10px] text-text-subtle uppercase tracking-wider mb-2">Token Usage</p>
         <div class="grid grid-cols-3 gap-2">
-            <div class="bg-black/20 rounded p-2 text-center">
+            <div class="bg-hover-bg rounded p-2 text-center">
                 <div class="text-[10px] text-text-subtle mb-0.5">Input</div>
                 <div class="text-sm font-bold font-mono text-blue-400">${fmt(input_tokens)}</div>
             </div>
-            <div class="bg-black/20 rounded p-2 text-center">
+            <div class="bg-hover-bg rounded p-2 text-center">
                 <div class="text-[10px] text-text-subtle mb-0.5">Output</div>
                 <div class="text-sm font-bold font-mono text-green-400">${fmt(output_tokens)}</div>
             </div>
-            <div class="bg-black/20 rounded p-2 text-center">
+            <div class="bg-hover-bg rounded p-2 text-center">
                 <div class="text-[10px] text-text-subtle mb-0.5">Total</div>
                 <div class="text-sm font-bold font-mono text-purple-400">${fmt(total_tokens)}</div>
             </div>
@@ -596,13 +642,13 @@ function renderJudgeBreakdown(breakdown) {
                 if (score == null) return '';
                 const reasonKey = `${d}_reasoning`;
                 const reason = dimReasons[reasonKey];
-                return `<div class="bg-black/20 rounded p-2">
+                return `<div class="bg-hover-bg rounded p-2">
                     <div class="flex justify-between items-center">
                         <span class="text-[10px] text-text-subtle capitalize">${d.replace('_',' ')}</span>
                         <span class="text-xs font-bold font-mono ${scoreColor(score)}">${score.toFixed(1)}</span>
                     </div>
                     ${scoreBar(score)}
-                    ${reason ? `<p class="text-[10px] text-white/50 mt-1.5 leading-relaxed">${escHtml(reason)}</p>` : ''}
+                    ${reason ? `<p class="text-[10px] text-text-theme/50 mt-1.5 leading-relaxed">${escHtml(reason)}</p>` : ''}
                 </div>`;
             }).join('')}
         </div>
@@ -656,7 +702,17 @@ async function startExperimentRun() {
         }
 
         const data = await res.json();
-        showExpToast(`Experiment started — ${data.use_case_count} case(s) running in background.`, 'success');
+        ExperimentsState.pendingRun = {
+            runId: data.run_id,
+            configName: config?.name || '—',
+            startedAt: new Date().toISOString(),
+        };
+        await loadRuns();
+        renderRunsTable();
+        showExpToast(
+            `Experiment started (${data.use_case_count} case(s)). A “Running…” row appears until results are saved.`,
+            'success',
+        );
         startPollingRuns(data.run_id);
     } catch (err) {
         showExpToast(`Error: ${err.message}`, 'error');
@@ -669,26 +725,42 @@ async function startExperimentRun() {
 }
 
 function startPollingRuns(runId) {
-    let attempts = 0;
-    const maxAttempts = 60;
+    const POLL_INIT_MS = 3000;
+    const POLL_MAX_MS = 30000;
+    const POLL_MAX_DURATION_MS = 30 * 60 * 1000; // 30 minutes
+    let interval = POLL_INIT_MS;
+    const startedAt = Date.now();
+
+    function stopPolling() {
+        if (ExperimentsState.pollingTimer) {
+            clearTimeout(ExperimentsState.pollingTimer);
+            ExperimentsState.pollingTimer = null;
+        }
+    }
 
     async function poll() {
-        attempts++;
+        if (Date.now() - startedAt > POLL_MAX_DURATION_MS) {
+            stopPolling();
+            showExpToast('Polling timed out after 30 minutes — refresh to check status.', 'warning');
+            return;
+        }
+
         await loadRuns();
         renderRunsTable();
 
         const found = ExperimentsState.runs.find(r => r.run_id === runId);
-        if (found || attempts >= maxAttempts) {
-            clearInterval(ExperimentsState.pollingTimer);
-            ExperimentsState.pollingTimer = null;
-            if (found) {
-                showExpToast('Experiment run complete! Click to view results.', 'success');
-            }
+        if (found) {
+            stopPolling();
+            showExpToast('Experiment run complete — click the row to view results.', 'success');
+            return;
         }
+
+        interval = Math.min(interval * 1.5, POLL_MAX_MS);
+        ExperimentsState.pollingTimer = setTimeout(poll, interval);
     }
 
-    if (ExperimentsState.pollingTimer) clearInterval(ExperimentsState.pollingTimer);
-    ExperimentsState.pollingTimer = setInterval(poll, 3000);
+    stopPolling();
+    void poll();
 }
 
 // ─────────────────────────────────────────────────────────

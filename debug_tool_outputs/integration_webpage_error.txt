@@ -1,0 +1,8 @@
+Web reading error: AssertionError: Unexpected error: Error fetching webpage 'https://biomni.stanford.edu/': The 'tooluniverse' package is not installed. Install it to call live tools.
+assert ('Error' not in 'Error fetch... live tools.'
+
+  'Error' is contained here:
+    Error fetching webpage 'https://biomni.stanford.edu/': The 'tooluniverse' package is not installed. Install it to call live tools.
+  ? +++++ or 'example' in "error fetching webpage 'https://biomni.stanford.edu/': the 'tooluniverse' package is not installed. install it to call live tools.")
+ +  where "error fetching webpage 'https://biomni.stanford.edu/': the 'tooluniverse' package is not installed. install it to call live tools." = <built-in method lower of str object at 0x7f051969b9f0>()
+ +    where <built-in method lower of str object at 0x7f051969b9f0> = "Error fetching webpage 'https://biomni.stanford.edu/': The 'tooluniverse' package is not installed. Install it to call live tools.".lower

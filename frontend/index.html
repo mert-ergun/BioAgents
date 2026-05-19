@@ -5,6 +5,26 @@
     <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
     <title>BioAgents — Multi-Agent Biology Research</title>
 
+    <!-- Anti-flash: set theme class before paint -->
+    <script>
+        (function() {
+            try {
+                var data = JSON.parse(localStorage.getItem('bioagents_sessions'));
+                var theme = data && data.settings && data.settings.theme;
+                if (theme === 'light') {
+                    document.documentElement.classList.remove('dark');
+                } else if (theme === 'dark') {
+                    document.documentElement.classList.add('dark');
+                } else {
+                    // No stored preference: follow system
+                    if (!window.matchMedia('(prefers-color-scheme: dark)').matches) {
+                        document.documentElement.classList.remove('dark');
+                    }
+                }
+            } catch(e) {}
+        })();
+    </script>
+
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
 
@@ -15,6 +35,8 @@
 
     <!-- Material Symbols -->
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&display=swap" rel="stylesheet"/>
+
+
 
     <!-- NGL.js for 3D molecular visualization -->
     <script src="https://unpkg.com/ngl@2.0.0-dev.37/dist/ngl.js"></script>
@@ -30,13 +52,26 @@
                 extend: {
                     colors: {
                         "primary": "#07b6d5",
-                        "background-light": "#f5f8f8",
-                        "background-dark": "#0f2023",
-                        "surface-dark": "#162a2d",
-                        "surface-darker": "#111f22",
-                        "surface-card": "#1a2628",
-                        "border-dark": "#27373a",
-                        "text-subtle": "#9bb6bb"
+                        "background-light": "var(--tw-bg-main)",
+                        "background-dark": "var(--tw-bg-main)",
+                        "surface-dark": "var(--tw-bg-surface)",
+                        "surface-darker": "var(--tw-bg-surface-low)",
+                        "surface-card": "var(--tw-bg-card)",
+                        "border-dark": "var(--tw-border)",
+                        "text-subtle": "var(--tw-text-secondary)",
+                        "text-theme": "var(--tw-text-primary)",
+                        "text-muted": "var(--tw-text-muted)",
+                        "border-theme": "var(--tw-border)",
+                        "border-inverse": "var(--tw-border-inv)",
+                        "border-subtle-inv": "var(--tw-border-subtle-inv)",
+                        "hover-bg": "var(--tw-hover)",
+                        "hover-bg-strong": "var(--tw-hover-strong)",
+                        "overlay": "var(--tw-overlay)",
+                        "input-bg": "var(--tw-bg-input)",
+                        "code-bg": "var(--tw-bg-code)",
+                        "code-text": "var(--tw-text-code)",
+                        "code-block-bg": "var(--tw-bg-code-block)",
+                        "code-block-text": "var(--tw-text-code-block)",
                     },
                     fontFamily: {
                         "display": ["Space Grotesk", "sans-serif"],
@@ -50,21 +85,75 @@
     </script>
 
     <style>
+        /* ===== Theme CSS Variables ===== */
+        :root {
+            --tw-color-primary: #07b6d5;
+            --tw-bg-main: #f5f8f8;
+            --tw-bg-surface: #ffffff;
+            --tw-bg-surface-low: #f0f4f5;
+            --tw-bg-card: #ffffff;
+            --tw-bg-terminal: #1a1a2e;
+            --tw-bg-input: #ffffff;
+            --tw-border: #dde5e8;
+            --tw-border-inv: rgba(0, 0, 0, 0.08);
+            --tw-border-subtle-inv: rgba(0, 0, 0, 0.04);
+            --tw-border-hover: rgba(0, 0, 0, 0.12);
+            --tw-text-primary: #0f172a;
+            --tw-text-secondary: #475569;
+            --tw-text-muted: #94a3b8;
+            --tw-hover: rgba(0, 0, 0, 0.04);
+            --tw-hover-strong: rgba(0, 0, 0, 0.08);
+            --tw-overlay: rgba(0, 0, 0, 0.3);
+            --tw-bg-code: rgba(0, 0, 0, 0.05);
+            --tw-text-code: #c026d3;
+            --tw-bg-code-block: #f1f5f9;
+            --tw-text-code-block: #1e293b;
+        }
+        html.dark {
+            --tw-color-primary: #07b6d5;
+            --tw-bg-main: #0f2023;
+            --tw-bg-surface: #162a2d;
+            --tw-bg-surface-low: #111f22;
+            --tw-bg-card: #1a2628;
+            --tw-bg-terminal: #0a0f10;
+            --tw-bg-input: #162a2d;
+            --tw-border: #27373a;
+            --tw-border-inv: rgba(255, 255, 255, 0.10);
+            --tw-border-subtle-inv: rgba(255, 255, 255, 0.05);
+            --tw-border-hover: rgba(255, 255, 255, 0.12);
+            --tw-text-primary: #ffffff;
+            --tw-text-secondary: #9bb6bb;
+            --tw-text-muted: #64748b;
+            --tw-hover: rgba(255, 255, 255, 0.05);
+            --tw-hover-strong: rgba(255, 255, 255, 0.10);
+            --tw-overlay: rgba(0, 0, 0, 0.6);
+            --tw-bg-code: rgba(0, 0, 0, 0.4);
+            --tw-text-code: #f0abfc;
+            --tw-bg-code-block: rgba(0, 0, 0, 0.5);
+            --tw-text-code-block: #a5f3fc;
+        }
+
+        /* Theme toggle icon visibility */
+        html.dark .theme-icon-light { display: inline; }
+        html.dark .theme-icon-dark { display: none; }
+        html:not(.dark) .theme-icon-light { display: none; }
+        html:not(.dark) .theme-icon-dark { display: inline; }
+
         body { font-family: 'Space Grotesk', sans-serif; }
 
         .custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
-        .custom-scrollbar::-webkit-scrollbar-track { background: #111f22; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: #27373a; border-radius: 4px; }
-        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #07b6d5; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: var(--tw-bg-surface-low); }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: var(--tw-border); border-radius: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: var(--tw-color-primary); }
 
         .grid-bg {
-            background-image: radial-gradient(#27373a 1px, transparent 1px);
+            background-image: radial-gradient(var(--tw-border) 1px, transparent 1px);
             background-size: 20px 20px;
         }
 
         /* Message content styling */
         .message-content h1, .message-content h2, .message-content h3 {
-            font-weight: 600; margin-top: 1rem; margin-bottom: 0.5rem; color: white;
+            font-weight: 600; margin-top: 1rem; margin-bottom: 0.5rem; color: var(--tw-text-primary);
         }
         .message-content h1 { font-size: 1.25rem; }
         .message-content h2 { font-size: 1.1rem; }
@@ -74,38 +163,70 @@
         .message-content ol { list-style: decimal; }
         .message-content li { margin-bottom: 0.25rem; }
         .message-content code {
-            background: rgba(0,0,0,0.4);
+            background: var(--tw-bg-code);
             padding: 0.125rem 0.5rem;
             border-radius: 0.25rem;
             font-family: ui-monospace, monospace;
             font-size: 0.85em;
-            color: #f0abfc;
+            color: var(--tw-text-code);
         }
         .message-content pre {
-            background: rgba(0,0,0,0.5);
+            background: var(--tw-bg-code-block);
             padding: 1rem;
             border-radius: 0.5rem;
             overflow-x: auto;
             margin: 0.75rem 0;
-            border: 1px solid rgba(255,255,255,0.1);
+            border: 1px solid var(--tw-border-inv);
         }
-        .message-content pre code { background: transparent; padding: 0; color: #a5f3fc; }
-        .message-content strong { font-weight: 600; color: white; }
+        .message-content pre code { background: transparent; padding: 0; color: var(--tw-text-code-block); }
+        .message-content strong { font-weight: 600; color: var(--tw-text-primary); }
         .message-content a { color: #07b6d5; text-decoration: underline; }
         .message-content blockquote {
-            border-left: 3px solid #07b6d5;
+            border-left: 3px solid var(--tw-color-primary);
             padding-left: 1rem;
             margin: 0.5rem 0;
-            color: #9bb6bb;
+            color: var(--tw-text-secondary);
             font-style: italic;
         }
         .message-content table { width: 100%; border-collapse: collapse; margin: 0.5rem 0; }
         .message-content th, .message-content td {
-            border: 1px solid rgba(255,255,255,0.1);
+            border: 1px solid var(--tw-border-inv);
             padding: 0.5rem;
             text-align: left;
         }
-        .message-content th { background: rgba(0,0,0,0.3); }
+        .message-content th { background: var(--tw-bg-code); }
+
+        /* Advanced mode: tool call & result cards */
+        .tool-card {
+            position: relative;
+            transition: all 0.2s;
+        }
+        .tool-card:hover {
+            border-color: var(--tw-border-hover) !important;
+        }
+        .tool-card details summary {
+            cursor: pointer;
+            user-select: none;
+            list-style: none;
+        }
+        .tool-card details summary::-webkit-details-marker { display: none; }
+        .tool-card details[open] summary .chevron-icon {
+            transform: rotate(90deg);
+        }
+        .tool-card .chevron-icon {
+            transition: transform 0.2s;
+            font-size: 14px;
+        }
+        .tool-card pre {
+            margin: 0;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+        .tool-connector {
+            width: 2px;
+            border-radius: 999px;
+            flex-shrink: 0;
+        }
 
         /* Citation styling */
         .citation {
@@ -129,7 +250,7 @@
             position: fixed;
             z-index: 1000;
             max-width: 400px;
-            background: #1a2628;
+            background: var(--tw-bg-card);
             border: 1px solid rgba(7, 182, 213, 0.3);
             border-radius: 0.5rem;
             padding: 1rem;
@@ -166,6 +287,12 @@
             to { opacity: 1; transform: translateY(0); }
         }
         .animate-fadeIn { animation: fadeIn 0.3s ease-out; }
+
+        /* Engagement panel pulse animation */
+        @keyframes engagement-pulse {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(96,165,250,0); }
+            50% { box-shadow: 0 0 20px 4px rgba(96,165,250,0.15); }
+        }
 
         /* Workflow builder — n8n-inspired canvas */
         .wb-viewport {
@@ -230,19 +357,155 @@
         .wb-conn-row { display: flex; align-items: center; justify-content: space-between; gap: 6px; font-size: 10px; padding: 6px 8px; border-radius: 6px; background: rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.06); margin-bottom: 4px; }
         .wb-conn-row button { flex-shrink: 0; padding: 2px 6px; border-radius: 4px; color: #fca5a5; border: 1px solid rgba(248,113,113,0.35); background: transparent; cursor: pointer; font-size: 10px; }
         .wb-conn-row button:hover { background: rgba(248,113,113,0.12); }
+
+        /* Workflow builder — dynamic form fields */
+        .wb-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+        .wb-field-label-row { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; min-width: 0; }
+        .wb-field-label {
+            font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em;
+            color: #cbd5e1; font-family: ui-monospace, monospace;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        .wb-field-type-badge {
+            font-size: 9px; font-family: ui-monospace, monospace;
+            color: #64748b;
+            white-space: nowrap; flex-shrink: 0; line-height: 1.4;
+        }
+        /* Higher-specificity selectors so Tailwind's @forms plugin reset doesn't win. */
+        input.wb-field-input, .wb-field-input {
+            width: 100%; border-radius: 6px;
+            background-color: rgba(15, 23, 30, 0.7);
+            border: 1px solid rgba(255,255,255,0.1);
+            color: #e2e8f0; font-size: 12px; font-family: ui-monospace, monospace;
+            padding: 7px 10px; outline: none; box-shadow: none;
+            transition: border-color 0.15s, background-color 0.15s, box-shadow 0.15s;
+            --tw-ring-shadow: 0 0 #0000; --tw-ring-offset-shadow: 0 0 #0000;
+        }
+        input.wb-field-input:hover { border-color: rgba(255,255,255,0.2); }
+        input.wb-field-input:focus, .wb-field-input:focus {
+            border-color: rgba(7,182,213,0.65);
+            box-shadow: 0 0 0 3px rgba(7,182,213,0.14);
+            background-color: rgba(8, 14, 19, 0.85);
+            --tw-ring-shadow: 0 0 #0000; --tw-ring-offset-shadow: 0 0 #0000;
+        }
+        input.wb-field-input::placeholder { color: #475569; font-style: italic; opacity: 1; }
+        textarea.wb-field-textarea, .wb-field-textarea {
+            width: 100%; border-radius: 6px;
+            background-color: rgba(15, 23, 30, 0.7);
+            border: 1px solid rgba(255,255,255,0.1);
+            color: #e2e8f0; font-size: 12px; font-family: ui-monospace, monospace;
+            padding: 7px 10px; outline: none; resize: vertical; min-height: 2.25rem; line-height: 1.5;
+            transition: border-color 0.15s, background-color 0.15s, box-shadow 0.15s;
+            --tw-ring-shadow: 0 0 #0000; --tw-ring-offset-shadow: 0 0 #0000;
+        }
+        textarea.wb-field-textarea:hover { border-color: rgba(255,255,255,0.2); }
+        textarea.wb-field-textarea:focus, .wb-field-textarea:focus {
+            border-color: rgba(7,182,213,0.65);
+            box-shadow: 0 0 0 3px rgba(7,182,213,0.14);
+            background-color: rgba(8, 14, 19, 0.85);
+            --tw-ring-shadow: 0 0 #0000; --tw-ring-offset-shadow: 0 0 #0000;
+        }
+        textarea.wb-field-textarea::placeholder { color: #475569; font-style: italic; opacity: 1; }
+        .wb-field-bool-wrap {
+            display: flex; align-items: center; gap: 8px; padding: 7px 10px;
+            border-radius: 6px; background: rgba(15, 23, 30, 0.6); border: 1px solid rgba(255,255,255,0.08);
+            cursor: pointer; transition: all 0.15s;
+        }
+        .wb-field-bool-wrap:hover { border-color: rgba(255,255,255,0.16); background: rgba(15, 23, 30, 0.85); }
+        .wb-field-bool-text { font-size: 11px; color: #94a3b8; font-family: ui-monospace, monospace; }
+        .wb-field-check { width: 14px; height: 14px; accent-color: #07b6d5; cursor: pointer; flex-shrink: 0; }
+        .wb-params-toggle { display: flex; gap: 0; border-radius: 6px; overflow: hidden; border: 1px solid rgba(255,255,255,0.1); }
+        .wb-params-toggle button { flex: 1; padding: 3px 10px; font-size: 9px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; cursor: pointer; border: none; background: rgba(0,0,0,0.25); color: #71717a; transition: all 0.15s; }
+        .wb-params-toggle button.active { background: rgba(7,182,213,0.2); color: #22d3ee; }
+
+        /* Form sections — responsive grid */
+        .wb-inputs-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+            gap: 12px;
+            padding: 4px 2px;
+        }
+        .wb-node-inputs-section {
+            position: relative;
+            border: 1px solid rgba(255,255,255,0.06);
+            border-radius: 10px;
+            background: rgba(22, 32, 40, 0.55);
+            overflow: hidden;
+            transition: border-color 0.15s, background-color 0.15s;
+            display: flex; flex-direction: column;
+        }
+        .wb-node-inputs-section:hover {
+            border-color: rgba(255,255,255,0.12);
+            background: rgba(26, 36, 44, 0.65);
+        }
+        .wb-node-inputs-header {
+            display: flex; align-items: center; gap: 8px;
+            padding: 9px 12px;
+            cursor: pointer;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+            user-select: none;
+        }
+        .wb-node-inputs-header:hover { background: rgba(255,255,255,0.02); }
+        .wb-node-inputs-header .wb-nid-cat {
+            width: 6px; height: 6px; border-radius: 9999px;
+            background: var(--wb-cat-color, #64748b);
+            flex-shrink: 0;
+            box-shadow: 0 0 0 2px rgba(255,255,255,0.04);
+        }
+        .wb-node-inputs-header .wb-nid-id {
+            font-family: ui-monospace, monospace; font-size: 10px; font-weight: 600;
+            color: #cbd5e1;
+            flex-shrink: 0;
+        }
+        .wb-node-inputs-header .wb-nid-sep {
+            color: #334155; flex-shrink: 0; font-size: 10px;
+        }
+        .wb-node-inputs-header .wb-nid-name {
+            flex: 1; font-size: 11px; font-weight: 500; color: #94a3b8;
+            overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+        }
+        .wb-node-inputs-header .wb-nid-count {
+            font-size: 9px; color: #64748b; font-family: ui-monospace, monospace;
+            flex-shrink: 0;
+        }
+        .wb-node-inputs-header .wb-nid-chevron {
+            color: #475569; transition: transform 0.2s; flex-shrink: 0;
+        }
+        .wb-node-inputs-body {
+            padding: 12px;
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+            gap: 10px;
+        }
+        .wb-node-inputs-body.collapsed { display: none; }
+        .wb-inputs-empty {
+            grid-column: 1 / -1;
+            text-align: center; padding: 32px 16px;
+            color: #475569; font-size: 12px;
+            border: 1px dashed rgba(255,255,255,0.08);
+            border-radius: 10px; background: rgba(0,0,0,0.15);
+        }
+        .wb-inputs-empty .wb-inputs-empty-icon {
+            display: block; font-size: 28px; color: rgba(7, 182, 213, 0.3); margin-bottom: 8px;
+        }
+
+        /* Light mode: workflow builder canvas stays dark (graph editor convention) */
+        html:not(.dark) .wb-viewport {
+            background-color: #1a2030;
+        }
     </style>
 </head>
 
-<body class="bg-background-light dark:bg-background-dark text-slate-900 dark:text-slate-50 font-display overflow-hidden h-screen flex w-full">
+<body class="bg-background-dark text-text-theme font-display overflow-hidden h-screen flex w-full">
 
     <!-- Sidebar Navigation -->
-    <aside class="w-64 flex-shrink-0 flex flex-col border-r border-slate-200 dark:border-white/5 bg-background-light dark:bg-surface-darker h-full hidden lg:flex" id="sidebar">
+    <aside class="w-64 flex-shrink-0 flex flex-col border-r border-border-subtle-inv bg-surface-darker h-full hidden lg:flex" id="sidebar">
         <!-- Logo -->
-        <div class="h-16 flex items-center px-6 border-b border-slate-200 dark:border-white/5">
+        <div class="h-16 flex items-center px-6 border-b border-border-subtle-inv">
             <div class="flex items-center gap-3 text-primary">
                 <span class="material-symbols-outlined text-3xl">biotech</span>
                 <div class="flex flex-col">
-                    <span class="text-lg font-bold tracking-tight text-white">BioAgents</span>
+                    <span class="text-lg font-bold tracking-tight text-text-theme">BioAgents</span>
                     <span class="text-[10px] text-text-subtle">Multi-Agent System v2.0</span>
                 </div>
             </div>
@@ -251,7 +514,7 @@
         <!-- Navigation -->
         <div class="flex-1 overflow-y-auto py-4 px-3 custom-scrollbar flex flex-col gap-4">
             <!-- New Research Button -->
-            <button id="newResearchBtn" class="flex items-center justify-center gap-3 w-full px-4 py-3 bg-primary text-background-dark rounded-lg hover:bg-primary/90 transition-all font-bold shadow-[0_0_15px_rgba(7,182,213,0.3)] hover:shadow-[0_0_25px_rgba(7,182,213,0.4)]">
+            <button id="newResearchBtn" class="flex items-center justify-center gap-3 w-full px-4 py-3 bg-primary text-slate-900 rounded-lg hover:bg-primary/90 transition-all font-bold shadow-[0_0_15px_rgba(7,182,213,0.3)] hover:shadow-[0_0_25px_rgba(7,182,213,0.4)]">
                 <span class="material-symbols-outlined">add</span>
                 <span>New Research</span>
             </button>
@@ -263,29 +526,41 @@
                     <span class="material-symbols-outlined text-[20px]">science</span>
                     <span class="font-medium text-sm">Research</span>
                 </a>
-                <a href="#" id="nav-experiments" class="nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-text-subtle hover:text-white hover:bg-white/5 transition-all">
+                <a href="#" id="nav-experiments" class="nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-text-subtle hover:text-text-theme hover:bg-hover-bg transition-all">
                     <span class="material-symbols-outlined text-[20px]">experiment</span>
-                    <span class="font-medium text-sm">Experiments</span>
+                    <span class="font-medium text-sm">Benchmarks</span>
                 </a>
-                <a href="#" id="nav-workflows" class="nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-text-subtle hover:text-white hover:bg-white/5 transition-all">
+                <a href="#" id="nav-workflows" class="nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-text-subtle hover:text-text-theme hover:bg-hover-bg transition-all">
                     <span class="material-symbols-outlined text-[20px]">account_tree</span>
                     <span class="font-medium text-sm">Pipelines</span>
                 </a>
-                <a href="#" id="nav-workflow-builder" class="nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-text-subtle hover:text-white hover:bg-white/5 transition-all">
+                <a href="#" id="nav-workflow-builder" class="nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-text-subtle hover:text-text-theme hover:bg-hover-bg transition-all">
                     <span class="material-symbols-outlined text-[20px]">schema</span>
                     <span class="font-medium text-sm">Workflow builder</span>
                 </a>
-                <a href="#" class="nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-text-subtle hover:text-white hover:bg-white/5 transition-all">
+                <a href="#" id="nav-drug-discovery" class="nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-text-subtle hover:text-text-theme hover:bg-hover-bg transition-all">
+                    <span class="material-symbols-outlined text-[20px]">medication</span>
+                    <span class="font-medium text-sm">Drug Discovery</span>
+                </a>
+                <a href="#" class="nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-text-subtle hover:text-text-theme hover:bg-hover-bg transition-all">
                     <span class="material-symbols-outlined text-[20px]">folder_open</span>
                     <span class="font-medium text-sm">Project Index</span>
                 </a>
-                <a href="#" class="nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-text-subtle hover:text-white hover:bg-white/5 transition-all">
+                <a href="#" class="nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-text-subtle hover:text-text-theme hover:bg-hover-bg transition-all">
                     <span class="material-symbols-outlined text-[20px]">history</span>
                     <span class="font-medium text-sm">History</span>
                 </a>
-                <a href="#" class="nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-text-subtle hover:text-white hover:bg-white/5 transition-all">
+                <a href="#" class="nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-text-subtle hover:text-text-theme hover:bg-hover-bg transition-all">
                     <span class="material-symbols-outlined text-[20px]">smart_toy</span>
                     <span class="font-medium text-sm">Agent Library</span>
+                </a>
+                <a href="#" class="nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-text-subtle hover:text-text-theme hover:bg-hover-bg transition-all">
+                    <span class="material-symbols-outlined text-[20px]">extension</span>
+                    <span class="font-medium text-sm">Tool Registry</span>
+                </a>
+                <a href="#" class="nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-text-subtle hover:text-text-theme hover:bg-hover-bg transition-all">
+                    <span class="material-symbols-outlined text-[20px]">terminal</span>
+                    <span class="font-medium text-sm">Sandbox Terminal</span>
                 </a>
             </div>
 
@@ -298,16 +573,24 @@
             </div>
         </div>
 
+            <!-- About Link -->
+            <div class="border-t border-border-subtle-inv pt-2 mt-auto">
+                <a href="#" id="nav-about" class="nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-text-subtle hover:text-text-theme hover:bg-hover-bg transition-all">
+                    <span class="material-symbols-outlined text-[20px]">info</span>
+                    <span class="font-medium text-sm">About</span>
+                </a>
+            </div>
+
         <!-- Settings Footer -->
-        <div class="p-4 border-t border-white/5">
-            <button class="settings-btn flex items-center gap-3 w-full px-3 py-2 text-text-subtle hover:text-white hover:bg-white/5 rounded-lg transition-all">
+        <div class="p-4 border-t border-border-subtle-inv">
+            <button class="settings-btn flex items-center gap-3 w-full px-3 py-2 text-text-subtle hover:text-text-theme hover:bg-hover-bg rounded-lg transition-all">
                 <span class="material-symbols-outlined text-[20px]">settings</span>
                 <span class="font-medium text-sm">Settings</span>
             </button>
             <div class="mt-4 flex items-center gap-3 px-3">
                 <div class="size-9 rounded-full bg-gradient-to-tr from-primary to-purple-500 flex items-center justify-center text-white font-bold text-sm">R</div>
                 <div class="flex flex-col">
-                    <span class="text-sm font-bold text-white leading-none">Researcher</span>
+                    <span class="text-sm font-bold text-text-theme leading-none">Researcher</span>
                     <span class="text-[10px] text-text-subtle">Principal Investigator</span>
                 </div>
             </div>
@@ -315,19 +598,19 @@
     </aside>
 
     <!-- Main Content Area -->
-    <main class="flex-1 flex flex-col h-full min-w-0 bg-background-light dark:bg-background-dark overflow-hidden">
+    <main class="flex-1 flex flex-col h-full min-w-0 bg-background-dark overflow-hidden">
         <!-- Header -->
-        <header class="h-14 border-b border-slate-200 dark:border-white/5 flex items-center justify-between px-4 md:px-6 bg-surface-dark/50 backdrop-blur-sm z-20 flex-shrink-0">
+        <header class="h-14 border-b border-border-subtle-inv flex items-center justify-between px-4 md:px-6 bg-surface-dark/50 backdrop-blur-sm z-20 flex-shrink-0">
             <div class="flex items-center gap-3">
                 <!-- Mobile menu button -->
-                <button class="lg:hidden text-text-subtle hover:text-white p-2 rounded-lg hover:bg-white/5 transition-all" id="mobileMenuBtn">
+                <button class="lg:hidden text-text-subtle hover:text-text-theme p-2 rounded-lg hover:bg-hover-bg transition-all" id="mobileMenuBtn">
                     <span class="material-symbols-outlined">menu</span>
                 </button>
                 <div class="flex flex-col">
-                    <h2 class="text-sm font-bold leading-tight tracking-tight text-white truncate max-w-[200px] md:max-w-none" id="projectTitle">BioAgents Research Session</h2>
+                    <h2 class="text-sm font-bold leading-tight tracking-tight text-text-theme truncate max-w-[200px] md:max-w-none" id="projectTitle">BioAgents Research Session</h2>
                     <div class="flex items-center gap-2">
                         <span class="w-2 h-2 rounded-full bg-green-500 animate-pulse" id="statusDot"></span>
-                        <p class="text-[10px] text-slate-400" id="statusText">System Ready • Awaiting Input</p>
+                        <p class="text-[10px] text-text-subtle" id="statusText">System Ready • Awaiting Input</p>
                     </div>
                 </div>
             </div>
@@ -336,15 +619,19 @@
                     <span class="material-symbols-outlined text-[16px]">play_arrow</span>
                     <span>Run Demo</span>
                 </button>
-                <button class="export-btn hidden md:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-medium transition-all hover:border-primary/30">
+                <button class="export-btn hidden md:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-hover-bg hover:bg-hover-bg-strong border border-border-inverse text-xs font-medium transition-all hover:border-primary/30">
                     <span class="material-symbols-outlined text-[16px]">download</span>
                     <span>Export Session</span>
                 </button>
-                <button class="notifications-btn p-2 text-text-subtle hover:text-white transition-all rounded-lg hover:bg-white/5 relative">
+                <button id="themeToggle" class="p-2 text-text-subtle hover:text-text-theme transition-all rounded-lg hover:bg-hover-bg" title="Toggle theme">
+                    <span class="material-symbols-outlined theme-icon-light">light_mode</span>
+                    <span class="material-symbols-outlined theme-icon-dark">dark_mode</span>
+                </button>
+                <button class="notifications-btn p-2 text-text-subtle hover:text-text-theme transition-all rounded-lg hover:bg-hover-bg relative">
                     <span class="material-symbols-outlined">notifications</span>
                     <span class="notifications-badge absolute top-1 right-1 w-2 h-2 bg-primary rounded-full"></span>
                 </button>
-                <button class="help-btn p-2 text-text-subtle hover:text-white transition-all rounded-lg hover:bg-white/5">
+                <button class="help-btn p-2 text-text-subtle hover:text-text-theme transition-all rounded-lg hover:bg-hover-bg">
                     <span class="material-symbols-outlined">help</span>
                 </button>
             </div>
@@ -354,21 +641,32 @@
         <div class="flex-1 grid grid-cols-12 min-h-0 overflow-hidden">
 
             <!-- Left Panel: Agent Workflow -->
-            <div class="hidden lg:flex col-span-3 border-r border-slate-200 dark:border-white/5 bg-surface-darker/50 flex-col min-h-0" id="agentPanel">
-                <div class="p-4 pb-2 border-b border-white/5 flex justify-between items-center flex-shrink-0">
-                    <h3 class="text-white text-xs font-bold tracking-wide uppercase">Active Agents</h3>
-                    <span class="material-symbols-outlined text-slate-500 text-[18px]">hub</span>
+            <div class="hidden lg:flex col-span-3 border-r border-border-subtle-inv bg-surface-darker/50 flex-col min-h-0" id="agentPanel">
+                <div class="p-4 pb-2 border-b border-border-subtle-inv flex justify-between items-center flex-shrink-0">
+                    <h3 class="text-text-theme text-xs font-bold tracking-wide uppercase">Active Agents</h3>
+                    <span class="material-symbols-outlined text-text-muted text-[18px]">hub</span>
                 </div>
                 <div class="flex-1 overflow-y-auto p-3 flex flex-col gap-2 custom-scrollbar min-h-0" id="agentList">
                     <!-- Agents will be rendered here by JS -->
+                </div>
+                <!-- Tool Policy Stats -->
+                <div id="toolPolicyStats" class="hidden px-4 py-2 border-t border-border-subtle-inv flex-shrink-0">
                 </div>
             </div>
 
             <!-- Center Panel: Chat Interface -->
             <div class="col-span-12 lg:col-span-6 flex flex-col bg-background-dark relative min-h-0">
                 <!-- Chat Header Gradient -->
-                <div class="absolute top-0 w-full z-10 bg-gradient-to-b from-background-dark via-background-dark/95 to-transparent px-4 md:px-6 py-3 pointer-events-none">
-                    <h3 class="text-white/70 text-xs font-medium tracking-wide uppercase">Conversation Stream</h3>
+                <div class="absolute top-0 w-full z-10 bg-gradient-to-b from-background-dark via-background-dark/95 to-transparent px-4 md:px-6 py-3 pointer-events-none flex items-center justify-between">
+                    <h3 class="text-text-theme/70 text-xs font-medium tracking-wide uppercase">Conversation Stream</h3>
+                    <div class="flex items-center gap-2.5 pointer-events-auto select-none" id="advancedModeToggle">
+                        <span class="text-[10px] font-medium uppercase tracking-wider transition-colors" id="advancedModeLabel" style="color: var(--tw-text-muted);">Advanced</span>
+                        <button class="w-10 h-[22px] rounded-full relative transition-all duration-300 border" id="advancedModeBtn"
+                                style="background: var(--tw-bg-surface-low); border-color: var(--tw-border);"
+                                title="Toggle advanced mode to see all agent outputs and tool calls">
+                            <span class="absolute top-[3px] left-[3px] w-4 h-4 rounded-full transition-all duration-300 shadow-sm" style="background: var(--tw-text-muted);"></span>
+                        </button>
+                    </div>
                 </div>
 
                 <!-- Messages Area -->
@@ -378,29 +676,29 @@
                         <div class="mb-6 p-5 rounded-full bg-primary/5 border border-primary/20 shadow-[0_0_40px_rgba(7,182,213,0.15)]">
                             <span class="material-symbols-outlined text-5xl text-primary">genetics</span>
                         </div>
-                        <h1 class="text-2xl md:text-3xl font-bold text-white mb-3 tracking-tight leading-tight">What research problem<br/>are we solving today?</h1>
+                        <h1 class="text-2xl md:text-3xl font-bold text-text-theme mb-3 tracking-tight leading-tight">What research problem<br/>are we solving today?</h1>
                         <p class="text-text-subtle text-sm max-w-md font-light mb-6">Deploy multi-agent swarms for protein analysis, structure prediction, and literature review.</p>
 
                         <!-- Capabilities -->
                         <div class="flex flex-wrap justify-center gap-3 max-w-lg">
-                            <div class="flex items-center gap-2 px-3 py-2 rounded-lg bg-surface-card/50 border border-border-dark text-xs text-text-subtle">
+                            <div class="flex items-center gap-2 px-3 py-2 rounded-lg bg-surface-dark border border-border-theme text-xs text-text-subtle">
                                 <span class="material-symbols-outlined text-primary text-sm">polymer</span>
                                 Protein Folding
                             </div>
-                            <div class="flex items-center gap-2 px-3 py-2 rounded-lg bg-surface-card/50 border border-border-dark text-xs text-text-subtle">
-                                <span class="material-symbols-outlined text-emerald-400 text-sm">menu_book</span>
+                            <div class="flex items-center gap-2 px-3 py-2 rounded-lg bg-surface-dark border border-border-theme text-xs text-text-subtle">
+                                <span class="material-symbols-outlined text-emerald-500 text-sm">menu_book</span>
                                 Literature Search
                             </div>
-                            <div class="flex items-center gap-2 px-3 py-2 rounded-lg bg-surface-card/50 border border-border-dark text-xs text-text-subtle">
-                                <span class="material-symbols-outlined text-purple-400 text-sm">psychology</span>
+                            <div class="flex items-center gap-2 px-3 py-2 rounded-lg bg-surface-dark border border-border-theme text-xs text-text-subtle">
+                                <span class="material-symbols-outlined text-purple-500 text-sm">psychology</span>
                                 Machine Learning
                             </div>
-                            <div class="flex items-center gap-2 px-3 py-2 rounded-lg bg-surface-card/50 border border-border-dark text-xs text-text-subtle">
-                                <span class="material-symbols-outlined text-cyan-400 text-sm">memory</span>
+                            <div class="flex items-center gap-2 px-3 py-2 rounded-lg bg-surface-dark border border-border-theme text-xs text-text-subtle">
+                                <span class="material-symbols-outlined text-cyan-500 text-sm">memory</span>
                                 Deep Learning
                             </div>
-                            <div class="flex items-center gap-2 px-3 py-2 rounded-lg bg-surface-card/50 border border-border-dark text-xs text-text-subtle">
-                                <span class="material-symbols-outlined text-amber-400 text-sm">code</span>
+                            <div class="flex items-center gap-2 px-3 py-2 rounded-lg bg-surface-dark border border-border-theme text-xs text-text-subtle">
+                                <span class="material-symbols-outlined text-amber-500 text-sm">code</span>
                                 Code Generation
                             </div>
                         </div>
@@ -408,44 +706,44 @@
                 </div>
 
                 <!-- Input Area -->
-                <div class="p-3 md:p-4 bg-background-dark border-t border-white/5 flex-shrink-0">
+                <div class="p-3 md:p-4 bg-background-dark border-t border-border-subtle-inv flex-shrink-0">
                     <!-- Quick Chips -->
                     <div class="flex flex-wrap justify-center gap-2 mb-3" id="quickChips">
-                        <button class="example-chip flex items-center gap-2 px-3 py-1.5 rounded-full bg-surface-card border border-border-dark hover:border-primary/50 text-xs text-text-subtle hover:text-white transition-all" data-query="Analyze the properties of human p53 protein (UniProt: P04637). Fetch the sequence, download the AlphaFold structure, and provide detailed biochemical analysis.">
+                        <button class="example-chip flex items-center gap-2 px-3 py-1.5 rounded-full bg-surface-card border border-border-dark hover:border-primary/50 text-xs text-text-subtle hover:text-text-theme transition-all" data-query="Analyze the properties of human p53 protein (UniProt: P04637). Fetch the sequence, download the AlphaFold structure, and provide detailed biochemical analysis.">
                             <span class="material-symbols-outlined text-sm text-primary">biotech</span>
                             Analyze p53 Protein
                         </button>
-                        <button class="example-chip flex items-center gap-2 px-3 py-1.5 rounded-full bg-surface-card border border-border-dark hover:border-primary/50 text-xs text-text-subtle hover:text-white transition-all" data-query="Fetch and display the 3D structure of human insulin (UniProt: P01308) from AlphaFold.">
-                            <span class="material-symbols-outlined text-sm text-purple-400">view_in_ar</span>
+                        <button class="example-chip flex items-center gap-2 px-3 py-1.5 rounded-full bg-surface-card border border-border-dark hover:border-primary/50 text-xs text-text-subtle hover:text-text-theme transition-all" data-query="Fetch and display the 3D structure of human insulin (UniProt: P01308) from AlphaFold.">
+                            <span class="material-symbols-outlined text-sm text-purple-500">view_in_ar</span>
                             View Insulin 3D
                         </button>
-                        <button class="example-chip flex items-center gap-2 px-3 py-1.5 rounded-full bg-surface-card border border-border-dark hover:border-primary/50 text-xs text-text-subtle hover:text-white transition-all" data-query="Search recent literature on CRISPR-Cas9 applications in cancer immunotherapy. Summarize key findings.">
-                            <span class="material-symbols-outlined text-sm text-green-400">menu_book</span>
+                        <button class="example-chip flex items-center gap-2 px-3 py-1.5 rounded-full bg-surface-card border border-border-dark hover:border-primary/50 text-xs text-text-subtle hover:text-text-theme transition-all" data-query="Search recent literature on CRISPR-Cas9 applications in cancer immunotherapy. Summarize key findings.">
+                            <span class="material-symbols-outlined text-sm text-green-500">menu_book</span>
                             CRISPR Literature
                         </button>
-                        <button class="example-chip flex items-center gap-2 px-3 py-1.5 rounded-full bg-surface-card border border-border-dark hover:border-primary/50 text-xs text-text-subtle hover:text-white transition-all" data-query="Build a machine learning model to predict protein solubility from a CSV containing sequence features. Use XGBoost and provide feature importance.">
-                            <span class="material-symbols-outlined text-sm text-purple-400">psychology</span>
+                        <button class="example-chip flex items-center gap-2 px-3 py-1.5 rounded-full bg-surface-card border border-border-dark hover:border-primary/50 text-xs text-text-subtle hover:text-text-theme transition-all" data-query="Build a machine learning model to predict protein solubility from a CSV containing sequence features. Use XGBoost and provide feature importance.">
+                            <span class="material-symbols-outlined text-sm text-purple-500">psychology</span>
                             ML Solubility Predictor
                         </button>
-                        <button class="example-chip flex items-center gap-2 px-3 py-1.5 rounded-full bg-surface-card border border-border-dark hover:border-primary/50 text-xs text-text-subtle hover:text-white transition-all" data-query="Design a PyTorch neural network to classify protein sequences into families. Use an embedding layer followed by an LSTM.">
-                            <span class="material-symbols-outlined text-sm text-cyan-400">memory</span>
+                        <button class="example-chip flex items-center gap-2 px-3 py-1.5 rounded-full bg-surface-card border border-border-dark hover:border-primary/50 text-xs text-text-subtle hover:text-text-theme transition-all" data-query="Design a PyTorch neural network to classify protein sequences into families. Use an embedding layer followed by an LSTM.">
+                            <span class="material-symbols-outlined text-sm text-cyan-500">memory</span>
                             DL Sequence Classifier
                         </button>
                     </div>
 
                     <!-- Input Box -->
-                    <div class="relative bg-surface-dark border border-white/10 rounded-xl shadow-lg focus-within:border-primary/50 focus-within:ring-1 focus-within:ring-primary/30 transition-all">
-                        <textarea id="queryInput" class="w-full bg-transparent border-none text-sm text-white placeholder-slate-500 p-4 pb-2 focus:ring-0 resize-none font-body" placeholder="Describe a protein, paste a FASTA sequence, or ask a research question..." rows="2"></textarea>
+                    <div class="relative bg-surface-dark border border-border-inverse rounded-xl shadow-lg focus-within:border-primary/50 focus-within:ring-1 focus-within:ring-primary/30 transition-all">
+                        <textarea id="queryInput" class="w-full bg-transparent border-none text-sm text-text-theme placeholder-slate-500 p-4 pb-2 focus:ring-0 resize-none font-body" placeholder="Describe a protein, paste a FASTA sequence, or ask a research question..." rows="2"></textarea>
                         <div class="flex justify-between items-center px-3 pb-3">
                             <div class="flex gap-1">
-                                <button class="p-2 text-slate-500 hover:text-white rounded-lg hover:bg-white/5 transition-all" title="Attach File">
+                                <button class="p-2 text-text-muted hover:text-text-theme rounded-lg hover:bg-hover-bg transition-all" title="Attach File">
                                     <span class="material-symbols-outlined text-[20px]">attach_file</span>
                                 </button>
-                                <button class="p-2 text-slate-500 hover:text-white rounded-lg hover:bg-white/5 transition-all" title="Voice Input">
+                                <button class="p-2 text-text-muted hover:text-text-theme rounded-lg hover:bg-hover-bg transition-all" title="Voice Input">
                                     <span class="material-symbols-outlined text-[20px]">mic</span>
                                 </button>
                             </div>
-                            <button id="submitBtn" class="bg-primary hover:bg-primary/90 text-background-dark text-sm font-bold px-5 py-2.5 rounded-lg flex items-center gap-2 transition-all shadow-[0_0_15px_rgba(7,182,213,0.2)] hover:shadow-[0_0_25px_rgba(7,182,213,0.3)] disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none">
+                            <button id="submitBtn" class="bg-primary hover:bg-primary/90 text-slate-900 text-sm font-bold px-5 py-2.5 rounded-lg flex items-center gap-2 transition-all shadow-[0_0_15px_rgba(7,182,213,0.2)] hover:shadow-[0_0_25px_rgba(7,182,213,0.3)] disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none">
                                 <span>Run Agent</span>
                                 <span class="material-symbols-outlined text-[18px]">send</span>
                             </button>
@@ -455,9 +753,9 @@
             </div>
 
             <!-- Right Panel: Workspace -->
-            <div class="hidden lg:flex col-span-3 bg-surface-darker border-l border-slate-200 dark:border-white/5 flex-col min-h-0">
+            <div class="hidden lg:flex col-span-3 bg-surface-darker border-l border-border-subtle-inv flex-col min-h-0">
                 <!-- 3D Molecular Viewer -->
-                <div class="h-48 min-h-[12rem] max-h-[14rem] bg-black relative border-b border-white/10 group flex-shrink-0" id="viewerContainer">
+                <div class="h-48 min-h-[12rem] max-h-[14rem] bg-black relative border-b border-border-inverse group flex-shrink-0" id="viewerContainer">
                     <!-- Overlay Header -->
                     <div class="absolute top-0 left-0 w-full p-3 flex justify-between items-center z-10 bg-gradient-to-b from-black/80 to-transparent">
                         <span class="text-[10px] font-mono text-white/70 bg-black/50 px-2 py-1 rounded">Molecular Viewer</span>
@@ -484,17 +782,17 @@
                                     <div class="absolute inset-6 border-2 border-white rounded-full animate-[spin_5s_linear_infinite]"></div>
                                 </div>
                                 <p class="text-text-subtle text-xs">No structure loaded</p>
-                                <p class="text-slate-600 text-[10px] mt-1">Drop a PDB file or run a query</p>
+                                <p class="text-text-muted text-[10px] mt-1">Drop a PDB file or run a query</p>
                             </div>
                         </div>
                     </div>
 
                     <!-- Zoom Controls -->
                     <div class="absolute bottom-3 right-3 flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button class="viewer-zoom-in p-1.5 bg-surface-dark/80 border border-white/10 rounded-full text-white hover:bg-primary hover:border-primary transition-all">
+                        <button class="viewer-zoom-in p-1.5 bg-black/60 border border-white/20 rounded-full text-white hover:bg-primary hover:border-primary transition-all">
                             <span class="material-symbols-outlined text-[16px]">add</span>
                         </button>
-                        <button class="viewer-zoom-out p-1.5 bg-surface-dark/80 border border-white/10 rounded-full text-white hover:bg-primary hover:border-primary transition-all">
+                        <button class="viewer-zoom-out p-1.5 bg-black/60 border border-white/20 rounded-full text-white hover:bg-primary hover:border-primary transition-all">
                             <span class="material-symbols-outlined text-[16px]">remove</span>
                         </button>
                     </div>
@@ -503,26 +801,26 @@
                 <!-- Artifacts & Logs Panel -->
                 <div class="flex-1 flex flex-col min-h-0 overflow-hidden">
                     <!-- Tabs -->
-                    <div class="flex border-b border-white/5 flex-shrink-0">
-                        <button class="tab-btn flex-1 py-3 text-xs font-medium text-white border-b-2 border-primary bg-white/5 transition-all" data-tab="artifacts">
+                    <div class="flex border-b border-border-subtle-inv flex-shrink-0">
+                        <button class="tab-btn flex-1 py-3 text-xs font-medium text-text-theme border-b-2 border-primary bg-hover-bg transition-all" data-tab="artifacts">
                             <span class="flex items-center justify-center gap-1.5">
                                 <span class="material-symbols-outlined text-[16px]">folder</span>
                                 Artifacts
                             </span>
                         </button>
-                        <button class="tab-btn flex-1 py-3 text-xs font-medium text-slate-500 hover:text-slate-300 border-b-2 border-transparent transition-all" data-tab="code">
+                        <button class="tab-btn flex-1 py-3 text-xs font-medium text-text-muted hover:text-text-theme border-b-2 border-transparent transition-all" data-tab="code">
                             <span class="flex items-center justify-center gap-1.5">
                                 <span class="material-symbols-outlined text-[16px]">terminal</span>
                                 Code
                             </span>
                         </button>
-                        <button class="tab-btn flex-1 py-3 text-xs font-medium text-slate-500 hover:text-slate-300 border-b-2 border-transparent transition-all" data-tab="logs">
+                        <button class="tab-btn flex-1 py-3 text-xs font-medium text-text-muted hover:text-text-theme border-b-2 border-transparent transition-all" data-tab="logs">
                             <span class="flex items-center justify-center gap-1.5">
                                 <span class="material-symbols-outlined text-[16px]">code</span>
                                 Reasoning
                             </span>
                         </button>
-                        <button class="tab-btn flex-1 py-3 text-xs font-medium text-slate-500 hover:text-slate-300 border-b-2 border-transparent transition-all" data-tab="references">
+                        <button class="tab-btn flex-1 py-3 text-xs font-medium text-text-muted hover:text-text-theme border-b-2 border-transparent transition-all" data-tab="references">
                             <span class="flex items-center justify-center gap-1.5">
                                 <span class="material-symbols-outlined text-[16px]">article</span>
                                 References
@@ -532,7 +830,7 @@
 
                     <!-- Tab Content: Artifacts -->
                     <div class="flex-1 overflow-y-auto p-3 custom-scrollbar tab-content min-h-0" id="artifactsTab">
-                        <h4 class="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-3">Generated Files</h4>
+                        <h4 class="text-[10px] font-bold text-text-muted uppercase tracking-wider mb-3">Generated Files</h4>
                         <div class="flex flex-col gap-2" id="artifactsList">
                             <div class="text-center py-6 text-text-subtle text-xs">
                                 <span class="material-symbols-outlined text-2xl text-border-dark mb-2 block">folder_off</span>
@@ -543,7 +841,7 @@
 
                     <!-- Tab Content: Code -->
                     <div class="flex-1 overflow-y-auto p-3 custom-scrollbar tab-content hidden min-h-0" id="codeTab">
-                        <h4 class="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-3">Code Execution</h4>
+                        <h4 class="text-[10px] font-bold text-text-muted uppercase tracking-wider mb-3">Code Execution</h4>
                         <div class="flex flex-col gap-4" id="codeExecutionList">
                             <div class="text-center py-6 text-text-subtle text-xs">
                                 <span class="material-symbols-outlined text-2xl text-border-dark mb-2 block">terminal</span>
@@ -554,8 +852,8 @@
 
                     <!-- Tab Content: Logs -->
                     <div class="flex-1 overflow-y-auto p-3 custom-scrollbar tab-content hidden min-h-0" id="logsTab">
-                        <h4 class="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-3">Reasoning Trace</h4>
-                        <div class="bg-black/40 rounded-lg p-3 font-mono text-[10px] text-slate-400 border border-white/5 overflow-auto" id="auditLog">
+                        <h4 class="text-[10px] font-bold text-text-muted uppercase tracking-wider mb-3">Reasoning Trace</h4>
+                        <div class="bg-code-block-bg rounded-lg p-3 font-mono text-[10px] text-text-subtle border border-border-subtle-inv overflow-auto" id="auditLog">
                             <pre class="whitespace-pre-wrap">// Reasoning trace will appear here when agents process your query...</pre>
                         </div>
                     </div>
@@ -563,8 +861,8 @@
                     <!-- Tab Content: References -->
                     <div class="flex-1 overflow-y-auto p-3 custom-scrollbar tab-content hidden min-h-0" id="referencesTab">
                         <div class="flex items-center justify-between mb-3">
-                            <h4 class="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Citations</h4>
-                            <span class="text-[10px] text-slate-600" id="referenceCount">0 refs</span>
+                            <h4 class="text-[10px] font-bold text-text-muted uppercase tracking-wider">Citations</h4>
+                            <span class="text-[10px] text-text-muted" id="referenceCount">0 refs</span>
                         </div>
                         <div class="flex flex-col gap-2" id="referenceList">
                             <div class="text-center py-6 text-text-subtle text-xs">
@@ -578,12 +876,12 @@
         </div>
 
         <!-- Terminal Log (Bottom) -->
-        <div class="bg-[#0a0f10] border-t border-border-dark px-4 py-2 font-mono text-[10px] h-14 overflow-hidden flex-shrink-0 hidden lg:block" id="terminalLog">
-            <div class="flex items-center gap-2 mb-1.5 text-text-subtle border-b border-border-dark/50 pb-1">
+        <div style="background-color: var(--tw-bg-terminal)" class="border-t border-white/5 px-4 py-2 font-mono text-[10px] h-14 overflow-hidden flex-shrink-0 hidden lg:block" id="terminalLog">
+            <div class="flex items-center gap-2 mb-1.5 text-slate-400 border-b border-white/5 pb-1">
                 <span class="material-symbols-outlined text-[14px]">terminal</span>
                 <span class="uppercase tracking-wider font-bold text-[9px]">System Log</span>
                 <div class="flex-1"></div>
-                <button class="terminal-clear text-slate-600 hover:text-white transition-all" title="Clear Log">
+                <button class="terminal-clear text-slate-500 hover:text-white transition-all" title="Clear Log">
                     <span class="material-symbols-outlined text-[12px]">delete</span>
                 </button>
             </div>
@@ -597,18 +895,18 @@
     <div class="fixed top-4 right-4 z-50 flex flex-col gap-2 max-w-sm" id="toastContainer"></div>
 
     <!-- Mobile Sidebar Overlay -->
-    <div class="fixed inset-0 bg-black/50 z-40 hidden" id="sidebarOverlay"></div>
+    <div class="fixed inset-0 bg-overlay z-40 hidden" id="sidebarOverlay"></div>
 
     <!-- Experiment Detail Panel (slide-in overlay) -->
-    <div id="exp-detail-overlay" class="hidden fixed inset-0 bg-black/60 z-40 backdrop-blur-sm"></div>
-    <div id="exp-detail-panel" class="hidden fixed right-0 top-0 h-full w-full max-w-3xl z-50 bg-surface-darker border-l border-white/10 flex flex-col shadow-2xl overflow-hidden animate-fadeIn">
+    <div id="exp-detail-overlay" class="hidden fixed inset-0 bg-overlay z-40 backdrop-blur-sm"></div>
+    <div id="exp-detail-panel" class="hidden fixed right-0 top-0 h-full w-full max-w-3xl z-50 bg-surface-darker border-l border-border-inverse flex flex-col shadow-2xl overflow-hidden animate-fadeIn">
         <!-- Panel header -->
-        <div class="flex items-center justify-between px-6 py-4 border-b border-white/10 bg-surface-dark flex-shrink-0">
+        <div class="flex items-center justify-between px-6 py-4 border-b border-border-inverse bg-surface-dark flex-shrink-0">
             <div class="flex items-center gap-3">
                 <span class="material-symbols-outlined text-primary">analytics</span>
-                <h2 class="text-sm font-bold text-white">Experiment Run Details</h2>
+                <h2 class="text-sm font-bold text-text-theme">Experiment Run Details</h2>
             </div>
-            <button id="exp-detail-close" class="p-2 text-text-subtle hover:text-white hover:bg-white/5 rounded-lg transition-all">
+            <button id="exp-detail-close" class="p-2 text-text-subtle hover:text-text-theme hover:bg-hover-bg rounded-lg transition-all">
                 <span class="material-symbols-outlined">close</span>
             </button>
         </div>
@@ -616,9 +914,420 @@
         <div id="exp-detail-content" class="flex-1 overflow-y-auto p-6 custom-scrollbar"></div>
     </div>
 
+    <!-- About Page View -->
+    <div id="about-view" class="hidden fixed inset-0 z-30 bg-background-dark overflow-y-auto">
+        <div class="max-w-6xl mx-auto px-6 py-12 md:py-16">
+
+            <!-- Close button -->
+            <button id="about-close" class="fixed top-5 right-6 z-40 p-2 rounded-lg bg-hover-bg hover:bg-hover-bg-strong border border-border-inverse text-text-subtle hover:text-text-theme transition-all">
+                <span class="material-symbols-outlined">close</span>
+            </button>
+
+            <!-- Hero Section -->
+            <header class="text-center mb-20">
+                <div class="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-primary/10 border border-primary/20 text-primary text-xs font-semibold mb-6">
+                    <span class="material-symbols-outlined text-sm">biotech</span>
+                    BBM479-480 Senior Design Project
+                </div>
+                <h1 class="text-4xl md:text-6xl font-bold text-text-theme tracking-tight leading-tight mb-4">
+                    Bio<span class="text-primary">Agents</span>
+                </h1>
+                <p class="text-lg md:text-xl text-text-subtle max-w-3xl mx-auto leading-relaxed">
+                    A Modular, Hierarchical Multi-Agent System for Automated Computational Biology Workflows
+                </p>
+                <div class="flex items-center justify-center gap-4 mt-8 text-sm text-text-muted">
+                    <span class="flex items-center gap-1.5">
+                        <span class="material-symbols-outlined text-base">school</span>
+                        Hacettepe University
+                    </span>
+                    <span class="w-1 h-1 rounded-full bg-text-muted"></span>
+                    <span class="flex items-center gap-1.5">
+                        <span class="material-symbols-outlined text-base">science</span>
+                        Biological Data Science Lab
+                    </span>
+                </div>
+            </header>
+
+            <!-- Motivation Section -->
+            <section class="mb-20">
+                <div class="grid md:grid-cols-2 gap-8">
+                    <div class="bg-surface-dark border border-border-inverse rounded-xl p-8">
+                        <div class="flex items-center gap-3 mb-4">
+                            <div class="w-10 h-10 rounded-lg bg-red-500/10 flex items-center justify-center">
+                                <span class="material-symbols-outlined text-red-400">warning</span>
+                            </div>
+                            <h2 class="text-xl font-bold text-text-theme">The Problem</h2>
+                        </div>
+                        <p class="text-text-subtle leading-relaxed">
+                            Exponential biomedical data growth has shifted the research bottleneck from generation to interpretation and computation.
+                            Fragmented, siloed tools and generic LLM agents struggle to reliably execute multi-step, high-stakes scientific tasks.
+                        </p>
+                    </div>
+                    <div class="bg-surface-dark border border-border-inverse rounded-xl p-8">
+                        <div class="flex items-center gap-3 mb-4">
+                            <div class="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                                <span class="material-symbols-outlined text-primary">lightbulb</span>
+                            </div>
+                            <h2 class="text-xl font-bold text-text-theme">Our Solution</h2>
+                        </div>
+                        <p class="text-text-subtle leading-relaxed">
+                            BioAgents is a modular, hierarchical Multi-Agent System designed to automate complex computational biology workflows,
+                            providing seamless access to integrated scientific tools and databases to significantly accelerate research.
+                        </p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- System Architecture -->
+            <section class="mb-20">
+                <div class="text-center mb-10">
+                    <h2 class="text-2xl md:text-3xl font-bold text-text-theme mb-2">System Architecture</h2>
+                    <p class="text-text-subtle">Hierarchical MAS built on LangGraph with Supervisor-Specialist orchestration</p>
+                </div>
+                <div class="bg-surface-dark border border-border-inverse rounded-xl overflow-hidden">
+                    <img src="static/screenshots/figure1.png" alt="BioAgents System Architecture" class="w-full h-auto" />
+                    <div class="px-6 py-3 border-t border-border-inverse">
+                        <p class="text-xs text-text-muted text-center">
+                            Fig 1: Comprehensive System Architecture — Supervisor-Specialist orchestration, ACE self-evolution engine, and the Integrated Tool Universe.
+                        </p>
+                    </div>
+                </div>
+                <div class="grid md:grid-cols-3 gap-6 mt-8">
+                    <div class="bg-surface-dark border border-border-inverse rounded-xl p-6">
+                        <div class="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center mb-3">
+                            <span class="material-symbols-outlined text-primary text-lg">hub</span>
+                        </div>
+                        <h3 class="font-bold text-text-theme mb-2">Supervisor-Specialist Pattern</h3>
+                        <p class="text-sm text-text-subtle leading-relaxed">
+                            Autonomous task decomposition and goal planning through specialized agent clusters communicating asynchronously via conditional routing.
+                        </p>
+                    </div>
+                    <div class="bg-surface-dark border border-border-inverse rounded-xl p-6">
+                        <div class="w-8 h-8 rounded-lg bg-purple-500/10 flex items-center justify-center mb-3">
+                            <span class="material-symbols-outlined text-purple-400 text-lg">build_circle</span>
+                        </div>
+                        <h3 class="font-bold text-text-theme mb-2">Integrated Tool Universe</h3>
+                        <p class="text-sm text-text-subtle leading-relaxed">
+                            600+ scientific tools, Docker sandboxes, and cross-database bridges for seamless research execution.
+                        </p>
+                    </div>
+                    <div class="bg-surface-dark border border-border-inverse rounded-xl p-6">
+                        <div class="w-8 h-8 rounded-lg bg-amber-500/10 flex items-center justify-center mb-3">
+                            <span class="material-symbols-outlined text-amber-400 text-lg">auto_awesome</span>
+                        </div>
+                        <h3 class="font-bold text-text-theme mb-2">ACE Self-Evolution</h3>
+                        <p class="text-sm text-text-subtle leading-relaxed">
+                            Generator-Reflector-Curator cycle for autonomous reasoning refinement through incremental delta updates.
+                        </p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Innovative Features -->
+            <section class="mb-20">
+                <div class="text-center mb-10">
+                    <h2 class="text-2xl md:text-3xl font-bold text-text-theme mb-2">Innovative Features</h2>
+                    <p class="text-text-subtle">Core capabilities that distinguish BioAgents from generic LLM agents</p>
+                </div>
+                <div class="grid md:grid-cols-2 gap-6">
+                    <div class="group bg-surface-dark border border-border-inverse rounded-xl p-6 hover:border-primary/30 transition-all">
+                        <div class="flex items-start gap-4">
+                            <div class="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0 group-hover:bg-primary/20 transition-all">
+                                <span class="material-symbols-outlined text-primary">sync</span>
+                            </div>
+                            <div>
+                                <h3 class="font-bold text-text-theme mb-1">ACE Self-Evolution</h3>
+                                <p class="text-sm text-text-subtle leading-relaxed">
+                                    Implements a Generator-Reflector-Curator cycle for autonomous reasoning refinement through incremental delta updates.
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="group bg-surface-dark border border-border-inverse rounded-xl p-6 hover:border-primary/30 transition-all">
+                        <div class="flex items-start gap-4">
+                            <div class="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0 group-hover:bg-primary/20 transition-all">
+                                <span class="material-symbols-outlined text-primary">menu_book</span>
+                            </div>
+                            <div>
+                                <h3 class="font-bold text-text-theme mb-1">Playbook Optimization</h3>
+                                <p class="text-sm text-text-subtle leading-relaxed">
+                                    YAML-based reasoning patterns with helpful/harmful counters to refine strategies without manual prompt engineering.
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="group bg-surface-dark border border-border-inverse rounded-xl p-6 hover:border-primary/30 transition-all">
+                        <div class="flex items-start gap-4">
+                            <div class="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0 group-hover:bg-primary/20 transition-all">
+                                <span class="material-symbols-outlined text-primary">memory</span>
+                            </div>
+                            <div>
+                                <h3 class="font-bold text-text-theme mb-1">Persistent Semantic Memory</h3>
+                                <p class="text-sm text-text-subtle leading-relaxed">
+                                    Vector storage with a Summary Agent to address long-horizon research tasks and optimize token usage.
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="group bg-surface-dark border border-border-inverse rounded-xl p-6 hover:border-primary/30 transition-all">
+                        <div class="flex items-start gap-4">
+                            <div class="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0 group-hover:bg-primary/20 transition-all">
+                                <span class="material-symbols-outlined text-primary">construction</span>
+                            </div>
+                            <div>
+                                <h3 class="font-bold text-text-theme mb-1">Dynamic Tool Synthesis</h3>
+                                <p class="text-sm text-text-subtle leading-relaxed">
+                                    The Tool Builder Agent autonomously generates and registers Python tools to bridge functional gaps in the Tool Universe.
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="mt-8 bg-primary/5 border border-primary/15 rounded-xl p-6 text-center">
+                    <p class="text-text-subtle">
+                        BioAgents targets an <span class="text-primary font-semibold">80% reduction</span> in analysis time with
+                        <span class="text-primary font-semibold">&ge;90% accuracy</span> through automated, citation-linked workflows.
+                    </p>
+                </div>
+            </section>
+
+            <!-- Web Interface -->
+            <section class="mb-20">
+                <div class="text-center mb-10">
+                    <h2 class="text-2xl md:text-3xl font-bold text-text-theme mb-2">Web Interface & Usability</h2>
+                    <p class="text-text-subtle">Built with FastAPI and Tailwind CSS with 3D molecular visualization via NGL.js</p>
+                </div>
+                <div class="grid md:grid-cols-2 gap-6">
+                    <div class="bg-surface-dark border border-border-inverse rounded-xl overflow-hidden">
+                        <img src="static/screenshots/image2.png" alt="Research Chat Interface" class="w-full h-auto" />
+                        <div class="px-5 py-3 border-t border-border-inverse">
+                            <p class="text-xs text-text-muted">Research Tab — Multi-agent chat interface with real-time reasoning logs, 3D molecular visualization, and artifact generation.</p>
+                        </div>
+                    </div>
+                    <div class="bg-surface-dark border border-border-inverse rounded-xl overflow-hidden">
+                        <img src="static/screenshots/image.png" alt="Drug Discovery Scenarios" class="w-full h-auto" />
+                        <div class="px-5 py-3 border-t border-border-inverse">
+                            <p class="text-xs text-text-muted">Drug Discovery Tab — Automated pipeline with 4 configurable scenarios, gate thresholds, and decision logging.</p>
+                        </div>
+                    </div>
+                    <div class="bg-surface-dark border border-border-inverse rounded-xl overflow-hidden">
+                        <img src="static/screenshots/image3.png" alt="Benchmarks Dashboard" class="w-full h-auto" />
+                        <div class="px-5 py-3 border-t border-border-inverse">
+                            <p class="text-xs text-text-muted">Benchmarks Tab — Comprehensive evaluation dashboard for multi-agent execution metrics and performance consistency.</p>
+                        </div>
+                    </div>
+                    <div class="bg-surface-dark border border-border-inverse rounded-xl overflow-hidden">
+                        <img src="static/screenshots/image4.png" alt="Workflow Builder" class="w-full h-auto" />
+                        <div class="px-5 py-3 border-t border-border-inverse">
+                            <p class="text-xs text-text-muted">Workflow Builder Tab — Canvas-based drag-and-drop interface with 140+ bioinformatics node types for custom pipelines.</p>
+                        </div>
+                    </div>
+                    <div class="flex flex-col justify-center">
+                        <h3 class="text-xl font-bold text-text-theme mb-4">Three-Panel Research Environment</h3>
+                        <ul class="space-y-3">
+                            <li class="flex items-start gap-3 text-text-subtle">
+                                <span class="material-symbols-outlined text-primary text-lg mt-0.5">chat</span>
+                                <span>Natural language interaction with real-time agent monitoring</span>
+                            </li>
+                            <li class="flex items-start gap-3 text-text-subtle">
+                                <span class="material-symbols-outlined text-primary text-lg mt-0.5">visibility</span>
+                                <span>Live reasoning logs and execution planning</span>
+                            </li>
+                            <li class="flex items-start gap-3 text-text-subtle">
+                                <span class="material-symbols-outlined text-primary text-lg mt-0.5">view_in_ar</span>
+                                <span>3D molecular visualization and PDB export</span>
+                            </li>
+                            <li class="flex items-start gap-3 text-text-subtle">
+                                <span class="material-symbols-outlined text-primary text-lg mt-0.5">description</span>
+                                <span>Export of generated artifacts including technical reports</span>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Case Study: Drug Discovery -->
+            <section class="mb-20">
+                <div class="text-center mb-10">
+                    <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-green-500/10 border border-green-500/20 text-green-400 text-xs font-semibold mb-4">
+                        <span class="material-symbols-outlined text-sm">medication</span>
+                        Case Study
+                    </div>
+                    <h2 class="text-2xl md:text-3xl font-bold text-text-theme mb-2">Automated Drug Discovery Workflow</h2>
+                    <p class="text-text-subtle max-w-2xl mx-auto">
+                        Evaluated on designing a de novo binder for the human tumor suppressor protein p53 (P04637) using an automated GPU-intensive workflow.
+                    </p>
+                </div>
+                <div class="grid md:grid-cols-4 gap-4">
+                    <div class="bg-surface-dark border border-border-inverse rounded-xl p-5 text-center">
+                        <div class="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-3">
+                            <span class="text-primary font-bold text-lg">1</span>
+                        </div>
+                        <h4 class="font-bold text-text-theme text-sm mb-1">Target Characterization</h4>
+                        <p class="text-xs text-text-subtle leading-relaxed">
+                            Fetching UniProt records, assessing structural readiness via AlphaFold integration and biochemical profiling.
+                        </p>
+                    </div>
+                    <div class="bg-surface-dark border border-border-inverse rounded-xl p-5 text-center">
+                        <div class="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-3">
+                            <span class="text-primary font-bold text-lg">2</span>
+                        </div>
+                        <h4 class="font-bold text-text-theme text-sm mb-1">Hierarchical Screening</h4>
+                        <p class="text-xs text-text-subtle leading-relaxed">
+                            Parallel pipeline for sequence retrieval, virtual docking, and binding affinity predictions.
+                        </p>
+                    </div>
+                    <div class="bg-surface-dark border border-border-inverse rounded-xl p-5 text-center">
+                        <div class="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-3">
+                            <span class="text-primary font-bold text-lg">3</span>
+                        </div>
+                        <h4 class="font-bold text-text-theme text-sm mb-1">ADMET & Safety</h4>
+                        <p class="text-xs text-text-subtle leading-relaxed">
+                            Rigorous ADMET profiling and off-target analysis for metabolic stability and minimized toxicity.
+                        </p>
+                    </div>
+                    <div class="bg-surface-dark border border-border-inverse rounded-xl p-5 text-center">
+                        <div class="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-3">
+                            <span class="text-primary font-bold text-lg">4</span>
+                        </div>
+                        <h4 class="font-bold text-text-theme text-sm mb-1">Decision Logging</h4>
+                        <p class="text-xs text-text-subtle leading-relaxed">
+                            Transparent logs with rationalized verdicts based on gate thresholds and 3D molecular visualizations.
+                        </p>
+                    </div>
+                </div>
+                <div class="mt-6 bg-surface-dark border border-border-inverse rounded-xl p-6">
+                    <p class="text-sm text-text-subtle leading-relaxed">
+                        The pipeline combines <span class="text-primary font-semibold">RFdiffusion</span> for backbone generation,
+                        <span class="text-primary font-semibold">ProteinMPNN</span> for sequence design, and
+                        <span class="text-primary font-semibold">AlphaFold-Multimer</span> for structural validation and binding prediction.
+                        The Protein Design Agent automatically analyzes interface quality metrics and generates reproducible technical reports
+                        with molecular visualizations and reasoning traces.
+                    </p>
+                </div>
+            </section>
+
+            <!-- Future Work -->
+            <section class="mb-20">
+                <div class="text-center mb-10">
+                    <h2 class="text-2xl md:text-3xl font-bold text-text-theme mb-2">Future Work</h2>
+                </div>
+                <div class="grid md:grid-cols-3 gap-6">
+                    <div class="bg-surface-dark border border-border-inverse rounded-xl p-6">
+                        <span class="material-symbols-outlined text-primary text-2xl mb-3">rocket_launch</span>
+                        <h3 class="font-bold text-text-theme mb-2">Expanded Self-Evolution</h3>
+                        <p class="text-sm text-text-subtle leading-relaxed">
+                            Expanding autonomous self-evolution and tool-building capabilities for broader biological domains.
+                        </p>
+                    </div>
+                    <div class="bg-surface-dark border border-border-inverse rounded-xl p-6">
+                        <span class="material-symbols-outlined text-primary text-2xl mb-3">verified</span>
+                        <h3 class="font-bold text-text-theme mb-2">Framework Validation</h3>
+                        <p class="text-sm text-text-subtle leading-relaxed">
+                            Validation using BixBench and BioinfoMCP frameworks for standardized benchmarking.
+                        </p>
+                    </div>
+                    <div class="bg-surface-dark border border-border-inverse rounded-xl p-6">
+                        <span class="material-symbols-outlined text-primary text-2xl mb-3">biotech</span>
+                        <h3 class="font-bold text-text-theme mb-2">Lab Validation</h3>
+                        <p class="text-sm text-text-subtle leading-relaxed">
+                            Real-world testing via experimental biological laboratory validation.
+                        </p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Team Section -->
+            <section class="mb-16">
+                <div class="text-center mb-10">
+                    <h2 class="text-2xl md:text-3xl font-bold text-text-theme mb-2">Project Team</h2>
+                    <p class="text-text-subtle">Biological Data Science Lab, Hacettepe University</p>
+                </div>
+                <div class="grid md:grid-cols-3 gap-6 max-w-4xl mx-auto">
+                    <!-- Supervisor -->
+                    <div class="bg-surface-dark border border-primary/20 rounded-xl p-6 text-center relative">
+                        <div class="absolute top-3 right-3">
+                            <span class="text-[10px] px-2 py-0.5 rounded-full bg-primary/10 text-primary font-semibold">Supervisor</span>
+                        </div>
+                        <img src="static/team/tunca-dogan.jpg" alt="Tunca Dogan" class="w-20 h-20 rounded-full object-cover mx-auto mb-3 border-2 border-primary/30" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';" />
+                        <div class="w-20 h-20 rounded-full bg-gradient-to-tr from-primary/20 to-purple-500/20 items-center justify-center mx-auto mb-3 border-2 border-primary/30" style="display:none;">
+                            <span class="text-2xl font-bold text-primary">TD</span>
+                        </div>
+                        <h3 class="font-bold text-text-theme">Tunca Dogan</h3>
+                        <p class="text-xs text-text-subtle mt-1">Dept. of Computer Engineering</p>
+                        <p class="text-xs text-text-muted">Graduate School of Health Sciences</p>
+                    </div>
+                    <!-- Team Member 1 -->
+                    <div class="bg-surface-dark border border-border-inverse rounded-xl p-6 text-center">
+                        <img src="static/team/arya-zeynep-mete.jpg" alt="Arya Zeynep Mete" class="w-20 h-20 rounded-full object-cover mx-auto mb-3 border-2 border-border-inverse" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';" />
+                        <div class="w-20 h-20 rounded-full bg-gradient-to-tr from-primary/20 to-purple-500/20 items-center justify-center mx-auto mb-3 border-2 border-border-inverse" style="display:none;">
+                            <span class="text-2xl font-bold text-primary">AM</span>
+                        </div>
+                        <h3 class="font-bold text-text-theme">Arya Zeynep Mete</h3>
+                        <p class="text-xs text-text-subtle mt-1">Dept. of Computer Engineering</p>
+                        <p class="text-xs text-text-muted">Hacettepe University</p>
+                    </div>
+                    <!-- Team Member 2 -->
+                    <div class="bg-surface-dark border border-border-inverse rounded-xl p-6 text-center">
+                        <img src="static/team/mert-ergun.jpg" alt="Mert Ergun" class="w-20 h-20 rounded-full object-cover mx-auto mb-3 border-2 border-border-inverse" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';" />
+                        <div class="w-20 h-20 rounded-full bg-gradient-to-tr from-primary/20 to-purple-500/20 items-center justify-center mx-auto mb-3 border-2 border-border-inverse" style="display:none;">
+                            <span class="text-2xl font-bold text-primary">ME</span>
+                        </div>
+                        <h3 class="font-bold text-text-theme">Mert Ergun</h3>
+                        <p class="text-xs text-text-subtle mt-1">Dept. of Computer Engineering</p>
+                        <p class="text-xs text-text-muted">Hacettepe University</p>
+                    </div>
+                </div>
+                <!-- Mentors -->
+                <div class="flex justify-center mt-6">
+                    <div class="flex items-center gap-6">
+                        <div class="bg-surface-dark border border-border-inverse rounded-xl px-6 py-4">
+                            <div class="flex items-center gap-3">
+                                <img src="static/team/atabey-unlu.jpg" alt="Atabey Unlu" class="w-12 h-12 rounded-full object-cover border-2 border-border-inverse" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';" />
+                                <div class="w-12 h-12 rounded-full bg-gradient-to-tr from-primary/20 to-purple-500/20 items-center justify-center border-2 border-border-inverse" style="display:none;">
+                                    <span class="text-lg font-bold text-primary">AU</span>
+                                </div>
+                                <div class="text-left">
+                                    <h3 class="font-bold text-text-theme text-sm">Atabey Unlu</h3>
+                                    <p class="text-xs text-text-muted">Mentor</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="bg-surface-dark border border-border-inverse rounded-xl px-6 py-4">
+                            <div class="flex items-center gap-3">
+                                <img src="static/team/bunyamin-sen.jpg" alt="Bunyamin Sen" class="w-12 h-12 rounded-full object-cover border-2 border-border-inverse" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';" />
+                                <div class="w-12 h-12 rounded-full bg-gradient-to-tr from-primary/20 to-purple-500/20 items-center justify-center border-2 border-border-inverse" style="display:none;">
+                                    <span class="text-lg font-bold text-primary">BS</span>
+                                </div>
+                                <div class="text-left">
+                                    <h3 class="font-bold text-text-theme text-sm">Bunyamin Sen</h3>
+                                    <p class="text-xs text-text-muted">Mentor</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Footer -->
+            <footer class="border-t border-border-inverse pt-8 text-center">
+                <div class="flex items-center justify-center gap-3 text-text-subtle text-sm mb-4">
+                    <span class="material-symbols-outlined text-primary">biotech</span>
+                    <span class="font-bold text-text-theme">BioAgents</span>
+                    <span class="text-text-muted">|</span>
+                    <span>Multi-Agent System v2.0</span>
+                </div>
+                <p class="text-xs text-text-muted">
+                    BBM479-480 Senior Design Project &middot; Biological Data Science Lab &middot; Hacettepe University &middot; 2025-2026
+                </p>
+            </footer>
+        </div>
+    </div>
+
     <!-- Scripts -->
     <script src="static/js/workflows.js"></script>
     <script src="static/js/workflow_builder.js"></script>
+    <script src="static/js/drug_discovery.js"></script>
     <script src="static/js/experiments.js"></script>
     <script src="static/js/app.js"></script>
     <script>
@@ -633,16 +1342,16 @@
             expView.className = 'hidden flex-1 flex flex-col h-full min-h-0 overflow-hidden bg-background-dark';
             expView.innerHTML = `
                 <!-- Experiments header -->
-                <div class="flex items-center justify-between px-6 py-4 border-b border-white/5 flex-shrink-0">
+                <div class="flex items-center justify-between px-6 py-4 border-b border-border-subtle-inv flex-shrink-0">
                     <div class="flex items-center gap-3">
-                        <span class="material-symbols-outlined text-primary text-2xl">experiment</span>
+                        <span class="material-symbols-outlined text-primary text-2xl">speed</span>
                         <div>
-                            <h1 class="text-base font-bold text-white">Experiments</h1>
+                            <h1 class="text-base font-bold text-text-theme">Benchmarks</h1>
                             <p class="text-[11px] text-text-subtle">Define, run, and compare use-case evaluations</p>
                         </div>
                     </div>
                     <div class="flex items-center gap-2">
-                        <button id="exp-refresh-runs" title="Refresh runs" class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-xs text-text-subtle hover:text-white transition-all">
+                        <button id="exp-refresh-runs" title="Refresh runs" class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-hover-bg hover:bg-hover-bg-strong border border-border-inverse text-xs text-text-subtle hover:text-text-theme transition-all">
                             <span class="material-symbols-outlined text-[16px]">refresh</span>Refresh
                         </button>
                     </div>
@@ -652,13 +1361,13 @@
                 <div class="flex-1 grid grid-cols-12 min-h-0 overflow-hidden">
 
                     <!-- Left: Use Case Selector (5 cols) -->
-                    <div class="col-span-5 border-r border-white/5 flex flex-col min-h-0">
-                        <div class="px-4 py-3 border-b border-white/5 flex-shrink-0">
+                    <div class="col-span-5 border-r border-border-subtle-inv flex flex-col min-h-0">
+                        <div class="px-4 py-3 border-b border-border-subtle-inv flex-shrink-0">
                             <div class="flex items-center justify-between mb-2">
-                                <h3 class="text-xs font-bold text-white uppercase tracking-wide">Use Cases</h3>
+                                <h3 class="text-xs font-bold text-text-theme uppercase tracking-wide">Use Cases</h3>
                                 <div class="flex gap-1">
-                                    <button id="exp-select-all" class="text-[10px] px-2 py-1 rounded bg-white/5 hover:bg-white/10 text-text-subtle hover:text-white transition-all border border-white/10">Select All</button>
-                                    <button id="exp-deselect-all" class="text-[10px] px-2 py-1 rounded bg-white/5 hover:bg-white/10 text-text-subtle hover:text-white transition-all border border-white/10">Clear</button>
+                                    <button id="exp-select-all" class="text-[10px] px-2 py-1 rounded bg-hover-bg hover:bg-hover-bg-strong text-text-subtle hover:text-text-theme transition-all border border-border-inverse">Select All</button>
+                                    <button id="exp-deselect-all" class="text-[10px] px-2 py-1 rounded bg-hover-bg hover:bg-hover-bg-strong text-text-subtle hover:text-text-theme transition-all border border-border-inverse">Clear</button>
                                 </div>
                             </div>
                             <!-- Category filters -->
@@ -671,24 +1380,24 @@
                     <div class="col-span-7 flex flex-col min-h-0">
 
                         <!-- Config selector -->
-                        <div class="px-4 py-3 border-b border-white/5 flex-shrink-0">
-                            <h3 class="text-xs font-bold text-white uppercase tracking-wide mb-2">Experiment Config</h3>
+                        <div class="px-4 py-3 border-b border-border-subtle-inv flex-shrink-0">
+                            <h3 class="text-xs font-bold text-text-theme uppercase tracking-wide mb-2">Experiment Config</h3>
                             <div id="exp-config-selector" class="flex gap-2 flex-wrap"></div>
                         </div>
 
                         <!-- Options + run button -->
-                        <div class="px-4 py-3 border-b border-white/5 flex items-center gap-4 flex-shrink-0 flex-wrap">
+                        <div class="px-4 py-3 border-b border-border-subtle-inv flex items-center gap-4 flex-shrink-0 flex-wrap">
                             <label class="flex items-center gap-2 text-xs text-text-subtle cursor-pointer select-none">
-                                <input type="checkbox" id="exp-skip-judge" class="rounded border-white/20 bg-surface-dark text-primary focus:ring-primary">
+                                <input type="checkbox" id="exp-skip-judge" class="rounded border-border-inverse bg-surface-dark text-primary focus:ring-primary">
                                 Skip judging
                             </label>
                             <label class="flex items-center gap-2 text-xs text-text-subtle cursor-pointer select-none">
-                                <input type="checkbox" id="exp-llm-judge" class="rounded border-white/20 bg-surface-dark text-primary focus:ring-primary">
+                                <input type="checkbox" id="exp-llm-judge" checked class="rounded border-border-inverse bg-surface-dark text-primary focus:ring-primary">
                                 LLM judge (vs heuristic)
                             </label>
                             <div class="flex-1 text-xs text-text-subtle" id="exp-selection-count">Select use cases to run</div>
                             <button id="exp-run-btn"
-                                class="flex items-center gap-2 px-4 py-2 bg-primary hover:bg-primary/90 text-background-dark font-bold text-sm rounded-lg transition-all shadow-[0_0_15px_rgba(7,182,213,0.2)] hover:shadow-[0_0_25px_rgba(7,182,213,0.3)] disabled:opacity-50 disabled:cursor-not-allowed">
+                                class="flex items-center gap-2 px-4 py-2 bg-primary hover:bg-primary/90 text-slate-900 font-bold text-sm rounded-lg transition-all shadow-[0_0_15px_rgba(7,182,213,0.2)] hover:shadow-[0_0_25px_rgba(7,182,213,0.3)] disabled:opacity-50 disabled:cursor-not-allowed">
                                 <span class="material-symbols-outlined text-[18px]">play_arrow</span>
                                 <span>Run Experiment</span>
                             </button>
@@ -696,12 +1405,16 @@
 
                         <!-- Runs history -->
                         <div class="flex-1 flex flex-col min-h-0 overflow-hidden">
-                            <div class="px-4 py-3 border-b border-white/5 flex-shrink-0">
-                                <h3 class="text-xs font-bold text-white uppercase tracking-wide">Recent Runs</h3>
+                            <div class="px-4 py-3 border-b border-border-subtle-inv flex-shrink-0">
+                                <h3 class="text-xs font-bold text-text-theme uppercase tracking-wide">Recent Runs</h3>
+                            </div>
+                            <div id="exp-runs-live-status" class="hidden shrink-0 px-4 py-2.5 text-[11px] leading-snug border-b border-primary/25 bg-primary/5 text-amber-100/90 flex items-start gap-2">
+                                <span class="material-symbols-outlined animate-spin text-base text-primary shrink-0 mt-0.5">progress_activity</span>
+                                <span id="exp-runs-live-status-text"></span>
                             </div>
                             <div class="flex-1 overflow-auto custom-scrollbar min-h-0">
                                 <table class="w-full text-xs">
-                                    <thead class="sticky top-0 bg-surface-darker border-b border-white/5">
+                                    <thead class="sticky top-0 bg-surface-darker border-b border-border-subtle-inv">
                                         <tr class="text-left text-text-subtle">
                                             <th class="px-4 py-2.5 font-medium">Run ID</th>
                                             <th class="px-4 py-2.5 font-medium">Config</th>
@@ -727,36 +1440,36 @@
             workflowsView.id = 'workflows-view';
             workflowsView.className = 'hidden flex-1 flex flex-col h-full min-h-0 overflow-hidden bg-background-dark';
             workflowsView.innerHTML = `
-                <div class="flex items-center justify-between px-6 py-4 border-b border-white/5 flex-shrink-0">
+                <div class="flex items-center justify-between px-6 py-4 border-b border-border-subtle-inv flex-shrink-0">
                     <div class="flex items-center gap-3">
                         <span class="material-symbols-outlined text-primary text-2xl">account_tree</span>
                         <div>
-                            <h1 class="text-base font-bold text-white">Scientific pipelines</h1>
+                            <h1 class="text-base font-bold text-text-theme">Scientific pipelines</h1>
                             <p class="text-[11px] text-text-subtle">Run DAG workflows (fetch → preprocess → model → export)</p>
                         </div>
                     </div>
-                    <span id="wf-status" class="text-xs font-mono px-2 py-1 rounded bg-white/5 text-text-subtle border border-white/10">Idle</span>
+                    <span id="wf-status" class="text-xs font-mono px-2 py-1 rounded bg-hover-bg text-text-subtle border border-border-inverse">Idle</span>
                 </div>
                 <div class="flex-1 overflow-y-auto custom-scrollbar p-6 max-w-3xl w-full mx-auto flex flex-col gap-6">
-                    <div class="rounded-xl border border-white/10 bg-surface-card/40 p-5">
-                        <h2 class="text-xs font-bold text-white uppercase tracking-wide mb-1">Protein embedding</h2>
+                    <div class="rounded-xl border border-border-inverse bg-surface-card/40 p-5">
+                        <h2 class="text-xs font-bold text-text-theme uppercase tracking-wide mb-1">Protein embedding</h2>
                         <p id="wf-preset-description" class="text-[11px] text-text-subtle mb-4 leading-relaxed"></p>
                         <div class="flex flex-col gap-3 mb-3">
                             <div class="w-full">
                                 <label class="text-[10px] text-text-subtle uppercase tracking-wider block mb-1">Preset (<span id="wf-preset-count">…</span>)</label>
                                 <select id="wf-preset-select"
-                                    class="w-full rounded-lg bg-surface-dark border border-white/10 text-sm text-white px-3 py-2 focus:border-primary/50 focus:ring-1 focus:ring-primary/30">
+                                    class="w-full rounded-lg bg-surface-dark border border-border-inverse text-sm text-text-theme px-3 py-2 focus:border-primary/50 focus:ring-1 focus:ring-primary/30">
                                 </select>
                             </div>
                             <div id="wf-kmer-k-row" class="w-full hidden">
                                 <label class="text-[10px] text-text-subtle uppercase tracking-wider block mb-1">K-mer size (uniprot_kmer_profile)</label>
                                 <input type="number" id="wf-kmer-k" value="3" min="1" max="12"
-                                    class="w-full max-w-xs rounded-lg bg-surface-dark border border-white/10 text-sm text-white px-3 py-2 focus:border-primary/50 focus:ring-1 focus:ring-primary/30" />
+                                    class="w-full max-w-xs rounded-lg bg-surface-dark border border-border-inverse text-sm text-text-theme px-3 py-2 focus:border-primary/50 focus:ring-1 focus:ring-primary/30" />
                             </div>
                             <div id="wf-esm-model-row" class="w-full">
                                 <label class="text-[10px] text-text-subtle uppercase tracking-wider block mb-1">ESM-2 checkpoint</label>
                                 <select id="wf-esm-model"
-                                    class="w-full rounded-lg bg-surface-dark border border-white/10 text-sm text-white px-3 py-2 focus:border-primary/50 focus:ring-1 focus:ring-primary/30">
+                                    class="w-full rounded-lg bg-surface-dark border border-border-inverse text-sm text-text-theme px-3 py-2 focus:border-primary/50 focus:ring-1 focus:ring-primary/30">
                                     <option value="esm2_t6_8M_UR50D">esm2_t6_8M_UR50D (fast, 320-d)</option>
                                     <option value="esm2_t12_35M_UR50D">esm2_t12_35M_UR50D</option>
                                     <option value="esm2_t33_650M_UR50D">esm2_t33_650M_UR50D (large)</option>
@@ -765,17 +1478,17 @@
                             <div id="wf-dummy-dim-row" class="w-full hidden">
                                 <label class="text-[10px] text-text-subtle uppercase tracking-wider block mb-1">Placeholder vector length</label>
                                 <input type="number" id="wf-embedding-dim" value="8" min="1" max="1280"
-                                    class="w-full max-w-xs rounded-lg bg-surface-dark border border-white/10 text-sm text-white px-3 py-2 focus:border-primary/50 focus:ring-1 focus:ring-primary/30" />
+                                    class="w-full max-w-xs rounded-lg bg-surface-dark border border-border-inverse text-sm text-text-theme px-3 py-2 focus:border-primary/50 focus:ring-1 focus:ring-primary/30" />
                             </div>
                         </div>
                         <div class="flex flex-col sm:flex-row gap-3 items-end">
                             <div class="flex-1 w-full">
                                 <label class="text-[10px] text-text-subtle uppercase tracking-wider block mb-1">Primary ID</label>
                                 <input type="text" id="wf-protein-id" value="P04637" placeholder="UniProt (P04637) or PDB (1YCR)"
-                                    class="w-full rounded-lg bg-surface-dark border border-white/10 text-sm text-white px-3 py-2 focus:border-primary/50 focus:ring-1 focus:ring-primary/30" />
+                                    class="w-full rounded-lg bg-surface-dark border border-border-inverse text-sm text-text-theme px-3 py-2 focus:border-primary/50 focus:ring-1 focus:ring-primary/30" />
                             </div>
                             <button id="wf-run-btn" type="button"
-                                class="w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-2.5 bg-primary hover:bg-primary/90 text-background-dark font-bold text-sm rounded-lg transition-all shadow-[0_0_15px_rgba(7,182,213,0.2)]">
+                                class="w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-2.5 bg-primary hover:bg-primary/90 text-slate-900 font-bold text-sm rounded-lg transition-all shadow-[0_0_15px_rgba(7,182,213,0.2)]">
                                 <span class="material-symbols-outlined text-[18px]">play_arrow</span>
                                 Run pipeline
                             </button>
@@ -783,11 +1496,11 @@
                     </div>
                     <div>
                         <h3 class="text-[10px] font-bold text-text-subtle uppercase tracking-wider mb-2">Sink outputs</h3>
-                        <pre id="wf-sink-json" class="text-[11px] font-mono text-cyan-200/90 bg-black/50 border border-white/10 rounded-lg p-4 overflow-x-auto min-h-[4rem] whitespace-pre-wrap">{}</pre>
+                        <pre id="wf-sink-json" class="text-[11px] font-mono text-code-block-text bg-code-block-bg border border-border-inverse rounded-lg p-4 overflow-x-auto min-h-[4rem] whitespace-pre-wrap">{}</pre>
                     </div>
                     <div>
                         <h3 class="text-[10px] font-bold text-text-subtle uppercase tracking-wider mb-2">All node outputs</h3>
-                        <pre id="wf-nodes-json" class="text-[11px] font-mono text-slate-300 bg-black/50 border border-white/10 rounded-lg p-4 overflow-x-auto max-h-[40vh] whitespace-pre-wrap">// Run a pipeline to see per-node results</pre>
+                        <pre id="wf-nodes-json" class="text-[11px] font-mono text-text-theme bg-code-block-bg border border-border-inverse rounded-lg p-4 overflow-x-auto max-h-[40vh] whitespace-pre-wrap">// Run a pipeline to see per-node results</pre>
                     </div>
                 </div>
             `;
@@ -797,27 +1510,27 @@
             workflowBuilderView.id = 'workflow-builder-view';
             workflowBuilderView.className = 'hidden flex-1 flex flex-col h-full min-h-0 overflow-hidden bg-background-dark';
             workflowBuilderView.innerHTML = `
-                <div class="flex items-center justify-between px-6 py-4 border-b border-white/5 flex-shrink-0">
+                <div class="flex items-center justify-between px-6 py-4 border-b border-border-subtle-inv flex-shrink-0">
                     <div class="flex items-center gap-3">
                         <span class="material-symbols-outlined text-primary text-2xl">schema</span>
                         <div>
-                            <h1 class="text-base font-bold text-white">Workflow builder</h1>
+                            <h1 class="text-base font-bold text-text-theme">Workflow builder</h1>
                             <p class="text-[11px] text-text-subtle">Canvas editor (n8n-style) · <span id="wb-node-type-count">…</span> node types · drag nodes, wire outputs → inputs</p>
                         </div>
                     </div>
-                    <span id="wb-status" class="text-xs font-mono px-2 py-1 rounded bg-white/5 text-text-subtle border border-white/10">Idle</span>
+                    <span id="wb-status" class="text-xs font-mono px-2 py-1 rounded bg-hover-bg text-text-subtle border border-border-inverse">Idle</span>
                 </div>
-                <div class="flex flex-1 flex-col min-h-0 border-t border-white/5">
-                    <div class="flex items-center gap-2 px-3 py-2 border-b border-white/5 bg-surface-darker/80 flex-shrink-0 flex-wrap">
+                <div class="flex flex-1 flex-col min-h-0 border-t border-border-subtle-inv">
+                    <div class="flex items-center gap-2 px-3 py-2 border-b border-border-subtle-inv bg-surface-darker/80 flex-shrink-0 flex-wrap">
                         <label class="text-[9px] text-text-subtle uppercase tracking-wider shrink-0">Template</label>
-                        <select id="wb-template-select" class="rounded-lg bg-surface-dark border border-white/10 text-xs text-white px-2 py-1.5 max-w-[220px] focus:border-primary/50"></select>
-                        <div class="w-px h-5 bg-white/10 mx-1 hidden sm:block"></div>
-                        <button type="button" id="wb-zoom-out" class="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-text-subtle hover:text-white" title="Zoom out"><span class="material-symbols-outlined text-[18px]">remove</span></button>
-                        <button type="button" id="wb-zoom-in" class="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-text-subtle hover:text-white" title="Zoom in"><span class="material-symbols-outlined text-[18px]">add</span></button>
-                        <button type="button" id="wb-zoom-fit" class="px-2 py-1 rounded-lg bg-white/5 hover:bg-white/10 text-[10px] text-text-subtle hover:text-white" title="Fit view">Fit</button>
+                        <select id="wb-template-select" class="rounded-lg bg-surface-dark border border-border-inverse text-xs text-text-theme px-2 py-1.5 max-w-[220px] focus:border-primary/50"></select>
+                        <div class="w-px h-5 bg-hover-bg-strong mx-1 hidden sm:block"></div>
+                        <button type="button" id="wb-zoom-out" class="p-1.5 rounded-lg bg-hover-bg hover:bg-hover-bg-strong text-text-subtle hover:text-text-theme" title="Zoom out"><span class="material-symbols-outlined text-[18px]">remove</span></button>
+                        <button type="button" id="wb-zoom-in" class="p-1.5 rounded-lg bg-hover-bg hover:bg-hover-bg-strong text-text-subtle hover:text-text-theme" title="Zoom in"><span class="material-symbols-outlined text-[18px]">add</span></button>
+                        <button type="button" id="wb-zoom-fit" class="px-2 py-1 rounded-lg bg-hover-bg hover:bg-hover-bg-strong text-[10px] text-text-subtle hover:text-text-theme" title="Fit view">Fit</button>
                         <span id="wb-zoom-label" class="text-[10px] font-mono text-text-subtle w-12">100%</span>
                         <div class="flex-1"></div>
-                        <button type="button" id="wb-clear-run" class="px-2 py-1 rounded-lg bg-white/5 hover:bg-white/10 text-[10px] text-text-subtle hover:text-white border border-white/10" title="Clear output badges on nodes">Clear results</button>
+                        <button type="button" id="wb-clear-run" class="px-2 py-1 rounded-lg bg-hover-bg hover:bg-hover-bg-strong text-[10px] text-text-subtle hover:text-text-theme border border-border-inverse" title="Clear output badges on nodes">Clear results</button>
                         <span class="text-[10px] text-text-subtle hidden lg:inline max-w-[200px] xl:max-w-none truncate xl:whitespace-normal">Wire: drag output→input · Delete: selected node or selected wire · Click wire to select</span>
                         <button type="button" id="wb-run-btn" class="flex items-center gap-1.5 px-4 py-2 rounded-lg font-bold text-sm text-white shadow-lg transition-all bg-gradient-to-r from-rose-500 to-orange-500 hover:from-rose-400 hover:to-orange-400">
                             <span class="material-symbols-outlined text-[18px]">play_arrow</span>
@@ -825,9 +1538,9 @@
                         </button>
                     </div>
                     <div class="flex flex-1 min-h-0">
-                        <aside class="w-[min(260px,32vw)] sm:w-[260px] flex-shrink-0 border-r border-white/5 bg-surface-darker flex flex-col min-h-0">
-                            <div class="p-3 border-b border-white/5">
-                                <input type="search" id="wb-palette-search" placeholder="Search nodes…" class="w-full rounded-lg bg-surface-dark border border-white/10 text-xs text-white px-3 py-2 placeholder:text-text-subtle focus:border-primary/50 focus:ring-1 focus:ring-primary/30" />
+                        <aside class="w-[min(260px,32vw)] sm:w-[260px] flex-shrink-0 border-r border-border-subtle-inv bg-surface-darker flex flex-col min-h-0">
+                            <div class="p-3 border-b border-border-subtle-inv">
+                                <input type="search" id="wb-palette-search" placeholder="Search nodes…" class="w-full rounded-lg bg-surface-dark border border-border-inverse text-xs text-text-theme px-3 py-2 placeholder:text-text-subtle focus:border-primary/50 focus:ring-1 focus:ring-primary/30" />
                             </div>
                             <div id="wb-palette-list" class="flex-1 overflow-y-auto custom-scrollbar min-h-0 p-2"></div>
                         </aside>
@@ -838,7 +1551,7 @@
                             </div>
                         </div>
                         <aside class="wb-inspector-panel w-[min(280px,40vw)] lg:w-[300px] flex-shrink-0 flex flex-col min-h-0 max-md:hidden">
-                            <div class="p-3 border-b border-white/5">
+                            <div class="p-3 border-b border-border-subtle-inv">
                                 <h2 class="text-[10px] font-bold text-text-subtle uppercase tracking-wider" id="wb-inspector-title">Node</h2>
                                 <p id="wb-inspector-hint" class="text-[11px] text-text-subtle mt-1">Select a node or a wire</p>
                                 <p id="wb-inspector-wire-label" class="text-[10px] font-mono text-primary mt-2 hidden"></p>
@@ -847,7 +1560,7 @@
                             <div id="wb-inspector-fields" class="flex-1 overflow-y-auto custom-scrollbar p-3 space-y-3 hidden">
                                 <div>
                                     <label class="text-[9px] text-text-subtle uppercase block mb-1">Node ID</label>
-                                    <input type="text" id="wb-inspector-id" class="w-full rounded-lg bg-surface-dark border border-white/10 text-xs text-white px-2 py-1.5 font-mono" />
+                                    <input type="text" id="wb-inspector-id" class="w-full rounded-lg bg-surface-dark border border-border-inverse text-xs text-text-theme px-2 py-1.5 font-mono" />
                                 </div>
                                 <div>
                                     <label class="text-[9px] text-text-subtle uppercase block mb-1">Type</label>
@@ -855,8 +1568,15 @@
                                     <p id="wb-inspector-desc" class="text-[10px] text-text-subtle mt-1 leading-relaxed"></p>
                                 </div>
                                 <div>
-                                    <label class="text-[9px] text-text-subtle uppercase block mb-1">Parameters (JSON)</label>
-                                    <textarea id="wb-inspector-params" rows="6" class="w-full rounded-lg bg-black/40 border border-white/10 text-[11px] font-mono text-cyan-100/90 px-2 py-1.5 resize-y min-h-[5rem]" spellcheck="false"></textarea>
+                                    <div class="flex items-center justify-between mb-1">
+                                        <label class="text-[9px] text-text-subtle uppercase">Parameters</label>
+                                        <div class="wb-params-toggle">
+                                            <button type="button" id="wb-params-form-btn" class="active">Form</button>
+                                            <button type="button" id="wb-params-json-btn">JSON</button>
+                                        </div>
+                                    </div>
+                                    <div id="wb-inspector-params-form" class="flex flex-col gap-2"></div>
+                                    <textarea id="wb-inspector-params" rows="6" class="hidden w-full rounded-lg bg-code-block-bg border border-border-inverse text-[11px] font-mono text-code-block-text px-2 py-1.5 resize-y min-h-[5rem]" spellcheck="false"></textarea>
                                 </div>
                                 <div id="wb-inspector-connections-wrap" class="hidden">
                                     <label class="text-[9px] text-text-subtle uppercase block mb-1">Connections</label>
@@ -865,99 +1585,203 @@
                                 </div>
                                 <div id="wb-inspector-lastrun-wrap" class="hidden">
                                     <label class="text-[9px] text-text-subtle uppercase block mb-1">Last run output (this node)</label>
-                                    <pre id="wb-inspector-lastrun" class="text-[10px] font-mono text-slate-300 bg-black/40 border border-white/10 rounded-lg p-2 max-h-48 overflow-auto custom-scrollbar whitespace-pre-wrap"></pre>
+                                    <pre id="wb-inspector-lastrun" class="text-[10px] font-mono text-text-theme bg-code-block-bg border border-border-inverse rounded-lg p-2 max-h-48 overflow-auto custom-scrollbar whitespace-pre-wrap"></pre>
                                 </div>
                                 <button type="button" id="wb-inspector-delete" class="w-full py-2 rounded-lg border border-rose-500/40 text-rose-300 text-xs hover:bg-rose-500/10">Remove node</button>
                             </div>
                         </aside>
                     </div>
-                    <div class="border-t border-white/5 bg-surface-darker/90 flex-shrink-0 max-h-[38vh] flex flex-col min-h-0">
-                        <div class="flex border-b border-white/5 text-[10px] font-medium">
-                            <button type="button" class="wb-bottom-tab px-4 py-2 text-white border-b-2 border-primary bg-white/5" data-wb-tab="inputs">Initial inputs</button>
-                            <button type="button" class="wb-bottom-tab px-4 py-2 text-text-subtle hover:text-white border-b-2 border-transparent" data-wb-tab="sink">Sink output</button>
-                            <button type="button" class="wb-bottom-tab px-4 py-2 text-text-subtle hover:text-white border-b-2 border-transparent" data-wb-tab="nodes">All nodes</button>
+                    <div class="border-t border-border-subtle-inv bg-surface-darker/90 flex-shrink-0 max-h-[38vh] flex flex-col min-h-0">
+                        <div class="flex border-b border-border-subtle-inv text-[10px] font-medium">
+                            <button type="button" class="wb-bottom-tab px-4 py-2 text-text-theme border-b-2 border-primary bg-hover-bg" data-wb-tab="inputs">Form</button>
+                            <button type="button" class="wb-bottom-tab px-4 py-2 text-text-subtle hover:text-text-theme border-b-2 border-transparent" data-wb-tab="inputs-json">JSON</button>
+                            <button type="button" class="wb-bottom-tab px-4 py-2 text-text-subtle hover:text-text-theme border-b-2 border-transparent" data-wb-tab="sink">Sink output</button>
+                            <button type="button" class="wb-bottom-tab px-4 py-2 text-text-subtle hover:text-text-theme border-b-2 border-transparent" data-wb-tab="nodes">All nodes</button>
                         </div>
                         <div class="flex-1 min-h-0 overflow-hidden p-3 grid">
-                            <textarea id="wb-initial-inputs" class="wb-bottom-panel row-start-1 col-start-1 w-full h-full min-h-[120px] rounded-lg bg-black/40 border border-white/10 text-[11px] font-mono text-cyan-100/90 px-3 py-2 resize-none focus:border-primary/50 custom-scrollbar" spellcheck="false">{}</textarea>
-                            <pre id="wb-sink-json" class="wb-bottom-panel row-start-1 col-start-1 hidden w-full h-full min-h-[120px] overflow-auto rounded-lg bg-black/40 border border-white/10 text-[11px] font-mono text-cyan-200/90 p-3 custom-scrollbar whitespace-pre-wrap">{}</pre>
-                            <pre id="wb-builder-nodes-json" class="wb-bottom-panel row-start-1 col-start-1 hidden w-full h-full min-h-[120px] overflow-auto rounded-lg bg-black/40 border border-white/10 text-[11px] font-mono text-slate-300 p-3 custom-scrollbar whitespace-pre-wrap">// Run to see outputs</pre>
+                            <div id="wb-initial-inputs-form" class="wb-bottom-panel row-start-1 col-start-1 w-full h-full min-h-[120px] overflow-auto custom-scrollbar"></div>
+                            <textarea id="wb-initial-inputs" class="wb-bottom-panel row-start-1 col-start-1 hidden w-full h-full min-h-[120px] rounded-lg bg-code-block-bg border border-border-inverse text-[11px] font-mono text-code-block-text px-3 py-2 resize-none focus:border-primary/50 custom-scrollbar" spellcheck="false">{}</textarea>
+                            <pre id="wb-sink-json" class="wb-bottom-panel row-start-1 col-start-1 hidden w-full h-full min-h-[120px] overflow-auto rounded-lg bg-code-block-bg border border-border-inverse text-[11px] font-mono text-code-block-text p-3 custom-scrollbar whitespace-pre-wrap">{}</pre>
+                            <pre id="wb-builder-nodes-json" class="wb-bottom-panel row-start-1 col-start-1 hidden w-full h-full min-h-[120px] overflow-auto rounded-lg bg-code-block-bg border border-border-inverse text-[11px] font-mono text-text-theme p-3 custom-scrollbar whitespace-pre-wrap">// Run to see outputs</pre>
                         </div>
                     </div>
                 </div>
             `;
             researchView.parentNode.insertBefore(workflowBuilderView, workflowsView.nextSibling);
 
+            const drugDiscoveryView = document.createElement('div');
+            drugDiscoveryView.id = 'drug-discovery-view';
+            drugDiscoveryView.className = 'hidden flex-1 flex flex-col h-full min-h-0 overflow-hidden bg-background-dark';
+            drugDiscoveryView.innerHTML = `
+                <div class="flex items-center justify-between px-6 py-4 border-b border-border-subtle-inv flex-shrink-0">
+                    <div class="flex items-center gap-3">
+                        <span class="material-symbols-outlined text-primary text-2xl">medication</span>
+                        <div>
+                            <h1 class="text-base font-bold text-text-theme">Drug Discovery</h1>
+                            <p class="text-[11px] text-text-subtle">Scenario launchers for agentic small-molecule design · docking + Boltz in parallel · ADMET / off-target / retrosynthesis gates</p>
+                        </div>
+                    </div>
+                    <span id="dd-status" class="text-xs font-mono px-2 py-1 rounded bg-hover-bg text-text-subtle border border-border-inverse">Idle</span>
+                </div>
+                <div class="flex-1 overflow-y-auto custom-scrollbar p-6 max-w-6xl w-full mx-auto flex flex-col gap-6">
+                    <div id="dd-scenario-grid" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <!-- Scenario cards injected by drug_discovery.js -->
+                    </div>
+
+                    <div id="dd-runner-panel" class="rounded-xl border border-border-inverse bg-surface-card/40 p-5 hidden">
+                        <div class="flex items-start justify-between gap-3 mb-4">
+                            <div>
+                                <h2 id="dd-runner-title" class="text-sm font-bold text-text-theme">Scenario</h2>
+                                <p id="dd-runner-description" class="text-[11px] text-text-subtle leading-relaxed max-w-2xl"></p>
+                            </div>
+                            <button id="dd-runner-close" type="button" class="text-text-subtle hover:text-text-theme" title="Close">
+                                <span class="material-symbols-outlined text-[20px]">close</span>
+                            </button>
+                        </div>
+
+                        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                            <div>
+                                <h3 class="text-[10px] font-bold text-text-subtle uppercase tracking-wider mb-2">Inputs</h3>
+                                <div id="dd-runner-inputs" class="flex flex-col gap-3"></div>
+
+                                <h3 class="text-[10px] font-bold text-text-subtle uppercase tracking-wider mt-5 mb-2">Options</h3>
+                                <div id="dd-runner-options" class="flex flex-col gap-3"></div>
+                            </div>
+                            <div>
+                                <div class="flex items-center justify-between mb-2">
+                                    <h3 class="text-[10px] font-bold text-text-subtle uppercase tracking-wider">Gate thresholds</h3>
+                                    <button id="dd-thresholds-reset" type="button" class="text-[10px] text-text-subtle hover:text-text-theme underline-offset-2 hover:underline">Reset</button>
+                                </div>
+                                <div id="dd-threshold-editor" class="flex flex-col gap-3 max-h-[28rem] overflow-y-auto custom-scrollbar pr-1"></div>
+                            </div>
+                        </div>
+
+                        <div class="flex flex-wrap items-center gap-3 mt-5 pt-4 border-t border-border-subtle-inv">
+                            <button id="dd-run-btn" type="button"
+                                class="flex items-center gap-2 px-5 py-2.5 bg-primary hover:bg-primary/90 text-slate-900 font-bold text-sm rounded-lg transition-all shadow-[0_0_15px_rgba(7,182,213,0.2)] disabled:opacity-50 disabled:cursor-not-allowed">
+                                <span class="material-symbols-outlined text-[18px]">play_arrow</span>
+                                Run scenario
+                            </button>
+                            <button id="dd-open-in-builder" type="button"
+                                class="flex items-center gap-2 px-3 py-2 bg-hover-bg hover:bg-hover-bg-strong text-text-subtle hover:text-text-theme border border-border-inverse text-xs rounded-lg transition-all">
+                                <span class="material-symbols-outlined text-[16px]">schema</span>
+                                Open as template in Workflow Builder
+                            </button>
+                            <span id="dd-run-hint" class="text-[11px] text-text-subtle"></span>
+                        </div>
+                    </div>
+
+                    <div id="dd-results-panel" class="hidden flex flex-col gap-4">
+                        <div class="rounded-xl border border-border-inverse bg-surface-card/40 p-5">
+                            <div class="flex items-center justify-between mb-3">
+                                <h3 class="text-xs font-bold text-text-theme uppercase tracking-wide">Decision log</h3>
+                                <span id="dd-decision-summary" class="text-[10px] text-text-subtle"></span>
+                            </div>
+                            <div id="dd-decision-log" class="flex flex-col gap-2"></div>
+                        </div>
+                        <div class="rounded-xl border border-border-inverse bg-surface-card/40 p-5">
+                            <h3 class="text-xs font-bold text-text-theme uppercase tracking-wide mb-3">Gate verdicts</h3>
+                            <div id="dd-verdicts-grid" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3"></div>
+                        </div>
+                        <div class="rounded-xl border border-border-inverse bg-surface-card/40 p-5">
+                            <div class="flex items-center justify-between mb-2">
+                                <h3 class="text-xs font-bold text-text-theme uppercase tracking-wide">Target dossier</h3>
+                                <span id="dd-dossier-meta" class="text-[10px] text-text-subtle font-mono"></span>
+                            </div>
+                            <pre id="dd-dossier-json" class="text-[11px] font-mono text-text-theme bg-code-block-bg border border-border-inverse rounded-lg p-4 overflow-x-auto max-h-[20rem] whitespace-pre-wrap">{}</pre>
+                        </div>
+                        <div class="rounded-xl border border-border-inverse bg-surface-card/40 p-5">
+                            <h3 class="text-xs font-bold text-text-theme uppercase tracking-wide mb-3">Raw per-node outputs</h3>
+                            <pre id="dd-nodes-json" class="text-[11px] font-mono text-text-theme bg-code-block-bg border border-border-inverse rounded-lg p-4 overflow-x-auto max-h-[40vh] whitespace-pre-wrap">{}</pre>
+                        </div>
+                    </div>
+                </div>
+            `;
+            researchView.parentNode.insertBefore(drugDiscoveryView, workflowBuilderView.nextSibling);
+
             function navInactive(el) {
                 if (!el) return;
                 el.classList.remove('bg-primary/20','border','border-primary/20','text-primary');
-                el.classList.add('text-text-subtle','hover:text-white','hover:bg-white/5');
+                el.classList.add('text-text-subtle','hover:text-text-theme','hover:bg-hover-bg');
             }
 
             function navActive(el) {
                 if (!el) return;
                 el.classList.add('bg-primary/20','border','border-primary/20','text-primary');
-                el.classList.remove('text-text-subtle','hover:text-white','hover:bg-white/5');
+                el.classList.remove('text-text-subtle','hover:text-text-theme','hover:bg-hover-bg');
+            }
+
+            const aboutView = document.getElementById('about-view');
+
+            const allViews = [researchView, expView, workflowsView, workflowBuilderView, drugDiscoveryView, aboutView];
+            const allNavIds = ['nav-research','nav-experiments','nav-workflows','nav-workflow-builder','nav-drug-discovery','nav-about'];
+
+            function clearActive() {
+                allNavIds.forEach(id => navInactive(document.getElementById(id)));
+            }
+            function hideAllExcept(el, showTerminal) {
+                allViews.forEach(v => {
+                    if (v === el) v.classList.remove('hidden');
+                    else v.classList.add('hidden');
+                });
+                if (terminalLog) terminalLog.classList.toggle('hidden', !showTerminal);
             }
 
             function showResearch() {
-                researchView.classList.remove('hidden');
-                if (terminalLog) terminalLog.classList.remove('hidden');
-                expView.classList.add('hidden');
-                workflowsView.classList.add('hidden');
-                workflowBuilderView.classList.add('hidden');
+                hideAllExcept(researchView, true);
+                clearActive();
                 navActive(document.getElementById('nav-research'));
-                navInactive(document.getElementById('nav-experiments'));
-                navInactive(document.getElementById('nav-workflows'));
-                navInactive(document.getElementById('nav-workflow-builder'));
                 document.getElementById('projectTitle').textContent = 'BioAgents Research Session';
             }
 
             async function showExperiments() {
-                researchView.classList.add('hidden');
-                if (terminalLog) terminalLog.classList.add('hidden');
-                expView.classList.remove('hidden');
-                workflowsView.classList.add('hidden');
-                workflowBuilderView.classList.add('hidden');
-                navInactive(document.getElementById('nav-research'));
+                hideAllExcept(expView, false);
+                clearActive();
                 navActive(document.getElementById('nav-experiments'));
-                navInactive(document.getElementById('nav-workflows'));
-                navInactive(document.getElementById('nav-workflow-builder'));
-                document.getElementById('projectTitle').textContent = 'Experiments';
+                document.getElementById('projectTitle').textContent = 'Benchmarks';
                 await initExperiments();
             }
 
             async function showWorkflows() {
-                researchView.classList.add('hidden');
-                if (terminalLog) terminalLog.classList.add('hidden');
-                expView.classList.add('hidden');
-                workflowsView.classList.remove('hidden');
-                workflowBuilderView.classList.add('hidden');
-                navInactive(document.getElementById('nav-research'));
-                navInactive(document.getElementById('nav-experiments'));
+                hideAllExcept(workflowsView, false);
+                clearActive();
                 navActive(document.getElementById('nav-workflows'));
-                navInactive(document.getElementById('nav-workflow-builder'));
                 document.getElementById('projectTitle').textContent = 'Pipelines';
                 await initWorkflows();
             }
 
             async function showWorkflowBuilder() {
-                researchView.classList.add('hidden');
-                if (terminalLog) terminalLog.classList.add('hidden');
-                expView.classList.add('hidden');
-                workflowsView.classList.add('hidden');
-                workflowBuilderView.classList.remove('hidden');
-                navInactive(document.getElementById('nav-research'));
-                navInactive(document.getElementById('nav-experiments'));
-                navInactive(document.getElementById('nav-workflows'));
+                hideAllExcept(workflowBuilderView, false);
+                clearActive();
                 navActive(document.getElementById('nav-workflow-builder'));
                 document.getElementById('projectTitle').textContent = 'Workflow builder';
                 await initWorkflowBuilder();
+            }
+
+            async function showDrugDiscovery() {
+                hideAllExcept(drugDiscoveryView, false);
+                clearActive();
+                navActive(document.getElementById('nav-drug-discovery'));
+                document.getElementById('projectTitle').textContent = 'Drug Discovery';
+                if (typeof initDrugDiscovery === 'function') await initDrugDiscovery();
             }
 
             document.getElementById('nav-research')?.addEventListener('click', e => { e.preventDefault(); showResearch(); });
             document.getElementById('nav-experiments')?.addEventListener('click', e => { e.preventDefault(); showExperiments(); });
             document.getElementById('nav-workflows')?.addEventListener('click', e => { e.preventDefault(); showWorkflows(); });
             document.getElementById('nav-workflow-builder')?.addEventListener('click', e => { e.preventDefault(); showWorkflowBuilder(); });
+            document.getElementById('nav-drug-discovery')?.addEventListener('click', e => { e.preventDefault(); showDrugDiscovery(); });
+
+            function showAbout() {
+                allViews.forEach(v => v.classList.add('hidden'));
+                aboutView.classList.remove('hidden');
+                aboutView.style.display = '';
+                clearActive();
+                navActive(document.getElementById('nav-about'));
+                document.getElementById('projectTitle').textContent = 'About BioAgents';
+            }
+            document.getElementById('nav-about')?.addEventListener('click', e => { e.preventDefault(); showAbout(); });
+            document.getElementById('about-close')?.addEventListener('click', e => { e.preventDefault(); showResearch(); });
         })();
     </script>
 </body>

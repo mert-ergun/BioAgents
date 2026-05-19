@@ -1,5 +1,7 @@
 """Research Agent for fetching biological data - Tool-executing implementation."""
 
+import hashlib
+import json
 import logging
 import re
 from concurrent.futures import ThreadPoolExecutor
@@ -54,19 +56,57 @@ RESEARCH_AGENT_MEMORY_PROMPT = (
     "Use only shared memory and your tools.\n\n" + RESEARCH_AGENT_SYSTEM_PROMPT
 )
 
+# Maximum number of tool-result rounds a sub-agent is allowed before being
+# forced to synthesise with what it has.
+MAX_SUB_AGENT_TOOL_ROUNDS = 1
 
-def parse_sub_tasks(content: str) -> list[str]:
+
+def _tool_call_signature(tc: dict) -> str:
+    """Create a hashable signature for a tool call to detect duplicates."""
+    name = tc.get("name", "")
+    args = tc.get("args", {})
+    args_str = json.dumps(args, sort_keys=True, default=str)
+    return hashlib.md5(f"{name}:{args_str}".encode(), usedforsecurity=False).hexdigest()
+
+
+def _extract_fetched_data_summary(messages: list) -> str:
+    """Build a brief summary of data already fetched, to share across sub-agents."""
+    seen_data: list[str] = []
+    for msg in reversed(messages[-40:]):
+        if not isinstance(msg, ToolMessage):
+            continue
+        content = get_content_text(msg.content)
+        # UniProt FASTA
+        if content.startswith(">sp|") or content.startswith(">tr|"):
+            first_line = content.split("\n")[0]
+            if first_line not in seen_data:
+                seen_data.append(f"FASTA already fetched: {first_line}")
+        # AlphaFold structure download
+        if '"status": "success"' in content and "model_v" in content and ".pdb" in content:
+            try:
+                data = json.loads(content)
+                path = data.get("file_path", "")
+                if path and path not in str(seen_data):
+                    seen_data.append(f"Structure already downloaded: {path}")
+            except (json.JSONDecodeError, KeyError):
+                pass
+    return "\n".join(seen_data)
+
+
+def parse_sub_tasks(content) -> list[str]:
     """
-    Parse a numbered list of sub-tasks from string.
+    Parse a numbered list of sub-tasks from string or content-block list.
 
     Args:
-        content: String containing a numbered list of tasks
+        content: String or list of content blocks (Gemini format)
 
     Returns:
         List of task descriptions
     """
     tasks = []
     if not isinstance(content, str):
+        content = get_content_text(content)
+    if not content:
         return []
     lines = content.strip().split("\n")
     for line in lines:
@@ -109,6 +149,9 @@ def create_research_agent(tools: list):
             tools_dict[resolve_tool_name(tool)] = tool
 
     logger.info(f"Research agent tools: {list(tools_dict.keys())}")
+
+    # Track how many parallel tool-result rounds we've done (per invocation).
+    _parallel_round = 0
 
     def research_node(state: dict) -> dict:
         """
@@ -156,6 +199,21 @@ def create_research_agent(tools: list):
                 and getattr(last_message, "name", None) == "Research"
                 and not getattr(last_message, "tool_calls", None)
             ):
+                # Check if this is a continuation after tool execution (not a true loop).
+                # If the second-to-last message is a ToolMessage, we're in a
+                # post-tool-return state where the agent previously produced a
+                # final merged result — forward it rather than discarding it.
+                prior_message = messages[-2] if len(messages) >= 2 else None
+                if isinstance(prior_message, ToolMessage):
+                    logger.info("Research Agent: Returning merged result after tool execution.")
+                    return {
+                        "data": {},
+                        "raw_output": get_content_text(last_message.content),
+                        "tool_calls": [],
+                        "error": None,
+                        "messages": [last_message],
+                    }
+
                 logger.warning(
                     "Research Agent: Detected possible loop. "
                     "Last message is already from Research. Returning empty."
@@ -169,6 +227,9 @@ def create_research_agent(tools: list):
 
             # ── Decompose & parallel phase ───────────────────────────────────
             original_request = _extract_original_request(messages)
+
+            # Reset round counter for fresh invocations.
+            _parallel_round = 0
 
             logger.info("Research Agent: Entering Decompose & Parallel Phase")
             decomposer_llm = get_llm(prompt_name="research_decomposer")
@@ -192,12 +253,21 @@ def create_research_agent(tools: list):
             logger.info(f"Research Agent: Running {len(sub_tasks)} sub-tasks in parallel")
 
             def run_sub_agent_initial(sub_task):
+                # Build a data context note so sub-agents don't re-fetch
+                already_fetched = _extract_fetched_data_summary(messages)
+                context_note = ""
+                if already_fetched:
+                    context_note = (
+                        f"\n\nIMPORTANT - Data already fetched by other sub-agents "
+                        f"(do NOT re-fetch these):\n{already_fetched}"
+                    )
                 sub_agent_messages = [
                     SystemMessage(content=RESEARCH_AGENT_PROMPT),
                     HumanMessage(
                         content=(
                             f"Perform this sub-task: {sub_task}\n\n"
                             f"Context of original request: {original_request}"
+                            f"{context_note}"
                         )
                     ),
                 ]
@@ -364,6 +434,9 @@ def create_research_agent(tools: list):
 
             original_request = _extract_original_request(messages)
 
+            # Build data context for sub-agent continuation
+            already_fetched = _extract_fetched_data_summary(messages)
+
             def run_sub_agent_continue(i, sub_task):
                 suffix = f"_{i}"
                 my_tool_calls = [
@@ -385,12 +458,19 @@ def create_research_agent(tools: list):
                     if isinstance(oid, str):
                         tc["id"] = oid[: -len(suffix)]
 
+                context_note = ""
+                if already_fetched:
+                    context_note = (
+                        f"\n\nIMPORTANT - Data already fetched "
+                        f"(do NOT re-fetch these):\n{already_fetched}"
+                    )
                 sub_agent_messages = [
                     SystemMessage(content=RESEARCH_AGENT_PROMPT),
                     HumanMessage(
                         content=(
                             f"Perform this sub-task: {sub_task}\n\n"
                             f"Context of original request: {original_request}"
+                            f"{context_note}"
                         )
                     ),
                     AIMessage(content="", tool_calls=my_tool_calls),
@@ -429,9 +509,29 @@ def create_research_agent(tools: list):
             )
 
     def _aggregate_and_return(results, messages, original_request):
+        nonlocal _parallel_round
+        _parallel_round += 1
+
         all_tool_calls = []
         combined_content = "Research Phase - Sub-agent findings:\n"
         needs_more_tools = False
+
+        # Deduplicate tool calls across sub-agents
+        seen_signatures: set[str] = set()
+
+        # Also track signatures already executed in prior rounds (from message history)
+        for msg in reversed(messages[-60:]):
+            if isinstance(msg, AIMessage) and getattr(msg, "tool_calls", None):
+                for tc in msg.tool_calls:
+                    seen_signatures.add(_tool_call_signature(tc))
+
+        # Count recent ToolUniverse failures to avoid retry loops
+        tu_recent_failures = 0
+        for msg in reversed(messages[-30:]):
+            if isinstance(msg, ToolMessage):
+                tc = get_content_text(msg.content).lower()
+                if "tooluniverse" in tc and ("failed" in tc or "error" in tc):
+                    tu_recent_failures += 1
 
         for i, (resp, sub_task) in enumerate(results):
             combined_content += f"\n--- Sub-task {i + 1}: {sub_task} ---\n"
@@ -439,21 +539,61 @@ def create_research_agent(tools: list):
             sub_agent_tools = getattr(resp, "tool_calls", [])
 
             if sub_agent_tools:
-                needs_more_tools = True
-                combined_content += (
-                    f"(Sub-agent {i + 1} is fetching data using {len(sub_agent_tools)} tools...)\n"
-                )
-                if content_text and len(content_text) > 150:
-                    combined_content += f"{content_text}\n"
+                # Filter out ToolUniverse calls if they've been consistently failing
+                filtered_tools = []
                 for tc in sub_agent_tools:
+                    tc_name = tc.get("name", "")
+                    if "tool_universe" in tc_name and tu_recent_failures >= 2:
+                        logger.info(
+                            "Research Agent: Skipping ToolUniverse call '%s' "
+                            "after %d recent failures.",
+                            tc_name,
+                            tu_recent_failures,
+                        )
+                        continue
+
+                    # Deduplicate: skip tool calls already seen
+                    sig = _tool_call_signature(tc)
+                    if sig in seen_signatures:
+                        logger.info(
+                            "Research Agent: Skipping duplicate tool call '%s'.",
+                            tc_name,
+                        )
+                        continue
+                    seen_signatures.add(sig)
+
                     tc_copy = tc.copy()
                     if tc_copy.get("id"):
                         tc_copy["id"] = f"{tc_copy['id']}_{i}"
-                    all_tool_calls.append(tc_copy)
+                    filtered_tools.append(tc_copy)
+
+                if filtered_tools:
+                    needs_more_tools = True
+                    combined_content += (
+                        f"(Sub-agent {i + 1} is fetching data using "
+                        f"{len(filtered_tools)} tools...)\n"
+                    )
+                    if content_text and len(content_text) > 150:
+                        combined_content += f"{content_text}\n"
+                    all_tool_calls.extend(filtered_tools)
+                else:
+                    # All tool calls were filtered or deduplicated
+                    if content_text:
+                        combined_content += f"{content_text}\n"
+                    else:
+                        combined_content += "(Sub-agent tools unavailable; used existing data)\n"
             elif content_text:
                 combined_content += f"{content_text}\n"
             else:
                 combined_content += "(Sub-agent completed its part of the task)\n"
+
+        # Force merge if we've exceeded the round cap
+        if _parallel_round > MAX_SUB_AGENT_TOOL_ROUNDS:
+            logger.info(
+                "Research Agent: Reached max parallel rounds (%d). Forcing merge.",
+                MAX_SUB_AGENT_TOOL_ROUNDS,
+            )
+            return _handle_merge(messages, combined_content, original_request)
 
         if not needs_more_tools:
             logger.info("Research Agent: All sub-agents finished. Proceeding to merge.")
@@ -464,7 +604,6 @@ def create_research_agent(tools: list):
                 AIMessage(
                     content=combined_content,
                     tool_calls=all_tool_calls,
-                    additional_kwargs={"show_ui": False},
                 )
             ]
         }

@@ -16,10 +16,9 @@ from __future__ import annotations
 
 import logging
 
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import SystemMessage
 from langchain_core.tools import BaseTool
 
-from bioagents.agents.agent_executor import execute_agent_with_tools, safe_json_output
 from bioagents.agents.helpers import resolve_tool_name
 from bioagents.llms.llm_provider import get_llm
 from bioagents.prompts.prompt_loader import load_prompt
@@ -71,8 +70,14 @@ def create_protein_design_agent(tools):
     Returns:
         Agent node function
     """
+    from bioagents.agents.helpers import (
+        create_retry_response,
+        prepare_messages_for_agent,
+    )
+
     llm = get_llm(prompt_name="protein_design")
     llm_with_tools = llm.bind_tools(tools)
+    tool_names = [t.name for t in tools]
 
     # Convert tools list to dict for executor
     tools_dict = {}
@@ -85,102 +90,13 @@ def create_protein_design_agent(tools):
     logger.info(f"Protein design agent tools: {list(tools_dict.keys())}")
 
     def protein_design_node(state):
-        """Protein design agent with tool execution loop."""
-        try:
-            messages = state.get("messages", [])
+        """The Protein Design Agent node function."""
+        messages = state["messages"]
+        windowed = prepare_messages_for_agent(messages, "protein_design")
+        messages_with_system = [SystemMessage(content=PROTEIN_DESIGN_AGENT_PROMPT), *windowed]
 
-            # Find user message
-            user_message = None
-            for m in messages:
-                if isinstance(m, HumanMessage):
-                    user_message = m
-                    break
-
-            if user_message is None:
-                user_message = HumanMessage(content="Design protein binders.")
-
-            # Execute agent with tools
-            raw_output, tool_calls_used, last_ai, exec_err = execute_agent_with_tools(
-                llm_with_tools=llm_with_tools,
-                system_prompt=PROTEIN_DESIGN_AGENT_MEMORY_PROMPT,
-                user_message=user_message,
-                tools_dict=tools_dict,
-                max_iterations=5,
-                full_message_history=messages,
-            )
-
-            logger.info(f"Protein design raw_output: {raw_output}")
-
-            # Default JSON structure — includes lookup_result
-            default_json: dict = {
-                "lookup_result": None,
-                "design_candidates": [],
-                "predicted_structures": [],
-                "evaluation": {},
-                "completeness": "partial",
-            }
-
-            structured_data = safe_json_output(raw_output, default_json)
-
-            # FIX 1: If JSON parsing failed (all defaults) but raw_output is a
-            # short plain-text answer (e.g. "1TUP"), treat it as a lookup result.
-            is_all_defaults = (
-                not structured_data.get("lookup_result")
-                and not structured_data.get("design_candidates")
-                and not structured_data.get("predicted_structures")
-                and not structured_data.get("evaluation")
-            )
-            raw_stripped = raw_output.strip() if isinstance(raw_output, str) else ""
-
-            # SIM102: merged nested ifs into single condition
-            if (
-                is_all_defaults
-                and raw_stripped
-                and len(raw_stripped) <= 200
-                and "{" not in raw_stripped
-            ):
-                logger.info(
-                    f"Protein design: raw output looks like a plain-text answer "
-                    f"('{raw_stripped}'). Saving as lookup_result."
-                )
-                structured_data["lookup_result"] = raw_stripped
-                structured_data["completeness"] = "full"
-
-            # FIX 2: If tools were executed and completeness is still partial,
-            # assume the agent completed its work.
-            if tool_calls_used and structured_data.get("completeness") == "partial":
-                structured_data["completeness"] = "full"
-                logger.info(
-                    "Protein design: Setting completeness to 'full' since tools were executed."
-                )
-
-            # FIX 3: Always preserve the raw_output alongside structured data
-            structured_data["_raw_output"] = raw_stripped
-
-            out = {
-                "data": structured_data,
-                "raw_output": raw_output,
-                "tool_calls": tool_calls_used,
-                "error": exec_err,
-            }
-            if last_ai is not None:
-                out["messages"] = [last_ai]
-            return out
-
-        except Exception as e:
-            logger.error(f"Protein design agent error: {e}", exc_info=True)
-            return {
-                "data": {
-                    "lookup_result": None,
-                    "design_candidates": [],
-                    "predicted_structures": [],
-                    "evaluation": {},
-                    "completeness": "failed",
-                    "_raw_output": "",
-                },
-                "raw_output": str(e),
-                "tool_calls": [],
-                "error": str(e),
-            }
+        return create_retry_response(
+            "ProteinDesign", messages_with_system, tool_names, llm_with_tools
+        )
 
     return protein_design_node

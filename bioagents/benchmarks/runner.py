@@ -405,22 +405,35 @@ def _extract_tool_calls_from_messages(messages: list) -> list[ToolCallRecord]:
 
 def _extract_token_usage_from_messages(messages: list) -> TokenUsage | None:
     """
-    Aggregate token usage from response_metadata across all AIMessages.
+    Aggregate token usage from AIMessage metadata.
 
-    LangChain stores token counts differently per provider:
-    - OpenAI: response_metadata["token_usage"] -> {"prompt_tokens", "completion_tokens", "total_tokens"}
-    - Gemini: response_metadata["usage_metadata"] -> {"prompt_token_count", "candidates_token_count"}
+    LangChain stores token counts in multiple locations depending on version/provider:
+    - msg.usage_metadata (modern, langchain-core >= 0.2): {"input_tokens", "output_tokens", "total_tokens"}
+    - response_metadata["token_usage"] (OpenAI legacy): {"prompt_tokens", "completion_tokens"}
+    - response_metadata["usage_metadata"] (Gemini legacy): {"prompt_token_count", "candidates_token_count"}
     """
     total_input = 0
     total_output = 0
     found_any = False
 
     for msg in messages:
+        # Modern LangChain: top-level usage_metadata attribute (both OpenAI and Gemini)
+        usage_metadata = getattr(msg, "usage_metadata", None)
+        if usage_metadata and isinstance(usage_metadata, dict):
+            inp = usage_metadata.get("input_tokens")
+            out = usage_metadata.get("output_tokens")
+            if inp is not None or out is not None:
+                total_input += inp or 0
+                total_output += out or 0
+                found_any = True
+                continue
+
+        # Legacy: response_metadata dict
         metadata = getattr(msg, "response_metadata", None)
         if not metadata:
             continue
 
-        # OpenAI format
+        # OpenAI legacy format
         token_usage = metadata.get("token_usage", {})
         if token_usage:
             total_input += token_usage.get("prompt_tokens", 0)
@@ -428,7 +441,7 @@ def _extract_token_usage_from_messages(messages: list) -> TokenUsage | None:
             found_any = True
             continue
 
-        # Gemini format
+        # Gemini legacy format
         usage_meta = metadata.get("usage_metadata", {})
         if usage_meta:
             total_input += usage_meta.get("prompt_token_count", 0)
@@ -509,6 +522,15 @@ def run_use_case(
     final_messages: list[str] = []
     raw_output: str | None = None
 
+    # Set a global deadline so LLM invokes auto-shrink their timeout when the
+    # workflow budget is nearly exhausted (prevents 47-second overshoot).
+    from bioagents.llms.timeout_llm import set_workflow_deadline
+
+    if timeout and timeout > 0:
+        import time as _time_mod
+
+        set_workflow_deadline(_time_mod.monotonic() + timeout)
+
     try:
         last_node_time = start_time
 
@@ -518,20 +540,19 @@ def run_use_case(
             print(f"{'─' * 80}\n")
 
         for step_output in graph.stream(initial_state, {"recursion_limit": max_steps}):
-            elapsed = time.time() - start_time
-            if elapsed > timeout:
-                timed_out = True
-                error_message = f"Timeout after {timeout}s (elapsed: {elapsed:.1f}s)"
-                break
-
             total_steps += 1
             node_name = next(iter(step_output))
             last_node_time = time.time()  # noqa: F841
             node_state = step_output[node_name]
             agent_flow.append(node_name)
 
-            # Capture per-step messages for agent_steps
+            # Capture per-step messages for agent_steps.
+            # This MUST happen before the timeout check so that even
+            # the final step's output (e.g. from the coder agent) is
+            # recorded when the timeout fires on the same iteration.
             step_messages: list[dict] = []
+            if node_state is None:
+                continue
             for msg in node_state.get("messages", []):
                 all_messages.append(msg)
                 msg_content = getattr(msg, "content", "")
@@ -574,6 +595,12 @@ def run_use_case(
                     f"{color}{Colors.BOLD}{node_name.upper()}{Colors.RESET}"
                 )
 
+            elapsed = time.time() - start_time
+            if elapsed > timeout:
+                timed_out = True
+                error_message = f"Timeout after {timeout}s (elapsed: {elapsed:.1f}s)"
+                break
+
             if total_steps >= max_steps:
                 error_message = f"Stopped after {max_steps} steps"
                 break
@@ -586,18 +613,25 @@ def run_use_case(
         ):
             workflow_completed = True
 
-        # Extract final text messages
+        # Extract final text messages (deduplicated, preserving order)
+        seen_content: set[str] = set()
         for msg in all_messages[-15:]:
             content = getattr(msg, "content", "")
             if content and not isinstance(msg, (HumanMessage, ToolMessage)):
+                texts: list[str] = []
                 if isinstance(content, str):
-                    final_messages.append(content)
+                    texts.append(content)
                 elif isinstance(content, list):
                     for item in content:
                         if isinstance(item, dict) and "text" in item:
-                            final_messages.append(item["text"])
+                            texts.append(item["text"])
                         elif isinstance(item, str):
-                            final_messages.append(item)
+                            texts.append(item)
+                for text in texts:
+                    sig = text[:500]
+                    if sig not in seen_content:
+                        seen_content.add(sig)
+                        final_messages.append(text)
 
         if all_messages:
             last_msg = all_messages[-1]
@@ -615,6 +649,8 @@ def run_use_case(
         execution_time = time.time() - start_time
         error_message = str(exc)
         logger.error("Error running use case '%s': %s", use_case.name, exc, exc_info=True)
+    finally:
+        set_workflow_deadline(None)
 
     tool_calls = _extract_tool_calls_from_messages(all_messages)
     token_usage = _extract_token_usage_from_messages(all_messages)

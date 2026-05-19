@@ -1,0 +1,52 @@
+/home/mert/dev/BioAgents/.venv/lib/python3.12/site-packages/websockets/legacy/__init__.py:6: DeprecationWarning: websockets.legacy is deprecated; see https://websockets.readthedocs.io/en/stable/howto/upgrade.html for upgrade instructions
+  warnings.warn(  # deprecated in 14.0 - 2024-11-09
+/home/mert/dev/BioAgents/.venv/lib/python3.12/site-packages/uvicorn/protocols/websockets/websockets_impl.py:17: DeprecationWarning: websockets.server.WebSocketServerProtocol is deprecated
+  from websockets.server import WebSocketServerProtocol
+INFO:     Started server process [127056]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
+INFO:     127.0.0.1:60260 - "GET / HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60260 - "GET /static/js/experiments.js HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:60264 - "GET /static/js/app.js HTTP/1.1" 304 Not Modified
+/home/mert/dev/BioAgents/.venv/lib/python3.12/site-packages/websockets/legacy/server.py:1178: DeprecationWarning: remove second argument of ws_handler
+  warnings.warn("remove second argument of ws_handler", DeprecationWarning)
+INFO:     127.0.0.1:60276 - "WebSocket /ws" [accepted]
+INFO:frontend.server:WebSocket connected. Total connections: 1
+INFO:     connection open
+Gemini rate limiting active: 100 requests/minute
+Using LocalPythonExecutor for coder (USE_LOCAL_EXECUTOR=true)
+Caution: you set an authorization for all imports, meaning your agent can decide to import any package it
+deems necessary. This might raise issues if the package is not installed in your environment.
+Using LocalPythonExecutor for ml (USE_LOCAL_EXECUTOR=true)
+Warning: The following authorized modules are not installed locally: xgboost, lightgbm, statsmodels.*, seaborn, catboost
+These will be omitted from the authorized list for the LocalExecutor.
+Caution: you set an authorization for all imports, meaning your agent can decide to import any package it
+deems necessary. This might raise issues if the package is not installed in your environment.
+Using LocalPythonExecutor for dl (USE_LOCAL_EXECUTOR=true)
+Warning: The following authorized modules are not installed locally: xgboost, torchaudio.*, tensorflow.*, datasets, lightgbm, torchvision.*, tensorboard, statsmodels.*, seaborn, keras.*, catboost
+These will be omitted from the authorized list for the LocalExecutor.
+Caution: you set an authorization for all imports, meaning your agent can decide to import any package it
+deems necessary. This might raise issues if the package is not installed in your environment.
+INFO:bioagents.agents.supervisor_agent:Supervisor handoff to planner: Create a detailed plan to analyze the properties of human p53 protein (UniProt: P04637). The plan should include fetching the sequence, downloading the AlphaFold structure, and performing detailed biochemical analysis.
+INFO:bioagents.agents.supervisor_agent:Supervisor handoff to research: Fetch the canonical FASTA sequence for human p53 using its UniProt ID P04637. Save the sequence as p53.fasta.
+INFO:bioagents.agents.research_agent:Research Agent: Entering Decompose & Parallel Phase
+INFO:bioagents.agents.research_agent:Research Agent: Running 3 sub-tasks in parallel
+INFO:bioagents.agents.helpers:Invoking LLM for Research Sub-agent (attempt 1/3)
+INFO:bioagents.agents.helpers:Invoking LLM for Research Sub-agent (attempt 1/3)
+INFO:bioagents.agents.helpers:Invoking LLM for Research Sub-agent (attempt 1/3)
+INFO:bioagents.graph:Extracted 6 references from Research agent
+INFO:frontend.server:Fetching PDB from URL: https://alphafold.ebi.ac.uk/files/AF-P04637-F1-model_v6.pdb
+INFO:bioagents.agents.research_agent:Research Agent: Continuing parallel sub-agents
+INFO:bioagents.agents.helpers:Invoking LLM for Research Sub-agent 1 (Continue) (attempt 1/3)
+INFO:bioagents.agents.helpers:Invoking LLM for Research Sub-agent 2 (Continue) (attempt 1/3)
+INFO:bioagents.agents.helpers:Invoking LLM for Research Sub-agent 3 (Continue) (attempt 1/3)
+INFO:bioagents.agents.research_agent:Research Agent: All sub-agents finished. Proceeding to merge.
+INFO:bioagents.agents.research_agent:Research Agent: Entering Merge Phase
+INFO:bioagents.agents.helpers:Invoking LLM for Research Merger (attempt 1/3)
+INFO:bioagents.agents.supervisor_agent:Supervisor handoff to analysis: Calculate the molecular weight, theoretical isoelectric point (pI), amino acid composition, extinction coefficients, and grand average of hydropathicity (GRAVY) for human p53 protein (UniProt: P04637) using its sequence. Also, predict the secondary structure, intrinsic disorder regions, and identify protein domains and motifs. Save all results in a structured format.
+INFO:bioagents.agents.helpers:Invoking LLM for Analysis agent (attempt 1/3)
+INFO:bioagents.graph:Extracted 3 references from Analysis agent
+INFO:bioagents.agents.helpers:Invoking LLM for Analysis agent (attempt 1/3)
+INFO:bioagents.agents.summary_agent:Summary Agent: Mode='full_summary'. Reasoning: Complex execution: 4 user messages, 7 tool calls, 5 agent messages.
+INFO:     127.0.0.1:49948 - "POST /api/clear-artifacts HTTP/1.1" 200 OK

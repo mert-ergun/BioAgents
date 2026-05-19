@@ -2,6 +2,16 @@
 requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
+# Use CPU-only PyTorch (no CUDA shared-lib dependencies).
+# Switch to "https://download.pytorch.org/whl/cu126" for GPU support.
+[[tool.uv.index]]
+url = "https://download.pytorch.org/whl/cpu"
+name = "pytorch-cpu"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cpu" }
+
 [project]
 name = "bioagents"
 version = "0.1.0"
@@ -13,7 +23,7 @@ dependencies = [
     "docker>=7.1.0",
     "ipykernel>=7.1.0",
     "langchain>=1.0.5",
-    "langchain-google-genai>=2.0.8",
+    "langchain-google-genai>=4.0.0",
     "langchain-openai>=1.0.2",
     "langgraph>=1.0.3",
     "litellm>=1.79.3",
@@ -56,11 +66,22 @@ dev = [
     "pre-commit>=4.0.1",
     "mypy>=1.14.1",
     "bandit>=1.8.0",
+    "types-requests>=2.33.0.20260408",
+    "types-pyyaml>=6.0.12.20260408",
+    "types-networkx>=3.6.1.20260408",
 ]
 
 [tool.ruff]
 target-version = "py312"
 line-length = 100
+extend-exclude = [
+    "DeepLearningExamples",
+    "DEEPScreen2",
+    "RFdiffusion",
+    "ProteinMPNN",
+    "ace",
+    ".venv",
+]
 
 [tool.ruff.lint]
 select = [
@@ -120,6 +141,11 @@ module = [
     "langgraph.*",
     "litellm.*",
     "torch.*",
+    "smolagents.*",
+    "tooluniverse.*",
+    "spacy.*",
+    "spacy_layout.*",
+    "ace.*",
 ]
 ignore_missing_imports = true
 

@@ -7,9 +7,10 @@
 // CONFIGURATION
 // =====================================================
 
+const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
 const CONFIG = {
     apiBaseUrl: window.location.origin,
-    wsUrl: `ws://${window.location.host}/ws`,
+    wsUrl: `${wsProtocol}//${window.location.host}/ws`,
     reconnectDelay: 3000,
     maxReconnectAttempts: 5,
     storageKey: 'bioagents_sessions',
@@ -17,16 +18,36 @@ const CONFIG = {
 
 // Agent configuration
 const AGENTS = {
-    supervisor: { label: 'Orchestrator', icon: 'alt_route', color: 'slate', description: 'Routing tasks...' },
-    research: { label: 'LitSearcher', icon: 'menu_book', color: 'blue', description: 'Searching literature...' },
-    analysis: { label: 'Analyzer', icon: 'analytics', color: 'emerald', description: 'Analyzing data...' },
-    coder: { label: 'CodeGen', icon: 'code', color: 'amber', description: 'Generating code...' },
-    report: { label: 'Reporter', icon: 'description', color: 'pink', description: 'Writing report...' },
-    tool_builder: { label: 'ToolBuilder', icon: 'build', color: 'indigo', description: 'Building tools...' },
-    protein_design: { label: 'ProteinFolder', icon: 'polymer', color: 'primary', description: 'Folding protein...' },
-    critic: { label: 'Validator', icon: 'fact_check', color: 'rose', description: 'Validating results...' },
-    ml: { label: 'ML-Expert', icon: 'psychology', color: 'purple', description: 'Training ML model...', isTraining: true },
-    dl: { label: 'DL-Specialist', icon: 'memory', color: 'cyan', description: 'Designing neural network...', isTraining: true },
+    supervisor: { label: 'Orchestrator', icon: 'alt_route', color: 'slate', description: 'Routing tasks...', category: 'Core' },
+    research: { label: 'LitSearcher', icon: 'menu_book', color: 'blue', description: 'Searching literature...', category: 'Research' },
+    analysis: { label: 'Analyzer', icon: 'analytics', color: 'emerald', description: 'Analyzing data...', category: 'Computation' },
+    coder: { label: 'CodeGen', icon: 'code', color: 'amber', description: 'Generating code...', category: 'Computation' },
+    report: { label: 'Reporter', icon: 'description', color: 'pink', description: 'Writing report...', category: 'Quality' },
+    tool_builder: { label: 'ToolBuilder', icon: 'build', color: 'indigo', description: 'Building tools...', category: 'Meta' },
+    protein_design: { label: 'ProteinFolder', icon: 'polymer', color: 'primary', description: 'Folding protein...', category: 'Domain' },
+    critic: { label: 'Validator', icon: 'fact_check', color: 'rose', description: 'Validating results...', category: 'Quality' },
+    ml: { label: 'ML-Expert', icon: 'psychology', color: 'purple', description: 'Training ML model...', isTraining: true, category: 'Computation' },
+    dl: { label: 'DL-Specialist', icon: 'memory', color: 'cyan', description: 'Designing neural network...', isTraining: true, category: 'Computation' },
+    summary: { label: 'Summarizer', icon: 'summarize', color: 'pink', description: 'Summarizing results...', category: 'Quality' },
+    literature: { label: 'Literature', icon: 'library_books', color: 'blue', description: 'Searching papers...', category: 'Research' },
+    web_browser: { label: 'WebBrowser', icon: 'travel_explore', color: 'sky', description: 'Browsing web...', category: 'Research' },
+    paper_replication: { label: 'PaperReplicator', icon: 'content_copy', color: 'teal', description: 'Replicating paper...', category: 'Research' },
+    data_acquisition: { label: 'DataAcquirer', icon: 'download', color: 'green', description: 'Downloading data...', category: 'Research' },
+    genomics: { label: 'Genomics', icon: 'genetics', color: 'lime', description: 'Analyzing sequences...', category: 'Domain' },
+    transcriptomics: { label: 'Transcriptomics', icon: 'biotech', color: 'yellow', description: 'Analyzing expression...', category: 'Domain' },
+    structural_biology: { label: 'StructBio', icon: 'view_in_ar', color: 'orange', description: 'Analyzing structures...', category: 'Domain' },
+    phylogenetics: { label: 'Phylogenetics', icon: 'park', color: 'green', description: 'Building trees...', category: 'Domain' },
+    docking: { label: 'Docking', icon: 'hub', color: 'red', description: 'Docking molecules...', category: 'Domain' },
+    planner: { label: 'Planner', icon: 'checklist', color: 'violet', description: 'Planning tasks...', category: 'Meta' },
+    tool_validator: { label: 'ToolValidator', icon: 'verified', color: 'emerald', description: 'Validating tools...', category: 'Meta' },
+    tool_discovery: { label: 'ToolDiscovery', icon: 'search', color: 'blue', description: 'Discovering tools...', category: 'Meta' },
+    prompt_optimizer: { label: 'PromptOptimizer', icon: 'tune', color: 'amber', description: 'Optimizing prompts...', category: 'Meta' },
+    result_checker: { label: 'ResultChecker', icon: 'rule', color: 'rose', description: 'Checking results...', category: 'Meta' },
+    shell: { label: 'Shell', icon: 'terminal', color: 'slate', description: 'Running commands...', category: 'Infrastructure' },
+    git: { label: 'Git', icon: 'commit', color: 'orange', description: 'Managing repos...', category: 'Infrastructure' },
+    environment: { label: 'Environment', icon: 'settings_applications', color: 'teal', description: 'Setting up environment...', category: 'Infrastructure' },
+    visualization: { label: 'Visualizer', icon: 'bar_chart', color: 'fuchsia', description: 'Creating plots...', category: 'Infrastructure' },
+    user_input: { label: 'Awaiting Input', icon: 'person', color: 'cyan', description: 'Waiting for your response...', category: 'Core' },
 };
 
 // =====================================================
@@ -51,7 +72,10 @@ const state = {
     settings: {
         autoScroll: true,
         notifications: true,
+        advancedMode: false,
         theme: 'dark',
+        llmProvider: 'gemini',
+        llmModel: 'gemini-3.1-flash-lite',
         apiKeys: {
             openai: '',
             gemini: '',
@@ -239,12 +263,12 @@ function renderReferenceHoverCard(refId, targetElement) {
             <div class="reference-hover-card" id="refCard-${refId}">
                 <div class="flex items-start justify-between mb-2">
                     <span class="text-xs font-bold text-primary">[${displayNum}] Paper</span>
-                    <button onclick="closeHoverCard('${refId}')" class="text-slate-400 hover:text-white">
+                    <button onclick="closeHoverCard('${refId}')" class="text-text-subtle hover:text-text-theme">
                         <span class="material-symbols-outlined text-sm">close</span>
                     </button>
                 </div>
-                <div class="text-sm font-medium text-white mb-1">${ref.title}</div>
-                <div class="text-xs text-slate-400 mb-2">${authors} (${year})${journal}</div>
+                <div class="text-sm font-medium text-text-theme mb-1">${ref.title}</div>
+                <div class="text-xs text-text-subtle mb-2">${authors} (${year})${journal}</div>
                 ${ref.doi ? `<div class="text-xs text-primary mb-1">DOI: ${ref.doi}</div>` : ''}
                 ${ref.pmid ? `<div class="text-xs text-primary mb-1">PMID: ${ref.pmid}</div>` : ''}
                 ${ref.url ? `<a href="${ref.url}" target="_blank" class="text-xs text-primary hover:underline">View paper →</a>` : ''}
@@ -259,13 +283,13 @@ function renderReferenceHoverCard(refId, targetElement) {
             <div class="reference-hover-card" id="refCard-${refId}">
                 <div class="flex items-start justify-between mb-2">
                     <span class="text-xs font-bold text-primary">[${displayNum}] Database</span>
-                    <button onclick="closeHoverCard('${refId}')" class="text-slate-400 hover:text-white">
+                    <button onclick="closeHoverCard('${refId}')" class="text-text-subtle hover:text-text-theme">
                         <span class="material-symbols-outlined text-sm">close</span>
                     </button>
                 </div>
-                <div class="text-sm font-medium text-white mb-1">${ref.title}</div>
-                <div class="text-xs text-slate-400 mb-2">${ref.database_name}</div>
-                ${ids ? `<div class="text-xs text-slate-300 mb-2">IDs: ${ids}</div>` : ''}
+                <div class="text-sm font-medium text-text-theme mb-1">${ref.title}</div>
+                <div class="text-xs text-text-subtle mb-2">${ref.database_name}</div>
+                ${ids ? `<div class="text-xs text-text-theme mb-2">IDs: ${ids}</div>` : ''}
                 ${ref.url ? `<a href="${ref.url}" target="_blank" class="text-xs text-primary hover:underline">View entry →</a>` : ''}
             </div>
         `;
@@ -277,14 +301,14 @@ function renderReferenceHoverCard(refId, targetElement) {
             <div class="reference-hover-card" id="refCard-${refId}">
                 <div class="flex items-start justify-between mb-2">
                     <span class="text-xs font-bold text-primary">[${displayNum}] Structure</span>
-                    <button onclick="closeHoverCard('${refId}')" class="text-slate-400 hover:text-white">
+                    <button onclick="closeHoverCard('${refId}')" class="text-text-subtle hover:text-text-theme">
                         <span class="material-symbols-outlined text-sm">close</span>
                     </button>
                 </div>
-                <div class="text-sm font-medium text-white mb-1">${ref.title}</div>
-                <div class="text-xs text-slate-400 mb-2">${source}${method}</div>
-                ${ref.pdb_id ? `<div class="text-xs text-slate-300 mb-1">PDB: ${ref.pdb_id}</div>` : ''}
-                ${ref.uniprot_id ? `<div class="text-xs text-slate-300 mb-1">UniProt: ${ref.uniprot_id}</div>` : ''}
+                <div class="text-sm font-medium text-text-theme mb-1">${ref.title}</div>
+                <div class="text-xs text-text-subtle mb-2">${source}${method}</div>
+                ${ref.pdb_id ? `<div class="text-xs text-text-theme mb-1">PDB: ${ref.pdb_id}</div>` : ''}
+                ${ref.uniprot_id ? `<div class="text-xs text-text-theme mb-1">UniProt: ${ref.uniprot_id}</div>` : ''}
                 ${ref.url ? `<a href="${ref.url}" target="_blank" class="text-xs text-primary hover:underline">View structure →</a>` : ''}
             </div>
         `;
@@ -293,12 +317,12 @@ function renderReferenceHoverCard(refId, targetElement) {
             <div class="reference-hover-card" id="refCard-${refId}">
                 <div class="flex items-start justify-between mb-2">
                     <span class="text-xs font-bold text-primary">[${displayNum}] Tool</span>
-                    <button onclick="closeHoverCard('${refId}')" class="text-slate-400 hover:text-white">
+                    <button onclick="closeHoverCard('${refId}')" class="text-text-subtle hover:text-text-theme">
                         <span class="material-symbols-outlined text-sm">close</span>
                     </button>
                 </div>
-                <div class="text-sm font-medium text-white mb-1">${ref.title}</div>
-                ${ref.description ? `<div class="text-xs text-slate-400 mb-2">${ref.description}</div>` : ''}
+                <div class="text-sm font-medium text-text-theme mb-1">${ref.title}</div>
+                ${ref.description ? `<div class="text-xs text-text-subtle mb-2">${ref.description}</div>` : ''}
                 ${ref.source_url ? `<a href="${ref.source_url}" target="_blank" class="text-xs text-primary hover:underline">View tool →</a>` : ''}
             </div>
         `;
@@ -309,13 +333,13 @@ function renderReferenceHoverCard(refId, targetElement) {
             <div class="reference-hover-card" id="refCard-${refId}">
                 <div class="flex items-start justify-between mb-2">
                     <span class="text-xs font-bold text-primary">[${displayNum}] Artifact</span>
-                    <button onclick="closeHoverCard('${refId}')" class="text-slate-400 hover:text-white">
+                    <button onclick="closeHoverCard('${refId}')" class="text-text-subtle hover:text-text-theme">
                         <span class="material-symbols-outlined text-sm">close</span>
                     </button>
                 </div>
-                <div class="text-sm font-medium text-white mb-1">${ref.file_name}</div>
-                <div class="text-xs text-slate-400 mb-2">${ref.file_type || 'File'}${size}</div>
-                ${ref.agent ? `<div class="text-xs text-slate-300 mb-1">Generated by: ${ref.agent}</div>` : ''}
+                <div class="text-sm font-medium text-text-theme mb-1">${ref.file_name}</div>
+                <div class="text-xs text-text-subtle mb-2">${ref.file_type || 'File'}${size}</div>
+                ${ref.agent ? `<div class="text-xs text-text-theme mb-1">Generated by: ${ref.agent}</div>` : ''}
             </div>
         `;
     } else {
@@ -324,11 +348,11 @@ function renderReferenceHoverCard(refId, targetElement) {
             <div class="reference-hover-card" id="refCard-${refId}">
                 <div class="flex items-start justify-between mb-2">
                     <span class="text-xs font-bold text-primary">[${displayNum}] Reference</span>
-                    <button onclick="closeHoverCard('${refId}')" class="text-slate-400 hover:text-white">
+                    <button onclick="closeHoverCard('${refId}')" class="text-text-subtle hover:text-text-theme">
                         <span class="material-symbols-outlined text-sm">close</span>
                     </button>
                 </div>
-                <div class="text-sm font-medium text-white mb-1">${ref.title}</div>
+                <div class="text-sm font-medium text-text-theme mb-1">${ref.title}</div>
                 ${ref.url ? `<a href="${ref.url}" target="_blank" class="text-xs text-primary hover:underline">View →</a>` : ''}
             </div>
         `;
@@ -430,7 +454,7 @@ function updateReferencePanel() {
         };
 
         html += `<div class="mb-3">`;
-        html += `<div class="text-[9px] font-bold text-slate-600 uppercase tracking-wider mb-1.5">${typeLabels[type]}</div>`;
+        html += `<div class="text-[9px] font-bold text-text-muted uppercase tracking-wider mb-1.5">${typeLabels[type]}</div>`;
 
         refs.forEach(ref => {
             const displayNum = state.displayNumbers.get(ref.id);
@@ -450,12 +474,12 @@ function updateReferencePanel() {
             }
 
             html += `
-                <div class="reference-item p-2 rounded bg-surface-dark border border-white/5 hover:border-primary/20 mb-1.5 transition-all" data-ref-id="${ref.id}" data-ref-num="${displayNum}">
+                <div class="reference-item p-2 rounded bg-surface-dark border border-border-subtle-inv hover:border-primary/20 mb-1.5 transition-all" data-ref-id="${ref.id}" data-ref-num="${displayNum}">
                     <div class="flex items-start gap-2">
                         <span class="citation-number text-[10px]">[${displayNum}]</span>
                         <div class="flex-1 min-w-0">
-                            <div class="text-[11px] font-medium text-white truncate">${truncTitle}</div>
-                            ${subtitle ? `<div class="text-[10px] text-slate-500 truncate">${subtitle}</div>` : ''}
+                            <div class="text-[11px] font-medium text-text-theme truncate">${truncTitle}</div>
+                            ${subtitle ? `<div class="text-[10px] text-text-muted truncate">${subtitle}</div>` : ''}
                             ${ref.url ? `<a href="${ref.url}" target="_blank" class="text-[10px] text-primary hover:underline" onclick="event.stopPropagation()">View →</a>` : ''}
                         </div>
                     </div>
@@ -558,6 +582,9 @@ function initializeApp() {
     // Load saved data
     loadFromStorage();
 
+    // Apply theme (must happen early to avoid flash)
+    initTheme();
+
     // Initialize all components
     initInputHandlers();
     initExampleChips();
@@ -570,6 +597,8 @@ function initializeApp() {
     initSettings();
     initFileAttachment();
     initVoiceInput();
+    initAdvancedModeToggle();
+    initThemeToggle();
 
     // Render initial state
     renderAgentList();
@@ -659,15 +688,8 @@ function loadSession(sessionId) {
 
     elements.projectTitle.textContent = session.title;
 
-    // Re-render everything
     resetChatUI();
-    state.messages.forEach(msg => {
-        if (msg.role === 'user') {
-            renderUserMessage(msg);
-        } else {
-            renderAssistantMessage(msg);
-        }
-    });
+    renderAllMessages();
 
     renderArtifacts();
     updateAuditLog(state.auditLog);
@@ -807,8 +829,13 @@ function handleMessage(data) {
             setActiveAgent(data.agent, data.progress);
             break;
         case 'message':
-            // Pass the entire message object to preserve references
             addAssistantMessage(data.content, data.agent, data.references);
+            break;
+        case 'tool_call':
+            addToolCallMessage(data.agent, data.tool_name, data.arguments);
+            break;
+        case 'tool_result':
+            addToolResultMessage(data.agent, data.tool_name, data.content);
             break;
         case 'audit':
             updateAuditLog(data.entries);
@@ -820,7 +847,6 @@ function handleMessage(data) {
             loadStructure(data.pdbContent);
             break;
         case 'complete':
-            // Handle all_references if provided
             if (data.all_references) {
                 console.log('Received all references:', data.all_references);
             }
@@ -837,6 +863,27 @@ function handleMessage(data) {
             break;
         case 'code_execution':
             renderCodeExecution(data.steps, data.agent);
+            break;
+        case 'steering_received':
+            updateSteeringBannerStatus(data.content);
+            break;
+        case 'tool_approval_request':
+            showToolApprovalPanel(data);
+            break;
+        case 'engagement_request':
+            showEngagementPanel(data);
+            break;
+        case 'engagement_response_received':
+            updateEngagementPanelStatus(data.id, 'received');
+            break;
+        case 'engagement_timeout':
+            updateEngagementPanelStatus(data.id, 'timeout');
+            break;
+        case 'tool_policy_blocked':
+            showToolBlockedNotification(data);
+            break;
+        case 'tool_policy_stats':
+            updateToolPolicyStats(data);
             break;
     }
 }
@@ -865,8 +912,8 @@ function renderCodeExecution(steps, agentId) {
         if (step.thought) {
             contentHtml += `
                 <div class="mb-3">
-                    <p class="text-[9px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">Reasoning</p>
-                    <div class="bg-surface-dark/50 rounded-lg p-3 border border-white/5 text-xs text-slate-300 italic leading-relaxed">
+                    <p class="text-[9px] font-bold text-text-muted uppercase tracking-widest mb-1.5">Reasoning</p>
+                    <div class="bg-surface-dark/50 rounded-lg p-3 border border-border-subtle-inv text-xs text-text-theme italic leading-relaxed">
                         ${escapeHtml(step.thought)}
                     </div>
                 </div>
@@ -876,8 +923,8 @@ function renderCodeExecution(steps, agentId) {
         if (step.code) {
             contentHtml += `
                 <div class="mb-3">
-                    <p class="text-[9px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">Generated Code</p>
-                    <div class="bg-black/60 rounded-lg p-3 border border-white/5 font-mono text-[11px] text-amber-200/90 overflow-x-auto">
+                    <p class="text-[9px] font-bold text-text-muted uppercase tracking-widest mb-1.5">Generated Code</p>
+                    <div class="bg-overlay rounded-lg p-3 border border-border-subtle-inv font-mono text-[11px] text-amber-200/90 overflow-x-auto">
                         <pre><code>${escapeHtml(step.code)}</code></pre>
                     </div>
                 </div>
@@ -887,8 +934,8 @@ function renderCodeExecution(steps, agentId) {
         if (step.output) {
             contentHtml += `
                 <div class="mb-3">
-                    <p class="text-[9px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">Standard Output</p>
-                    <div class="bg-slate-900/80 rounded-lg p-3 border border-white/5 font-mono text-[11px] text-emerald-400/90 overflow-x-auto whitespace-pre">
+                    <p class="text-[9px] font-bold text-text-muted uppercase tracking-widest mb-1.5">Standard Output</p>
+                    <div class="bg-surface-darker/80 rounded-lg p-3 border border-border-subtle-inv font-mono text-[11px] text-emerald-400/90 overflow-x-auto whitespace-pre">
                         <code>${escapeHtml(step.output)}</code>
                     </div>
                 </div>
@@ -898,8 +945,8 @@ function renderCodeExecution(steps, agentId) {
         if (step.logs && step.logs.length > 50) { // Only show significant logs
             contentHtml += `
                 <div>
-                    <p class="text-[9px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">Execution Logs</p>
-                    <div class="bg-slate-950/50 rounded-lg p-3 border border-white/5 font-mono text-[10px] text-slate-500 overflow-x-auto whitespace-pre">
+                    <p class="text-[9px] font-bold text-text-muted uppercase tracking-widest mb-1.5">Execution Logs</p>
+                    <div class="bg-slate-950/50 rounded-lg p-3 border border-border-subtle-inv font-mono text-[10px] text-text-muted overflow-x-auto whitespace-pre">
                         <code>${escapeHtml(step.logs)}</code>
                     </div>
                 </div>
@@ -907,12 +954,12 @@ function renderCodeExecution(steps, agentId) {
         }
 
         return `
-            <div class="p-4 rounded-xl bg-surface-dark border border-white/5 animate-fadeIn">
+            <div class="p-4 rounded-xl bg-surface-dark border border-border-subtle-inv animate-fadeIn">
                 <div class="flex items-center gap-2 mb-3">
                     <div class="h-6 w-6 rounded-full ${colorClass.bg} flex items-center justify-center border ${colorClass.border}">
                         <span class="text-[10px] font-bold ${colorClass.text}">${step.step}</span>
                     </div>
-                    <span class="text-[11px] font-bold text-white uppercase tracking-tight">Step ${step.step} — ${agent.label}</span>
+                    <span class="text-[11px] font-bold text-text-theme uppercase tracking-tight">Step ${step.step} — ${agent.label}</span>
                 </div>
                 ${contentHtml}
             </div>
@@ -991,7 +1038,13 @@ function initInputHandlers() {
 
 async function handleSubmit() {
     const query = elements.queryInput.value.trim();
-    if (!query || state.isProcessing) return;
+    if (!query) return;
+
+    // If agents are already processing, send as steering message instead
+    if (state.isProcessing) {
+        handleSteer(query);
+        return;
+    }
 
     elements.queryInput.value = '';
     autoResizeTextarea();
@@ -1008,7 +1061,7 @@ async function handleSubmit() {
     try {
         const apiKeys = getApiKeysPayload();
         if (state.isConnected && state.ws?.readyState === WebSocket.OPEN) {
-            state.ws.send(JSON.stringify({ type: 'query', content: query, api_keys: apiKeys }));
+            state.ws.send(JSON.stringify({ type: 'query', content: query, api_keys: apiKeys, session_id: state.currentSessionId, provider: state.settings.llmProvider || undefined, model: state.settings.llmModel || undefined }));
         } else {
             await sendQueryViaRest(query, apiKeys);
         }
@@ -1026,11 +1079,30 @@ function getApiKeysPayload() {
     return Object.keys(payload).length ? payload : undefined;
 }
 
+function handleSteer(steeringText) {
+    if (!steeringText || !state.isProcessing) return;
+
+    // Clear input
+    elements.queryInput.value = '';
+    autoResizeTextarea();
+
+    if (state.isConnected && state.ws?.readyState === WebSocket.OPEN) {
+        state.ws.send(JSON.stringify({ type: 'steer', content: steeringText }));
+        addSteeringBanner(steeringText);
+        logTerminal(`Steering: "${steeringText.substring(0, 50)}${steeringText.length > 50 ? '...' : ''}"`);
+    } else {
+        showToast('Steering requires a WebSocket connection. Reconnecting...', 'warning');
+        logTerminal('Steering failed — not connected via WebSocket');
+    }
+}
+
 async function sendQueryViaRest(query, apiKeys) {
     logTerminal('Using REST API fallback');
 
     const body = { query };
     if (apiKeys && Object.keys(apiKeys).length) body.api_keys = apiKeys;
+    if (state.settings.llmProvider) body.provider = state.settings.llmProvider;
+    if (state.settings.llmModel) body.model = state.settings.llmModel;
 
     const response = await fetch(`${CONFIG.apiBaseUrl}/api/query`, {
         method: 'POST',
@@ -1089,9 +1161,17 @@ function initFileAttachment() {
         fileInput.click();
     });
 
+    const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+
     fileInput.addEventListener('change', async (e) => {
         const file = e.target.files[0];
         if (!file) return;
+
+        if (file.size > MAX_FILE_SIZE) {
+            showToast(`File too large: ${file.name} (${(file.size / 1024 / 1024).toFixed(1)}MB). Maximum size is 10MB.`, 'error');
+            fileInput.value = '';
+            return;
+        }
 
         try {
             showToast(`Uploading: ${file.name}...`, 'info');
@@ -1181,14 +1261,14 @@ function initVoiceInput() {
     recognition.onstart = () => {
         isListening = true;
         voiceBtn.classList.add('text-primary', 'animate-pulse');
-        voiceBtn.classList.remove('text-slate-400');
+        voiceBtn.classList.remove('text-text-subtle');
         logTerminal('Voice input active...');
     };
 
     recognition.onend = () => {
         isListening = false;
         voiceBtn.classList.remove('text-primary', 'animate-pulse');
-        voiceBtn.classList.add('text-slate-400');
+        voiceBtn.classList.add('text-text-subtle');
     };
 
     recognition.onresult = (event) => {
@@ -1205,7 +1285,7 @@ function initVoiceInput() {
         showToast('Voice recognition error', 'error');
         isListening = false;
         voiceBtn.classList.remove('text-primary', 'animate-pulse');
-        voiceBtn.classList.add('text-slate-400');
+        voiceBtn.classList.add('text-text-subtle');
     };
 
     voiceBtn.addEventListener('click', () => {
@@ -1229,6 +1309,49 @@ function addUserMessage(content) {
     saveCurrentSession();
 }
 
+function addSteeringBanner(steeringText) {
+    const bannerId = 'steering-' + Date.now();
+    const time = new Date().toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    const html = `
+        <div id="${bannerId}" class="flex gap-3 animate-fadeIn steering-banner">
+            <div class="h-8 w-8 rounded-full bg-amber-900/60 flex-shrink-0 flex items-center justify-center border border-amber-600/40">
+                <span class="material-symbols-outlined text-amber-400 text-[16px]">navigation</span>
+            </div>
+            <div class="max-w-[80%] flex flex-col gap-1">
+                <div class="bg-amber-900/20 border border-amber-600/30 text-amber-100 px-4 py-2.5 rounded-2xl rounded-tl-none text-sm">
+                    <div class="flex items-center gap-2 mb-1">
+                        <span class="text-[10px] font-bold text-amber-400 uppercase tracking-wider">Steering</span>
+                        <span class="steering-status text-[10px] text-amber-500/70 italic">sending...</span>
+                    </div>
+                    <p class="whitespace-pre-wrap text-amber-50">${escapeHtml(steeringText)}</p>
+                </div>
+                <span class="text-[10px] text-text-muted font-mono">${time}</span>
+            </div>
+        </div>
+    `;
+    elements.chatMessages.insertAdjacentHTML('beforeend', html);
+    scrollToBottom();
+    logTerminal('Steering prompt sent to agents');
+}
+
+function updateSteeringBannerStatus(content) {
+    const banners = document.querySelectorAll('.steering-banner .steering-status');
+    if (banners.length > 0) {
+        // Update the last banner (most recently sent)
+        const lastBanner = banners[banners.length - 1];
+        lastBanner.textContent = 'applied';
+        lastBanner.classList.remove('text-amber-500/70', 'italic');
+        lastBanner.classList.add('text-emerald-400', 'font-bold');
+    }
+    logTerminal('Steering prompt applied by agents');
+}
+
+function shouldShowMessage(message) {
+    if (message.role === 'user') return true;
+    if (state.settings.advancedMode) return true;
+    return message.role === 'assistant' && message.agent === 'summary';
+}
+
 function addAssistantMessage(content, agent = null, references = null) {
     const message = {
         role: 'assistant',
@@ -1238,22 +1361,54 @@ function addAssistantMessage(content, agent = null, references = null) {
         references: references || []
     };
     state.messages.push(message);
-    renderAssistantMessage(message);
-    scrollToBottom();
+    if (shouldShowMessage(message)) {
+        renderAssistantMessage(message);
+        scrollToBottom();
+    }
+}
+
+function addToolCallMessage(agent, toolName, args) {
+    const message = {
+        role: 'tool_call',
+        agent,
+        toolName,
+        arguments: args,
+        timestamp: new Date().toISOString(),
+    };
+    state.messages.push(message);
+    if (state.settings.advancedMode) {
+        renderToolCallMessage(message);
+        scrollToBottom();
+    }
+}
+
+function addToolResultMessage(agent, toolName, content) {
+    const message = {
+        role: 'tool_result',
+        agent,
+        toolName,
+        content,
+        timestamp: new Date().toISOString(),
+    };
+    state.messages.push(message);
+    if (state.settings.advancedMode) {
+        renderToolResultMessage(message);
+        scrollToBottom();
+    }
 }
 
 function renderUserMessage(message) {
     const time = formatTime(new Date(message.timestamp));
     const html = `
         <div class="flex flex-row-reverse gap-3 animate-fadeIn">
-            <div class="h-8 w-8 rounded-full bg-slate-700 flex-shrink-0 flex items-center justify-center border border-slate-600">
-                <span class="material-symbols-outlined text-white text-[16px]">person</span>
+            <div class="h-8 w-8 rounded-full bg-hover-bg-strong flex-shrink-0 flex items-center justify-center border border-border-theme">
+                <span class="material-symbols-outlined text-text-theme text-[16px]">person</span>
             </div>
             <div class="max-w-[80%] flex flex-col items-end gap-1">
-                <div class="bg-primary/20 border border-primary/20 text-white px-4 py-3 rounded-2xl rounded-tr-none text-sm leading-relaxed">
+                <div class="bg-primary/20 border border-primary/20 text-text-theme px-4 py-3 rounded-2xl rounded-tr-none text-sm leading-relaxed">
                     <p class="whitespace-pre-wrap">${escapeHtml(message.content)}</p>
                 </div>
-                <span class="text-[10px] text-slate-500 font-mono">${time}</span>
+                <span class="text-[10px] text-text-muted font-mono">${time}</span>
             </div>
         </div>
     `;
@@ -1297,10 +1452,10 @@ function renderAssistantMessage(message) {
                 <div class="flex items-center gap-2 mb-1">
                     <span class="text-[10px] font-bold ${colorClass.bg} ${colorClass.text} px-2 py-0.5 rounded border ${colorClass.border}">${agent.label.toUpperCase()}</span>
                 </div>
-                <div class="bg-surface-dark border border-white/5 text-slate-200 px-4 py-3 rounded-2xl rounded-tl-none text-sm leading-relaxed message-content overflow-x-auto max-w-full">
+                <div class="bg-surface-dark border border-border-subtle-inv text-text-theme px-4 py-3 rounded-2xl rounded-tl-none text-sm leading-relaxed message-content overflow-x-auto max-w-full">
                     ${contentHtml}
                 </div>
-                <span class="text-[10px] text-slate-500 font-mono">${time}</span>
+                <span class="text-[10px] text-text-muted font-mono">${time}</span>
             </div>
         </div>
     `;
@@ -1328,6 +1483,480 @@ function renderAssistantMessage(message) {
     }, 0);
 }
 
+function renderToolCallMessage(message) {
+    const agent = AGENTS[message.agent] || { label: message.agent || 'Agent', icon: 'smart_toy', color: 'slate' };
+    const colorClass = getColorClass(agent.color);
+    const argsStr = message.arguments ? JSON.stringify(message.arguments, null, 2) : '{}';
+    const argsPreview = argsStr.length > 80 ? argsStr.substring(0, 80) + '...' : argsStr;
+
+    const html = `
+        <div class="flex gap-2 animate-fadeIn ml-6">
+            <div class="tool-connector" style="background: rgba(245,158,11,0.3)"></div>
+            <div class="flex-1 max-w-[80%] tool-card">
+                <div class="rounded-xl px-3.5 py-2.5 border" style="background: rgba(245,158,11,0.04); border-color: rgba(245,158,11,0.1)">
+                    <div class="flex items-center gap-2 mb-0.5">
+                        <span class="material-symbols-outlined text-[14px]" style="color: rgba(251,191,36,0.8)">build</span>
+                        <span class="text-[10px] font-bold uppercase tracking-wider" style="color: rgba(251,191,36,0.9)">${escapeHtml(agent.label)}</span>
+                        <span class="material-symbols-outlined text-text-muted text-[12px]">arrow_forward</span>
+                        <span class="text-[10px] font-mono font-semibold text-text-theme/80">${escapeHtml(message.toolName)}</span>
+                    </div>
+                    <details>
+                        <summary class="flex items-center gap-1 text-[10px] text-text-muted hover:text-text-theme transition-colors py-1">
+                            <span class="material-symbols-outlined chevron-icon text-[12px]">chevron_right</span>
+                            <span>Arguments</span>
+                            <span class="text-text-muted font-mono ml-1">${escapeHtml(argsPreview)}</span>
+                        </summary>
+                        <pre class="mt-1.5 bg-hover-bg-strong rounded-lg p-2.5 text-[10px] font-mono overflow-x-auto max-h-40 overflow-y-auto custom-scrollbar border border-border-subtle-inv" style="color: rgba(253,230,138,0.7)">${escapeHtml(argsStr)}</pre>
+                    </details>
+                </div>
+            </div>
+        </div>
+    `;
+    elements.chatMessages.insertAdjacentHTML('beforeend', html);
+}
+
+function renderToolResultMessage(message) {
+    const content = message.content || '';
+    const preview = content.length > 120 ? content.substring(0, 120).replace(/\n/g, ' ') + '...' : content.replace(/\n/g, ' ');
+    const isError = content.toLowerCase().includes('error') || content.toLowerCase().includes('traceback');
+
+    const connectorBg = isError ? 'background: rgba(244,63,94,0.3)' : 'background: rgba(16,185,129,0.3)';
+    const cardBg = isError ? 'background: rgba(244,63,94,0.04); border-color: rgba(244,63,94,0.1)' : 'background: rgba(16,185,129,0.04); border-color: rgba(16,185,129,0.1)';
+    const iconColor = isError ? 'color: rgba(251,113,133,0.8)' : 'color: rgba(52,211,153,0.8)';
+    const labelColor = isError ? 'color: rgba(251,113,133,0.7)' : 'color: rgba(52,211,153,0.7)';
+    const preColor = isError ? 'color: rgba(254,205,211,0.6)' : 'color: rgba(167,243,208,0.6)';
+    const iconName = isError ? 'error' : 'check_circle';
+
+    const html = `
+        <div class="flex gap-2 animate-fadeIn ml-6">
+            <div class="tool-connector" style="${connectorBg}"></div>
+            <div class="flex-1 max-w-[80%] tool-card">
+                <div class="rounded-xl px-3.5 py-2.5 border" style="${cardBg}">
+                    <div class="flex items-center gap-2 mb-0.5">
+                        <span class="material-symbols-outlined text-[14px]" style="${iconColor}">${iconName}</span>
+                        <span class="text-[10px] font-mono font-semibold text-text-theme/70">${escapeHtml(message.toolName)}</span>
+                        <span class="text-[10px] font-medium" style="${labelColor}">result</span>
+                    </div>
+                    <details>
+                        <summary class="flex items-center gap-1 text-[10px] text-text-muted hover:text-text-theme transition-colors py-1">
+                            <span class="material-symbols-outlined chevron-icon text-[12px]">chevron_right</span>
+                            <span class="truncate font-mono text-text-subtle">${escapeHtml(preview)}</span>
+                        </summary>
+                        <pre class="mt-1.5 bg-hover-bg-strong rounded-lg p-2.5 text-[10px] font-mono overflow-x-auto max-h-48 overflow-y-auto custom-scrollbar border border-border-subtle-inv" style="${preColor}">${escapeHtml(content)}</pre>
+                    </details>
+                </div>
+            </div>
+        </div>
+    `;
+    elements.chatMessages.insertAdjacentHTML('beforeend', html);
+}
+
+// ---------------------------------------------------------------------------
+// Tool Approval UI
+// ---------------------------------------------------------------------------
+
+function showToolApprovalPanel(data) {
+    const agent = AGENTS[data.agent] || { label: data.agent || 'Agent', icon: 'smart_toy', color: 'slate' };
+    const riskColors = {
+        none: { bg: 'rgba(52,211,153,0.08)', border: 'rgba(52,211,153,0.2)', text: 'rgba(52,211,153,0.9)' },
+        low: { bg: 'rgba(96,165,250,0.08)', border: 'rgba(96,165,250,0.2)', text: 'rgba(96,165,250,0.9)' },
+        medium: { bg: 'rgba(251,191,36,0.08)', border: 'rgba(251,191,36,0.2)', text: 'rgba(251,191,36,0.9)' },
+        high: { bg: 'rgba(251,113,133,0.08)', border: 'rgba(251,113,133,0.2)', text: 'rgba(251,113,133,0.9)' },
+    };
+    const risk = riskColors[data.risk_level] || riskColors.medium;
+    const riskLabel = (data.risk_level || 'medium').toUpperCase();
+
+    const panelId = `approval-${data.request_id}`;
+    const html = `
+        <div id="${panelId}" class="flex gap-2 animate-fadeIn ml-2 mr-2 my-3">
+            <div class="flex-1">
+                <div class="rounded-2xl border-2 overflow-hidden" style="background: ${risk.bg}; border-color: ${risk.border}">
+                    <!-- Header -->
+                    <div class="px-4 py-3 flex items-center gap-3 border-b" style="border-color: ${risk.border}">
+                        <div class="h-9 w-9 rounded-xl flex items-center justify-center" style="background: ${risk.border}">
+                            <span class="material-symbols-outlined text-[18px] text-text-theme">verified_user</span>
+                        </div>
+                        <div class="flex-1">
+                            <div class="flex items-center gap-2">
+                                <span class="text-xs font-bold text-text-theme/90">Tool Approval Required</span>
+                                <span class="text-[9px] font-bold px-2 py-0.5 rounded-full" style="background: ${risk.border}; color: white">${riskLabel} RISK</span>
+                            </div>
+                            <span class="text-[10px] text-text-subtle">${escapeHtml(agent.label)} wants to call an external tool</span>
+                        </div>
+                        <div class="approval-pulse h-3 w-3 rounded-full animate-pulse" style="background: ${risk.text}"></div>
+                    </div>
+
+                    <!-- Tool info -->
+                    <div class="px-4 py-3 space-y-2.5">
+                        <div class="flex items-center gap-2">
+                            <span class="material-symbols-outlined text-[14px] text-text-subtle">build</span>
+                            <span class="text-[10px] font-bold text-text-subtle uppercase tracking-wider">Tool</span>
+                            <span class="text-xs font-mono font-semibold text-text-theme/90">${escapeHtml(data.tool_name)}</span>
+                        </div>
+
+                        <div class="flex items-start gap-2">
+                            <span class="material-symbols-outlined text-[14px] text-text-subtle mt-0.5">info</span>
+                            <div>
+                                <span class="text-[10px] font-bold text-text-subtle uppercase tracking-wider block">Reason</span>
+                                <span class="text-xs text-text-theme/70">${escapeHtml(data.reason || 'External API tool — requires user approval')}</span>
+                            </div>
+                        </div>
+
+                        <div class="bg-hover-bg rounded-xl p-3 border border-border-subtle-inv">
+                            <details>
+                                <summary class="flex items-center gap-1 text-[10px] text-text-muted hover:text-text-theme transition-colors cursor-pointer">
+                                    <span class="material-symbols-outlined chevron-icon text-[12px]">chevron_right</span>
+                                    <span>View full message</span>
+                                </summary>
+                                <pre class="mt-2 text-[10px] font-mono text-text-subtle whitespace-pre-wrap leading-relaxed">${escapeHtml(data.content || '')}</pre>
+                            </details>
+                        </div>
+                    </div>
+
+                    <!-- Actions -->
+                    <div class="px-4 py-3 flex items-center gap-2 border-t" style="border-color: ${risk.border}; background: rgba(0,0,0,0.15)">
+                        <button onclick="handleToolApproval('${data.request_id}', '${escapeHtml(data.tool_name)}', true)"
+                            class="flex-1 flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold transition-all hover:scale-[1.02] active:scale-[0.98]"
+                            style="background: rgba(52,211,153,0.15); color: rgba(52,211,153,0.95); border: 1px solid rgba(52,211,153,0.25)">
+                            <span class="material-symbols-outlined text-[16px]">check_circle</span>
+                            Approve
+                        </button>
+                        <button onclick="handleToolApproval('${data.request_id}', '${escapeHtml(data.tool_name)}', false)"
+                            class="flex-1 flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold transition-all hover:scale-[1.02] active:scale-[0.98]"
+                            style="background: rgba(251,113,133,0.15); color: rgba(251,113,133,0.95); border: 1px solid rgba(251,113,133,0.25)">
+                            <span class="material-symbols-outlined text-[16px]">cancel</span>
+                            Reject
+                        </button>
+                        <button onclick="handleToolApproval('${data.request_id}', '${escapeHtml(data.tool_name)}', true, true)"
+                            class="flex items-center justify-center gap-1 px-3 py-2 rounded-xl text-[10px] font-medium transition-all hover:scale-[1.02] active:scale-[0.98]"
+                            style="background: rgba(96,165,250,0.1); color: rgba(96,165,250,0.8); border: 1px solid rgba(96,165,250,0.2)"
+                            title="Approve this tool for the rest of the session">
+                            <span class="material-symbols-outlined text-[14px]">done_all</span>
+                            Always
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+    elements.chatMessages.insertAdjacentHTML('beforeend', html);
+    scrollToBottom();
+}
+
+function handleToolApproval(requestId, toolName, approved, alwaysApprove = false) {
+    // Send approval response to server
+    if (state.ws && state.ws.readyState === WebSocket.OPEN) {
+        state.ws.send(JSON.stringify({
+            type: 'tool_approval_response',
+            request_id: requestId,
+            tool_name: toolName,
+            approved: approved,
+            always: alwaysApprove,
+        }));
+    }
+
+    // Update the panel to show the response
+    const panel = document.getElementById(`approval-${requestId}`);
+    if (panel) {
+        const statusColor = approved ? 'rgba(52,211,153,0.15)' : 'rgba(251,113,133,0.15)';
+        const statusBorder = approved ? 'rgba(52,211,153,0.3)' : 'rgba(251,113,133,0.3)';
+        const statusText = approved ? 'Approved' : 'Rejected';
+        const statusIcon = approved ? 'check_circle' : 'cancel';
+        const statusTextColor = approved ? 'rgba(52,211,153,0.9)' : 'rgba(251,113,133,0.9)';
+
+        panel.innerHTML = `
+            <div class="flex-1">
+                <div class="rounded-2xl border px-4 py-3 flex items-center gap-3" style="background: ${statusColor}; border-color: ${statusBorder}">
+                    <span class="material-symbols-outlined text-[20px]" style="color: ${statusTextColor}">${statusIcon}</span>
+                    <span class="text-xs font-bold" style="color: ${statusTextColor}">${escapeHtml(toolName)} — ${statusText}</span>
+                    ${alwaysApprove && approved ? '<span class="text-[10px] text-blue-400 ml-2">Approved for this session</span>' : ''}
+                </div>
+            </div>
+        `;
+    }
+
+    if (approved) {
+        showToast(`Tool "${toolName}" approved`, 'success');
+    } else {
+        showToast(`Tool "${toolName}" rejected`, 'warning');
+    }
+}
+
+// =====================================================
+// ENGAGEMENT PANELS — Agent asks user for input
+// =====================================================
+
+const ENGAGEMENT_COLORS = {
+    clarification: { bg: 'rgba(96,165,250,0.08)', border: 'rgba(96,165,250,0.25)', accent: 'rgba(96,165,250,0.9)', icon: 'help', label: 'CLARIFICATION' },
+    confirmation: { bg: 'rgba(251,191,36,0.08)', border: 'rgba(251,191,36,0.25)', accent: 'rgba(251,191,36,0.9)', icon: 'priority_high', label: 'CONFIRMATION' },
+    decision_fork: { bg: 'rgba(168,85,247,0.08)', border: 'rgba(168,85,247,0.25)', accent: 'rgba(168,85,247,0.9)', icon: 'call_split', label: 'DECISION' },
+    stuck: { bg: 'rgba(251,113,133,0.08)', border: 'rgba(251,113,133,0.25)', accent: 'rgba(251,113,133,0.9)', icon: 'error_outline', label: 'NEEDS HELP' },
+    progress_check: { bg: 'rgba(52,211,153,0.08)', border: 'rgba(52,211,153,0.25)', accent: 'rgba(52,211,153,0.9)', icon: 'flag', label: 'PROGRESS' },
+};
+
+function showEngagementPanel(data) {
+    const colors = ENGAGEMENT_COLORS[data.engagement_type] || ENGAGEMENT_COLORS.clarification;
+    const agent = AGENTS[data.agent] || AGENTS.user_input;
+    const panelId = `engagement-${data.id}`;
+    const optionsHtml = (data.options && data.options.length > 0)
+        ? data.options.map((opt, i) => `
+            <button onclick="selectEngagementOption('${panelId}', ${i}, '${escapeHtml(opt.replace(/'/g, "\\'"))}')"
+                class="engagement-option-${data.id} flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-medium transition-all hover:scale-[1.02] active:scale-[0.98] text-left"
+                style="background: rgba(255,255,255,0.04); color: rgba(255,255,255,0.8); border: 1px solid rgba(255,255,255,0.08)"
+                data-option="${escapeHtml(opt)}">
+                <span class="flex-shrink-0 h-5 w-5 rounded-full border-2 flex items-center justify-center text-[9px] font-bold"
+                    style="border-color: ${colors.accent}; color: ${colors.accent}">${i + 1}</span>
+                <span>${escapeHtml(opt)}</span>
+            </button>
+        `).join('')
+        : '';
+
+    const hasOptions = optionsHtml.length > 0;
+    const showFreeText = data.engagement_type === 'clarification' || data.engagement_type === 'stuck' || !hasOptions;
+
+    const html = `
+        <div id="${panelId}" class="flex gap-2 animate-fadeIn ml-2 mr-2 my-3">
+            <div class="flex-1">
+                <div class="rounded-2xl border-2 overflow-hidden engagement-panel" style="background: ${colors.bg}; border-color: ${colors.border}; animation: engagement-pulse 2s ease-in-out 3">
+                    <!-- Header -->
+                    <div class="px-4 py-3 flex items-center gap-3 border-b" style="border-color: ${colors.border}">
+                        <div class="h-9 w-9 rounded-xl flex items-center justify-center" style="background: ${colors.accent}">
+                            <span class="material-symbols-outlined text-[18px] text-text-theme">${agent.icon}</span>
+                        </div>
+                        <div class="flex-1">
+                            <div class="flex items-center gap-2">
+                                <span class="text-xs font-bold text-text-theme/90">${agent.label}</span>
+                                <span class="text-[9px] font-bold px-2 py-0.5 rounded-full" style="background: ${colors.accent}; color: white">${colors.label}</span>
+                            </div>
+                            <span class="text-[10px] text-text-subtle">has a question for you</span>
+                        </div>
+                        <div class="h-3 w-3 rounded-full animate-pulse" style="background: ${colors.accent}"></div>
+                    </div>
+
+                    <!-- Question -->
+                    <div class="px-4 py-3 space-y-3">
+                        <div class="flex items-start gap-2.5">
+                            <span class="material-symbols-outlined text-[18px] mt-0.5" style="color: ${colors.accent}">${colors.icon}</span>
+                            <div>
+                                <p class="text-sm text-text-theme/90 font-medium leading-relaxed">${escapeHtml(data.question)}</p>
+                                ${data.context ? `<p class="text-[11px] text-text-subtle mt-1.5">${escapeHtml(data.context)}</p>` : ''}
+                            </div>
+                        </div>
+
+                        ${hasOptions ? `
+                        <div class="space-y-1.5" id="engagement-options-${data.id}">
+                            ${optionsHtml}
+                        </div>
+                        ` : ''}
+
+                        ${showFreeText ? `
+                        <div class="relative">
+                            <textarea id="engagement-input-${data.id}"
+                                class="w-full bg-hover-bg rounded-xl px-3 py-2.5 text-xs text-text-theme/90 placeholder-slate-500 border border-border-subtle-inv focus:border-border-inverse focus:outline-none resize-none transition-colors"
+                                rows="2"
+                                placeholder="${hasOptions ? 'Or type a custom response...' : 'Type your response...'}"></textarea>
+                        </div>
+                        ` : ''}
+                    </div>
+
+                    <!-- Actions -->
+                    <div class="px-4 py-3 flex items-center gap-2 border-t" style="border-color: ${colors.border}; background: rgba(0,0,0,0.1)">
+                        <button onclick="submitEngagementResponse('${panelId}', '${data.id}')"
+                            class="flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-bold transition-all hover:scale-[1.02] active:scale-[0.98]"
+                            style="background: ${colors.accent}20; color: ${colors.accent}; border: 1px solid ${colors.accent}40">
+                            <span class="material-symbols-outlined text-[16px]">send</span>
+                            Reply
+                        </button>
+                        <button onclick="submitEngagementResponse('${panelId}', '${data.id}', true)"
+                            class="flex items-center justify-center gap-1 px-3 py-2.5 rounded-xl text-[10px] font-medium transition-all hover:scale-[1.02] active:scale-[0.98]"
+                            style="background: rgba(255,255,255,0.04); color: rgba(255,255,255,0.4); border: 1px solid rgba(255,255,255,0.06)"
+                            title="Let the agent decide">
+                            <span class="material-symbols-outlined text-[14px]">auto_awesome</span>
+                            Auto
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+
+    elements.chatMessages.insertAdjacentHTML('beforeend', html);
+    scrollToBottom();
+
+    // Focus the input if present
+    const input = document.getElementById(`engagement-input-${data.id}`);
+    if (input) {
+        setTimeout(() => input.focus(), 100);
+    }
+}
+
+function selectEngagementOption(panelId, optionIndex, optionText) {
+    const panel = document.getElementById(panelId);
+    if (!panel) return;
+
+    // Clear previous selection
+    const allOptions = panel.querySelectorAll('[class*="engagement-option-"]');
+    allOptions.forEach(btn => {
+        btn.style.background = 'rgba(255,255,255,0.04)';
+        btn.style.borderColor = 'rgba(255,255,255,0.08)';
+    });
+
+    // Highlight selected
+    const selected = allOptions[optionIndex];
+    if (selected) {
+        selected.style.background = 'rgba(255,255,255,0.1)';
+        selected.style.borderColor = 'rgba(255,255,255,0.2)';
+        selected.dataset.selected = 'true';
+    }
+
+    // Store selection
+    panel.dataset.selectedOption = optionText;
+}
+
+function submitEngagementResponse(panelId, engagementId, autoDecide = false) {
+    const panel = document.getElementById(panelId);
+    if (!panel) return;
+
+    let content = '';
+    let selectedOption = null;
+
+    if (autoDecide) {
+        content = 'Proceed with your best judgment.';
+    } else {
+        // Check if an option was selected
+        selectedOption = panel.dataset.selectedOption || null;
+
+        // Check free-text input
+        const input = document.getElementById(`engagement-input-${engagementId}`);
+        const freeText = input ? input.value.trim() : '';
+
+        if (!selectedOption && !freeText) {
+            showToast('Please select an option or type a response', 'warning');
+            return;
+        }
+
+        content = freeText || selectedOption;
+    }
+
+    // Send response
+    if (state.ws && state.ws.readyState === WebSocket.OPEN) {
+        state.ws.send(JSON.stringify({
+            type: 'engagement_response',
+            engagement_id: engagementId,
+            content: content,
+            selected_option: selectedOption,
+        }));
+    }
+
+    // Update panel to show "sent" state
+    updateEngagementPanelStatus(engagementId, 'sent', content);
+}
+
+function updateEngagementPanelStatus(engagementId, status, userResponse = '') {
+    const panel = document.getElementById(`engagement-${engagementId}`);
+    if (!panel) return;
+
+    const statusConfig = {
+        sent: { icon: 'schedule', text: 'Response sent', color: 'rgba(96,165,250,0.8)', bg: 'rgba(96,165,250,0.08)' },
+        received: { icon: 'check_circle', text: userResponse ? `"${userResponse.substring(0, 60)}${userResponse.length > 60 ? '...' : ''}"` : 'Response applied', color: 'rgba(52,211,153,0.9)', bg: 'rgba(52,211,153,0.08)' },
+        timeout: { icon: 'timer_off', text: 'Timed out — agent proceeded with best judgment', color: 'rgba(251,191,36,0.8)', bg: 'rgba(251,191,36,0.08)' },
+    };
+
+    const cfg = statusConfig[status] || statusConfig.sent;
+
+    // Replace the entire panel content with a compact status
+    const innerPanel = panel.querySelector('.engagement-panel');
+    if (innerPanel) {
+        innerPanel.style.animation = 'none';
+        innerPanel.style.background = cfg.bg;
+        innerPanel.style.borderColor = cfg.color + '30';
+        innerPanel.innerHTML = `
+            <div class="px-4 py-3 flex items-center gap-3">
+                <span class="material-symbols-outlined text-[18px]" style="color: ${cfg.color}">${cfg.icon}</span>
+                <span class="text-xs font-medium" style="color: ${cfg.color}">${cfg.text}</span>
+            </div>
+        `;
+    }
+}
+
+function showToolBlockedNotification(data) {
+    const toolName = data.tool_name || 'Unknown tool';
+    showToast(`Tool "${toolName}" blocked by safety policy`, 'error');
+
+    // Also render a subtle blocked indicator in chat
+    const html = `
+        <div class="flex gap-2 animate-fadeIn ml-6 my-1">
+            <div class="flex items-center gap-2 px-3 py-1.5 rounded-lg border" style="background: rgba(244,63,94,0.05); border-color: rgba(244,63,94,0.15)">
+                <span class="material-symbols-outlined text-[12px]" style="color: rgba(251,113,133,0.7)">block</span>
+                <span class="text-[10px] font-mono text-red-400/80">${escapeHtml(toolName)}</span>
+                <span class="text-[10px] text-red-400/50">blocked by policy</span>
+            </div>
+        </div>
+    `;
+    elements.chatMessages.insertAdjacentHTML('beforeend', html);
+    scrollToBottom();
+}
+
+// ---------------------------------------------------------------------------
+// Tool Policy Stats
+// ---------------------------------------------------------------------------
+
+function updateToolPolicyStats(data) {
+    const container = document.getElementById('toolPolicyStats');
+    if (!container) return;
+
+    const parts = [];
+    if (data.auto_approved > 0) parts.push(`<span class="text-emerald-400">${data.auto_approved}</span> auto`);
+    if (data.user_approved > 0) parts.push(`<span class="text-blue-400">${data.user_approved}</span> approved`);
+    if (data.blocked > 0) parts.push(`<span class="text-red-400">${data.blocked}</span> blocked`);
+    if (data.filtered_at_discovery > 0) parts.push(`<span class="text-amber-400">${data.filtered_at_discovery}</span> filtered`);
+
+    if (parts.length === 0) {
+        container.classList.add('hidden');
+        return;
+    }
+
+    container.classList.remove('hidden');
+    container.innerHTML = `
+        <div class="flex items-center gap-1.5 text-[9px]">
+            <span class="material-symbols-outlined text-[12px] text-text-muted">shield</span>
+            <span class="text-text-muted">Tool Policy:</span>
+            ${parts.join('<span class="text-text-muted">|</span>')}
+        </div>
+    `;
+}
+
+function renderAllMessages() {
+    if (!elements.chatMessages) return;
+
+    elements.chatMessages.innerHTML = '';
+
+    if (state.messages.length === 0) {
+        resetChatUI();
+        return;
+    }
+
+    state.messages.forEach(msg => {
+        if (!shouldShowMessage(msg)) return;
+        switch (msg.role) {
+            case 'user':
+                renderUserMessage(msg);
+                break;
+            case 'assistant':
+                renderAssistantMessage(msg);
+                break;
+            case 'tool_call':
+                renderToolCallMessage(msg);
+                break;
+            case 'tool_result':
+                renderToolResultMessage(msg);
+                break;
+        }
+    });
+
+    scrollToBottom();
+}
+
 function scrollToBottom() {
     if (state.settings.autoScroll && elements.chatMessages) {
         elements.chatMessages.scrollTop = elements.chatMessages.scrollHeight;
@@ -1342,7 +1971,7 @@ function resetChatUI() {
             <div class="mb-6 p-4 rounded-full bg-primary/5 border border-primary/20 shadow-[0_0_30px_rgba(7,182,213,0.1)]">
                 <span class="material-symbols-outlined text-4xl text-primary">genetics</span>
             </div>
-            <h1 class="text-2xl md:text-3xl font-bold text-white mb-3 tracking-tight">What research problem<br/>are we solving today?</h1>
+            <h1 class="text-2xl md:text-3xl font-bold text-text-theme mb-3 tracking-tight">What research problem<br/>are we solving today?</h1>
             <p class="text-text-subtle text-sm max-w-md font-light">Deploy multi-agent swarms for protein folding, docking simulations, and literature review.</p>
         </div>
     `;
@@ -1379,9 +2008,9 @@ function renderAgentList() {
             let trainingVisual = '';
             if (agent.isTraining) {
                 trainingVisual = `
-                    <div class="mt-3 p-3 bg-black/40 rounded-lg border border-white/5 overflow-hidden relative">
+                    <div class="mt-3 p-3 bg-surface-darker rounded-lg border border-border-subtle-inv overflow-hidden relative">
                         <div class="flex justify-between items-center mb-2">
-                            <span class="text-[10px] font-mono text-slate-400 uppercase tracking-wider">Live Monitor</span>
+                            <span class="text-[10px] font-mono text-text-subtle uppercase tracking-wider">Live Monitor</span>
                             <div class="flex gap-1">
                                 <span class="w-1 h-3 bg-primary/40 animate-[bounce_1s_infinite]"></span>
                                 <span class="w-1 h-3 bg-primary/60 animate-[bounce_1.2s_infinite]"></span>
@@ -1390,17 +2019,17 @@ function renderAgentList() {
                         </div>
                         <div class="space-y-2">
                             <div class="flex justify-between text-[10px] font-mono">
-                                <span class="text-slate-500">Loss</span>
+                                <span class="text-text-muted">Loss</span>
                                 <span class="text-rose-400" id="live-loss">0.0000</span>
                             </div>
-                            <div class="h-1 w-full bg-slate-800 rounded-full overflow-hidden">
+                            <div class="h-1 w-full bg-hover-bg-strong rounded-full overflow-hidden">
                                 <div class="h-full bg-rose-500/50 transition-all duration-1000" id="loss-bar" style="width: 0%"></div>
                             </div>
                             <div class="flex justify-between text-[10px] font-mono">
-                                <span class="text-slate-500">Accuracy</span>
-                                <span class="text-emerald-400" id="live-accuracy">0.00%</span>
+                                <span class="text-text-muted">Accuracy</span>
+                                <span class="text-emerald-500" id="live-accuracy">0.00%</span>
                             </div>
-                            <div class="h-1 w-full bg-slate-800 rounded-full overflow-hidden">
+                            <div class="h-1 w-full bg-hover-bg-strong rounded-full overflow-hidden">
                                 <div class="h-full bg-emerald-500/50 transition-all duration-1000" id="accuracy-bar" style="width: 0%"></div>
                             </div>
                         </div>
@@ -1421,29 +2050,29 @@ function renderAgentList() {
                     </div>
                     <div class="flex items-center gap-2">
                         <span class="material-symbols-outlined text-primary text-[20px]">${agent.icon}</span>
-                        <span class="text-sm font-bold text-white">${agent.label}</span>
+                        <span class="text-sm font-bold text-text-theme">${agent.label}</span>
                     </div>
-                    <div class="h-1.5 w-full bg-slate-800 rounded-full overflow-hidden">
+                    <div class="h-1.5 w-full bg-hover-bg-strong rounded-full overflow-hidden">
                         <div class="h-full bg-primary transition-all duration-500" style="width: ${progress || 50}%"></div>
                     </div>
                     <p class="text-xs text-primary font-medium">${agent.description}</p>
                     ${trainingVisual}
                     <div class="flex gap-2 mt-1">
-                        <span class="text-[10px] font-mono text-slate-400 bg-black/20 px-1.5 py-0.5 rounded border border-white/5">CPU: ${Math.floor(Math.random() * 30 + 60)}%</span>
+                        <span class="text-[10px] font-mono text-text-subtle bg-hover-bg px-1.5 py-0.5 rounded border border-border-subtle-inv">CPU: ${Math.floor(Math.random() * 30 + 60)}%</span>
                     </div>
                 </div>
             `;
         } else {
             return `
-                <div class="flex flex-col gap-2 p-3 rounded-lg border border-slate-700 bg-surface-dark opacity-60 hover:opacity-80 transition-opacity">
+                <div class="flex flex-col gap-2 p-3 rounded-lg border border-border-theme bg-surface-dark opacity-80 hover:opacity-100 transition-opacity">
                     <div class="flex justify-between items-start">
                         <div class="flex items-center gap-2">
-                            <span class="material-symbols-outlined text-slate-400 text-[18px]">${agent.icon}</span>
-                            <span class="text-sm font-semibold text-slate-300">${agent.label}</span>
+                            <span class="material-symbols-outlined text-text-subtle text-[18px]">${agent.icon}</span>
+                            <span class="text-sm font-semibold text-text-theme">${agent.label}</span>
                         </div>
-                        <span class="text-[10px] bg-slate-800 text-slate-400 px-1.5 py-0.5 rounded">IDLE</span>
+                        <span class="text-[10px] bg-hover-bg-strong text-text-subtle px-1.5 py-0.5 rounded">IDLE</span>
                     </div>
-                    <p class="text-xs text-slate-500">Waiting...</p>
+                    <p class="text-xs text-text-muted">Waiting...</p>
                 </div>
             `;
         }
@@ -1559,25 +2188,25 @@ function renderArtifacts() {
 
         // Add a subtle category header if multiple types
         if (sortedTypes.length > 1) {
-            html += `<p class="text-[9px] font-bold text-slate-600 uppercase tracking-wider mt-2 mb-1 first:mt-0">${iconInfo.label || type.toUpperCase()}</p>`;
+            html += `<p class="text-[9px] font-bold text-text-muted uppercase tracking-wider mt-2 mb-1 first:mt-0">${iconInfo.label || type.toUpperCase()}</p>`;
         }
 
         artifacts.forEach((artifact, idx) => {
             const globalIndex = state.artifacts.indexOf(artifact);
             html += `
-                <div class="artifact-item flex items-center gap-3 p-2.5 rounded-lg bg-surface-dark/80 border border-white/5 hover:border-primary/30 transition-all group cursor-pointer" data-index="${globalIndex}">
+                <div class="artifact-item flex items-center gap-3 p-2.5 rounded-lg bg-surface-dark/80 border border-border-subtle-inv hover:border-primary/30 transition-all group cursor-pointer" data-index="${globalIndex}">
                     <div class="h-9 w-9 rounded-lg ${iconInfo.bg} ${iconInfo.text} flex items-center justify-center border ${iconInfo.border} flex-shrink-0">
                         <span class="material-symbols-outlined text-[18px]">${iconInfo.icon}</span>
                     </div>
                     <div class="flex-1 min-w-0">
-                        <p class="text-xs font-medium text-white truncate group-hover:text-primary transition-colors">${escapeHtml(artifact.name)}</p>
-                        <p class="text-[10px] text-slate-500">${formatBytes(artifact.size)}${artifact.preview ? ' • Click to preview' : ''}</p>
+                        <p class="text-xs font-medium text-text-theme truncate group-hover:text-primary transition-colors">${escapeHtml(artifact.name)}</p>
+                        <p class="text-[10px] text-text-muted">${formatBytes(artifact.size)}${artifact.preview ? ' • Click to preview' : ''}</p>
                     </div>
                     <div class="flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button class="artifact-view p-1.5 text-slate-500 hover:text-white hover:bg-white/10 rounded transition-colors" title="Preview">
+                        <button class="artifact-view p-1.5 text-text-muted hover:text-text-theme hover:bg-hover-bg-strong rounded transition-colors" title="Preview">
                             <span class="material-symbols-outlined text-[16px]">visibility</span>
                         </button>
-                        <button class="artifact-download p-1.5 text-slate-500 hover:text-primary hover:bg-primary/10 rounded transition-colors" title="Download">
+                        <button class="artifact-download p-1.5 text-text-muted hover:text-primary hover:bg-primary/10 rounded transition-colors" title="Download">
                             <span class="material-symbols-outlined text-[16px]">download</span>
                         </button>
                     </div>
@@ -1588,9 +2217,9 @@ function renderArtifacts() {
 
     // Add summary at top
     const summary = `
-        <div class="flex items-center justify-between mb-2 pb-2 border-b border-white/5">
-            <span class="text-[10px] text-slate-400">${state.artifacts.length} file${state.artifacts.length !== 1 ? 's' : ''} generated</span>
-            <button class="clear-artifacts text-[10px] text-slate-500 hover:text-red-400 transition-colors">Clear</button>
+        <div class="flex items-center justify-between mb-2 pb-2 border-b border-border-subtle-inv">
+            <span class="text-[10px] text-text-subtle">${state.artifacts.length} file${state.artifacts.length !== 1 ? 's' : ''} generated</span>
+            <button class="clear-artifacts text-[10px] text-text-muted hover:text-red-400 transition-colors">Clear</button>
         </div>
     `;
 
@@ -1646,7 +2275,7 @@ function previewArtifact(artifact) {
 
 function showArtifactPreviewModal(artifact) {
     const modal = document.createElement('div');
-    modal.className = 'fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4';
+    modal.className = 'fixed inset-0 z-50 flex items-center justify-center bg-overlay backdrop-blur-sm p-4';
 
     // Determine icon and color based on type
     const typeConfig = {
@@ -1674,21 +2303,21 @@ function showArtifactPreviewModal(artifact) {
             previewHtml += '<thead class="bg-surface-dark"><tr>';
             const headers = lines[0].split(',');
             headers.forEach(h => {
-                previewHtml += `<th class="border border-white/10 px-3 py-2 text-left text-slate-300 font-medium">${escapeHtml(h)}</th>`;
+                previewHtml += `<th class="border border-border-inverse px-3 py-2 text-left text-text-theme font-medium">${escapeHtml(h)}</th>`;
             });
             previewHtml += '</tr></thead><tbody>';
 
             for (let i = 1; i < Math.min(lines.length, 15); i++) {
-                previewHtml += '<tr class="hover:bg-white/5">';
+                previewHtml += '<tr class="hover:bg-hover-bg">';
                 const cells = lines[i].split(',');
                 cells.forEach(c => {
-                    previewHtml += `<td class="border border-white/10 px-3 py-2 text-slate-400">${escapeHtml(c)}</td>`;
+                    previewHtml += `<td class="border border-border-inverse px-3 py-2 text-text-subtle">${escapeHtml(c)}</td>`;
                 });
                 previewHtml += '</tr>';
             }
             previewHtml += '</tbody></table></div>';
             if (lines.length > 15) {
-                previewHtml += `<p class="text-xs text-slate-500 mt-2">... and ${lines.length - 15} more rows</p>`;
+                previewHtml += `<p class="text-xs text-text-muted mt-2">... and ${lines.length - 15} more rows</p>`;
             }
         }
     } else if (artifact.type === 'png' || artifact.type === 'jpg' || artifact.type === 'jpeg') {
@@ -1696,8 +2325,8 @@ function showArtifactPreviewModal(artifact) {
         const imgUrl = `${CONFIG.apiBaseUrl}/api/download?path=${encodeURIComponent(artifact.path)}`;
         previewHtml = `
             <div class="flex flex-col items-center justify-center p-4">
-                <img src="${imgUrl}" class="max-w-full max-h-[60vh] rounded shadow-lg border border-white/10" alt="${escapeHtml(artifact.name)}" />
-                <p class="text-[10px] text-slate-500 mt-4 font-mono">${artifact.path}</p>
+                <img src="${imgUrl}" class="max-w-full max-h-[60vh] rounded shadow-lg border border-border-inverse" alt="${escapeHtml(artifact.name)}" />
+                <p class="text-[10px] text-text-muted mt-4 font-mono">${artifact.path}</p>
             </div>
         `;
     } else if (artifact.type === 'json') {
@@ -1717,19 +2346,19 @@ function showArtifactPreviewModal(artifact) {
         }
     } else {
         // Code or text
-        previewHtml = `<pre class="text-xs font-mono whitespace-pre-wrap overflow-auto max-h-96 text-slate-300">${escapeHtml(preview)}</pre>`;
+        previewHtml = `<pre class="text-xs font-mono whitespace-pre-wrap overflow-auto max-h-96 text-text-theme">${escapeHtml(preview)}</pre>`;
     }
 
     modal.innerHTML = `
-        <div class="bg-surface-dark border border-white/10 rounded-xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-hidden animate-fadeIn flex flex-col">
-            <div class="flex items-center justify-between p-4 border-b border-white/5 flex-shrink-0">
+        <div class="bg-surface-dark border border-border-inverse rounded-xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-hidden animate-fadeIn flex flex-col">
+            <div class="flex items-center justify-between p-4 border-b border-border-subtle-inv flex-shrink-0">
                 <div class="flex items-center gap-3">
                     <div class="h-10 w-10 rounded-lg bg-${config.color}-500/20 flex items-center justify-center border border-${config.color}-500/30">
                         <span class="material-symbols-outlined text-${config.color}-400">${config.icon}</span>
                     </div>
                     <div>
-                        <h3 class="text-base font-bold text-white">${escapeHtml(artifact.name)}</h3>
-                        <p class="text-xs text-slate-400">${config.label} • ${formatBytes(artifact.size)}</p>
+                        <h3 class="text-base font-bold text-text-theme">${escapeHtml(artifact.name)}</h3>
+                        <p class="text-xs text-text-subtle">${config.label} • ${formatBytes(artifact.size)}</p>
                     </div>
                 </div>
                 <div class="flex gap-2">
@@ -1737,13 +2366,13 @@ function showArtifactPreviewModal(artifact) {
                         <span class="material-symbols-outlined text-[16px]">download</span>
                         Download
                     </button>
-                    <button class="modal-close p-2 text-slate-400 hover:text-white hover:bg-white/10 rounded-lg transition-all">
+                    <button class="modal-close p-2 text-text-subtle hover:text-text-theme hover:bg-hover-bg-strong rounded-lg transition-all">
                         <span class="material-symbols-outlined">close</span>
                     </button>
                 </div>
             </div>
-            <div class="flex-1 overflow-auto p-4 bg-black/20">
-                ${previewHtml || '<p class="text-slate-500 text-sm">No preview available</p>'}
+            <div class="flex-1 overflow-auto p-4 bg-hover-bg">
+                ${previewHtml || '<p class="text-text-muted text-sm">No preview available</p>'}
             </div>
         </div>
     `;
@@ -1774,7 +2403,7 @@ function getFileIconInfo(type) {
         'jpg': { icon: 'image', bg: 'bg-pink-500/20', text: 'text-pink-400', border: 'border-pink-500/30', label: 'Image' },
         'jpeg': { icon: 'image', bg: 'bg-pink-500/20', text: 'text-pink-400', border: 'border-pink-500/30', label: 'Image' },
         'json': { icon: 'data_object', bg: 'bg-amber-500/20', text: 'text-amber-400', border: 'border-amber-500/30', label: 'Data' },
-        'txt': { icon: 'article', bg: 'bg-slate-500/20', text: 'text-slate-400', border: 'border-slate-500/30', label: 'Text' },
+        'txt': { icon: 'article', bg: 'bg-slate-500/20', text: 'text-text-subtle', border: 'border-slate-500/30', label: 'Text' },
         'fasta': { icon: 'genetics', bg: 'bg-primary/20', text: 'text-primary', border: 'border-primary/30', label: 'Sequence' },
         'md': { icon: 'description', bg: 'bg-blue-500/20', text: 'text-blue-400', border: 'border-blue-500/30', label: 'Report' },
         'pdf': { icon: 'picture_as_pdf', bg: 'bg-rose-500/20', text: 'text-rose-400', border: 'border-rose-500/30', label: 'PDF Document' },
@@ -1805,7 +2434,7 @@ function updateAuditLog(entries) {
         .replace(/: "([^"]+)"/g, ': <span class="text-amber-300">"$1"</span>')
         .replace(/: (\d+)/g, ': <span class="text-emerald-400">$1</span>')
         .replace(/: (true|false)/g, ': <span class="text-purple-400">$1</span>')
-        .replace(/: (null)/g, ': <span class="text-slate-500">$1</span>');
+        .replace(/: (null)/g, ': <span class="text-text-muted">$1</span>');
 
     elements.auditLog.innerHTML = `<pre class="whitespace-pre-wrap text-[10px] leading-relaxed">${highlighted}</pre>`;
 }
@@ -1938,7 +2567,7 @@ function loadStructure(pdbContent) {
 
         // Create new stage
         state.nglStage = new NGL.Stage(viewer, {
-            backgroundColor: '#000000',
+            backgroundColor: state.settings.theme === 'dark' ? '#000000' : '#f0f5f6',
             quality: 'high',
         });
 
@@ -2005,7 +2634,6 @@ function initSidebarNavigation() {
             link.classList.add('bg-primary/20', 'border', 'border-primary/20', 'text-primary');
             link.classList.remove('text-text-subtle');
 
-            // Handle navigation
             const text = link.textContent.trim();
             if (text.includes('History')) {
                 showHistoryPanel();
@@ -2013,6 +2641,10 @@ function initSidebarNavigation() {
                 showAgentLibrary();
             } else if (text.includes('Project Index')) {
                 showProjectIndex();
+            } else if (text.includes('Tool Registry')) {
+                showToolRegistry();
+            } else if (text.includes('Sandbox Terminal')) {
+                showSandboxTerminal();
             }
         });
     });
@@ -2051,18 +2683,18 @@ function renderRecentSessions() {
     const recentHtml = state.sessions.slice(0, 5).map(session => {
         const isActive = session.id === state.currentSessionId;
         return `
-            <div class="session-item flex items-center gap-2 group ${isActive ? 'bg-white/5' : ''}" data-id="${session.id}">
-                <button class="session-load flex-1 text-left px-3 py-2 text-sm ${isActive ? 'text-primary' : 'text-text-subtle'} hover:text-white rounded-lg truncate transition-colors">
+            <div class="session-item flex items-center gap-2 group ${isActive ? 'bg-hover-bg' : ''}" data-id="${session.id}">
+                <button class="session-load flex-1 text-left px-3 py-2 text-sm ${isActive ? 'text-primary' : 'text-text-subtle'} hover:text-text-theme rounded-lg truncate transition-colors">
                     ${escapeHtml(session.title)}
                 </button>
-                <button class="session-delete hidden group-hover:block p-1 text-slate-600 hover:text-red-400 rounded transition-colors" title="Delete">
+                <button class="session-delete hidden group-hover:block p-1 text-text-muted hover:text-red-400 rounded transition-colors" title="Delete">
                     <span class="material-symbols-outlined text-[16px]">close</span>
                 </button>
             </div>
         `;
     }).join('');
 
-    elements.recentSessions.innerHTML = recentHtml || '<p class="px-3 py-2 text-xs text-slate-600">No recent sessions</p>';
+    elements.recentSessions.innerHTML = recentHtml || '<p class="px-3 py-2 text-xs text-text-muted">No recent sessions</p>';
 
     // Add event listeners
     elements.recentSessions.querySelectorAll('.session-item').forEach(item => {
@@ -2084,31 +2716,31 @@ function renderRecentSessions() {
 function showHistoryPanel() {
     // Create modal
     const modal = document.createElement('div');
-    modal.className = 'fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm';
+    modal.className = 'fixed inset-0 z-50 flex items-center justify-center bg-overlay backdrop-blur-sm';
 
     const sessionsHtml = state.sessions.length > 0
         ? state.sessions.map(s => `
-            <div class="session-row flex items-center gap-3 p-3 hover:bg-white/5 rounded-lg cursor-pointer transition-all group" data-id="${s.id}">
-                <span class="material-symbols-outlined text-slate-400 text-[18px]">description</span>
+            <div class="session-row flex items-center gap-3 p-3 hover:bg-hover-bg rounded-lg cursor-pointer transition-all group" data-id="${s.id}">
+                <span class="material-symbols-outlined text-text-subtle text-[18px]">description</span>
                 <div class="flex-1 min-w-0">
-                    <p class="text-sm font-medium text-white truncate">${escapeHtml(s.title)}</p>
-                    <p class="text-[10px] text-slate-400">${new Date(s.createdAt).toLocaleString()} • ${s.messages?.length || 0} messages</p>
+                    <p class="text-sm font-medium text-text-theme truncate">${escapeHtml(s.title)}</p>
+                    <p class="text-[10px] text-text-subtle">${new Date(s.createdAt).toLocaleString()} • ${s.messages?.length || 0} messages</p>
                 </div>
-                <button class="session-delete opacity-0 group-hover:opacity-100 p-1 text-slate-400 hover:text-red-400 transition-all">
+                <button class="session-delete opacity-0 group-hover:opacity-100 p-1 text-text-subtle hover:text-red-400 transition-all">
                     <span class="material-symbols-outlined text-[16px]">delete</span>
                 </button>
             </div>
         `).join('')
-        : '<p class="text-center py-8 text-slate-400">No sessions in history</p>';
+        : '<p class="text-center py-8 text-text-subtle">No sessions in history</p>';
 
     modal.innerHTML = `
-        <div class="bg-surface-dark border border-white/10 rounded-xl shadow-2xl w-full max-w-lg mx-4 overflow-hidden animate-fadeIn">
-            <div class="flex items-center justify-between p-4 border-b border-white/5">
-                <h3 class="text-lg font-bold text-white flex items-center gap-2">
+        <div class="bg-surface-dark border border-border-inverse rounded-xl shadow-2xl w-full max-w-lg mx-4 overflow-hidden animate-fadeIn">
+            <div class="flex items-center justify-between p-4 border-b border-border-subtle-inv">
+                <h3 class="text-lg font-bold text-text-theme flex items-center gap-2">
                     <span class="material-symbols-outlined text-primary">history</span>
                     Session History
                 </h3>
-                <button class="modal-close p-1.5 text-slate-400 hover:text-white hover:bg-white/10 rounded-lg transition-all">
+                <button class="modal-close p-1.5 text-text-subtle hover:text-text-theme hover:bg-hover-bg-strong rounded-lg transition-all">
                     <span class="material-symbols-outlined">close</span>
                 </button>
             </div>
@@ -2143,35 +2775,48 @@ function showHistoryPanel() {
 
 function showAgentLibrary() {
     const modal = document.createElement('div');
-    modal.className = 'fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm';
+    modal.className = 'fixed inset-0 z-50 flex items-center justify-center bg-overlay backdrop-blur-sm';
 
-    const agentsHtml = Object.entries(AGENTS).map(([id, agent]) => {
-        const colorClass = getColorClass(agent.color);
-        return `
-            <div class="flex items-center gap-3 p-3 rounded-lg border border-white/5 bg-surface-card/50 hover:border-primary/30 transition-all">
-                <div class="h-10 w-10 rounded-lg ${colorClass.bg} flex items-center justify-center border ${colorClass.border}">
-                    <span class="material-symbols-outlined ${colorClass.text}">${agent.icon}</span>
+    const categories = {};
+    Object.entries(AGENTS).forEach(([id, agent]) => {
+        const cat = agent.category || 'Other';
+        if (!categories[cat]) categories[cat] = [];
+        categories[cat].push({ id, ...agent });
+    });
+
+    let agentsHtml = '';
+    for (const [category, agents] of Object.entries(categories)) {
+        agentsHtml += `<h4 class="text-xs font-bold text-text-subtle uppercase tracking-wider mt-3 mb-2">${category} (${agents.length})</h4>`;
+        agentsHtml += agents.map(agent => {
+            const colorClass = getColorClass(agent.color);
+            return `
+                <div class="flex items-center gap-3 p-3 rounded-lg border border-border-subtle-inv bg-surface-card/50 hover:border-primary/30 transition-all">
+                    <div class="h-10 w-10 rounded-lg ${colorClass.bg} flex items-center justify-center border ${colorClass.border}">
+                        <span class="material-symbols-outlined ${colorClass.text}">${agent.icon}</span>
+                    </div>
+                    <div class="flex-1">
+                        <p class="text-sm font-bold text-text-theme">${agent.label}</p>
+                        <p class="text-xs text-text-subtle">${agent.description}</p>
+                    </div>
+                    <span class="text-[10px] px-2 py-0.5 rounded-full bg-hover-bg text-text-subtle">${agent.id}</span>
                 </div>
-                <div class="flex-1">
-                    <p class="text-sm font-bold text-white">${agent.label}</p>
-                    <p class="text-xs text-slate-400">${agent.description}</p>
-                </div>
-            </div>
-        `;
-    }).join('');
+            `;
+        }).join('');
+    }
 
     modal.innerHTML = `
-        <div class="bg-surface-dark border border-white/10 rounded-xl shadow-2xl w-full max-w-lg mx-4 overflow-hidden animate-fadeIn">
-            <div class="flex items-center justify-between p-4 border-b border-white/5">
-                <h3 class="text-lg font-bold text-white flex items-center gap-2">
+        <div class="bg-surface-dark border border-border-inverse rounded-xl shadow-2xl w-full max-w-2xl mx-4 overflow-hidden animate-fadeIn">
+            <div class="flex items-center justify-between p-4 border-b border-border-subtle-inv">
+                <h3 class="text-lg font-bold text-text-theme flex items-center gap-2">
                     <span class="material-symbols-outlined text-primary">smart_toy</span>
                     Agent Library
+                    <span class="text-xs font-normal text-text-subtle ml-2">${Object.keys(AGENTS).length} agents</span>
                 </h3>
-                <button class="modal-close p-1.5 text-slate-400 hover:text-white hover:bg-white/10 rounded-lg transition-all">
+                <button class="modal-close p-1.5 text-text-subtle hover:text-text-theme hover:bg-hover-bg-strong rounded-lg transition-all">
                     <span class="material-symbols-outlined">close</span>
                 </button>
             </div>
-            <div class="max-h-96 overflow-y-auto custom-scrollbar p-4 grid gap-3">
+            <div class="max-h-[70vh] overflow-y-auto custom-scrollbar p-4 grid gap-2">
                 ${agentsHtml}
             </div>
         </div>
@@ -2184,38 +2829,153 @@ function showAgentLibrary() {
 
 function showProjectIndex() {
     const modal = document.createElement('div');
-    modal.className = 'fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm';
+    modal.className = 'fixed inset-0 z-50 flex items-center justify-center bg-overlay backdrop-blur-sm';
 
     const artifactsHtml = state.artifacts.length > 0
         ? state.artifacts.map(a => {
             const iconInfo = getFileIconInfo(a.type);
             return `
-                <div class="flex items-center gap-3 p-3 rounded-lg border border-white/5 hover:border-primary/30 transition-all cursor-pointer" onclick="window.BioAgents.downloadArtifact && window.open('${CONFIG.apiBaseUrl}/api/download?path=${encodeURIComponent(a.path)}')">
+                <div class="flex items-center gap-3 p-3 rounded-lg border border-border-subtle-inv hover:border-primary/30 transition-all cursor-pointer" onclick="window.BioAgents.downloadArtifact && window.open('${CONFIG.apiBaseUrl}/api/download?path=${encodeURIComponent(a.path)}')">
                     <div class="h-10 w-10 rounded-lg ${iconInfo.bg} flex items-center justify-center border ${iconInfo.border}">
                         <span class="material-symbols-outlined ${iconInfo.text}">${iconInfo.icon}</span>
                     </div>
                     <div class="flex-1">
-                        <p class="text-sm font-medium text-white">${escapeHtml(a.name)}</p>
-                        <p class="text-xs text-slate-400">${formatBytes(a.size)}</p>
+                        <p class="text-sm font-medium text-text-theme">${escapeHtml(a.name)}</p>
+                        <p class="text-xs text-text-subtle">${formatBytes(a.size)}</p>
                     </div>
                 </div>
             `;
         }).join('')
-        : '<p class="text-center py-8 text-slate-400">No artifacts in this project</p>';
+        : '<p class="text-center py-8 text-text-subtle">No artifacts in this project</p>';
 
     modal.innerHTML = `
-        <div class="bg-surface-dark border border-white/10 rounded-xl shadow-2xl w-full max-w-lg mx-4 overflow-hidden animate-fadeIn">
-            <div class="flex items-center justify-between p-4 border-b border-white/5">
-                <h3 class="text-lg font-bold text-white flex items-center gap-2">
+        <div class="bg-surface-dark border border-border-inverse rounded-xl shadow-2xl w-full max-w-lg mx-4 overflow-hidden animate-fadeIn">
+            <div class="flex items-center justify-between p-4 border-b border-border-subtle-inv">
+                <h3 class="text-lg font-bold text-text-theme flex items-center gap-2">
                     <span class="material-symbols-outlined text-primary">folder_open</span>
                     Project Files
                 </h3>
-                <button class="modal-close p-1.5 text-slate-400 hover:text-white hover:bg-white/10 rounded-lg transition-all">
+                <button class="modal-close p-1.5 text-text-subtle hover:text-text-theme hover:bg-hover-bg-strong rounded-lg transition-all">
                     <span class="material-symbols-outlined">close</span>
                 </button>
             </div>
             <div class="max-h-96 overflow-y-auto custom-scrollbar p-4 grid gap-2">
                 ${artifactsHtml}
+            </div>
+        </div>
+    `;
+
+    document.body.appendChild(modal);
+    modal.querySelector('.modal-close')?.addEventListener('click', () => modal.remove());
+    modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
+}
+
+async function showToolRegistry() {
+    const modal = document.createElement('div');
+    modal.className = 'fixed inset-0 z-50 flex items-center justify-center bg-overlay backdrop-blur-sm';
+
+    let toolsHtml = '<p class="text-center py-8 text-text-subtle">Loading tools...</p>';
+
+    try {
+        const res = await fetch(`${CONFIG.apiBaseUrl}/api/tools/registry`);
+        const data = await res.json();
+        if (data.tools && data.tools.length > 0) {
+            toolsHtml = data.tools.map(t => `
+                <div class="flex items-center gap-3 p-3 rounded-lg border border-border-subtle-inv bg-surface-card/50">
+                    <div class="h-10 w-10 rounded-lg bg-indigo-500/10 flex items-center justify-center border border-indigo-500/20">
+                        <span class="material-symbols-outlined text-indigo-400">extension</span>
+                    </div>
+                    <div class="flex-1">
+                        <p class="text-sm font-bold text-text-theme">${escapeHtml(t.name || t)}</p>
+                        <p class="text-xs text-text-subtle">${escapeHtml(t.description || 'Custom tool')}</p>
+                    </div>
+                </div>
+            `).join('');
+        } else {
+            toolsHtml = '<p class="text-center py-8 text-text-subtle">No custom tools registered yet</p>';
+        }
+    } catch (e) {
+        toolsHtml = '<p class="text-center py-8 text-text-subtle">Could not load tool registry</p>';
+    }
+
+    const builtInHtml = Object.entries(AGENTS)
+        .filter(([, a]) => a.category !== 'Core')
+        .map(([id, agent]) => {
+            const colorClass = getColorClass(agent.color);
+            return `
+                <div class="flex items-center gap-3 p-2 rounded-lg border border-border-subtle-inv bg-surface-card/30">
+                    <span class="material-symbols-outlined text-sm ${colorClass.text}">${agent.icon}</span>
+                    <span class="text-xs text-text-theme font-medium">${agent.label}</span>
+                    <span class="text-[10px] text-text-muted ml-auto">${agent.category}</span>
+                </div>
+            `;
+        }).join('');
+
+    modal.innerHTML = `
+        <div class="bg-surface-dark border border-border-inverse rounded-xl shadow-2xl w-full max-w-2xl mx-4 overflow-hidden animate-fadeIn">
+            <div class="flex items-center justify-between p-4 border-b border-border-subtle-inv">
+                <h3 class="text-lg font-bold text-text-theme flex items-center gap-2">
+                    <span class="material-symbols-outlined text-primary">extension</span>
+                    Tool Registry
+                </h3>
+                <button class="modal-close p-1.5 text-text-subtle hover:text-text-theme hover:bg-hover-bg-strong rounded-lg transition-all">
+                    <span class="material-symbols-outlined">close</span>
+                </button>
+            </div>
+            <div class="max-h-[70vh] overflow-y-auto custom-scrollbar p-4">
+                <h4 class="text-sm font-bold text-text-theme mb-3">Custom Tools</h4>
+                <div class="grid gap-3 mb-6">${toolsHtml}</div>
+                <h4 class="text-sm font-bold text-text-theme mb-3">Built-in Agent Tools</h4>
+                <div class="grid grid-cols-2 gap-2">${builtInHtml}</div>
+            </div>
+        </div>
+    `;
+
+    document.body.appendChild(modal);
+    modal.querySelector('.modal-close')?.addEventListener('click', () => modal.remove());
+    modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
+}
+
+async function showSandboxTerminal() {
+    const modal = document.createElement('div');
+    modal.className = 'fixed inset-0 z-50 flex items-center justify-center bg-overlay backdrop-blur-sm';
+
+    let statusHtml = '<p class="text-text-subtle">Loading sandbox status...</p>';
+    try {
+        const res = await fetch(`${CONFIG.apiBaseUrl}/api/sandbox/status`);
+        const data = await res.json();
+        statusHtml = `
+            <div class="grid gap-2 text-sm">
+                <div class="flex justify-between"><span class="text-text-subtle">Status:</span><span class="text-emerald-400 font-bold">${data.status}</span></div>
+                <div class="flex justify-between"><span class="text-text-subtle">Workspace:</span><span class="text-text-theme font-mono text-xs">${escapeHtml(data.workspace_dir || 'N/A')}</span></div>
+                <div class="flex justify-between"><span class="text-text-subtle">Commands Run:</span><span class="text-text-theme">${data.command_history_count || 0}</span></div>
+            </div>
+        `;
+    } catch (e) {
+        statusHtml = '<p class="text-text-subtle">Sandbox is not running</p>';
+    }
+
+    modal.innerHTML = `
+        <div class="bg-surface-dark border border-border-inverse rounded-xl shadow-2xl w-full max-w-2xl mx-4 overflow-hidden animate-fadeIn">
+            <div class="flex items-center justify-between p-4 border-b border-border-subtle-inv">
+                <h3 class="text-lg font-bold text-text-theme flex items-center gap-2">
+                    <span class="material-symbols-outlined text-primary">terminal</span>
+                    Sandbox Terminal
+                </h3>
+                <button class="modal-close p-1.5 text-text-subtle hover:text-text-theme hover:bg-hover-bg-strong rounded-lg transition-all">
+                    <span class="material-symbols-outlined">close</span>
+                </button>
+            </div>
+            <div class="p-4">
+                <div class="bg-surface-darker rounded-lg p-4 border border-border-subtle-inv mb-4">
+                    ${statusHtml}
+                </div>
+                <div class="bg-black rounded-lg p-4 font-mono text-sm text-green-400 min-h-[200px] border border-border-inverse">
+                    <div id="sandbox-output" class="space-y-1">
+                        <p class="text-text-muted">$ # Sandbox terminal - commands run by agents will appear here</p>
+                        <p class="text-text-muted">$ # Use the Shell agent to execute commands</p>
+                    </div>
+                </div>
             </div>
         </div>
     `;
@@ -2352,21 +3112,21 @@ function showNotifications() {
                 <div class="flex items-start gap-3 p-3 ${colors} rounded-lg">
                     <span class="material-symbols-outlined text-[16px] mt-0.5">${n.type === 'success' ? 'check_circle' : n.type === 'error' ? 'error' : 'info'}</span>
                     <div class="flex-1 min-w-0">
-                        <p class="text-sm text-white">${escapeHtml(n.message)}</p>
-                        <p class="text-[10px] text-slate-400 mt-0.5">${new Date(n.timestamp).toLocaleTimeString()}</p>
+                        <p class="text-sm text-text-theme">${escapeHtml(n.message)}</p>
+                        <p class="text-[10px] text-text-subtle mt-0.5">${new Date(n.timestamp).toLocaleTimeString()}</p>
                     </div>
                 </div>
             `;
         }).join('')
-        : '<p class="text-center py-8 text-slate-400 text-sm">No notifications</p>';
+        : '<p class="text-center py-8 text-text-subtle text-sm">No notifications</p>';
 
     modal.innerHTML = `
-        <div class="bg-surface-dark border border-white/10 rounded-xl shadow-2xl w-80 overflow-hidden pointer-events-auto animate-fadeIn mt-12">
-            <div class="flex items-center justify-between p-3 border-b border-white/5">
-                <h3 class="text-sm font-bold text-white">Notifications</h3>
+        <div class="bg-surface-dark border border-border-inverse rounded-xl shadow-2xl w-80 overflow-hidden pointer-events-auto animate-fadeIn mt-12">
+            <div class="flex items-center justify-between p-3 border-b border-border-subtle-inv">
+                <h3 class="text-sm font-bold text-text-theme">Notifications</h3>
                 <div class="flex gap-1">
-                    <button class="notif-clear text-[10px] text-slate-400 hover:text-white px-2 py-1 hover:bg-white/5 rounded transition-all">Clear all</button>
-                    <button class="notif-close p-1 text-slate-400 hover:text-white hover:bg-white/10 rounded transition-all">
+                    <button class="notif-clear text-[10px] text-text-subtle hover:text-text-theme px-2 py-1 hover:bg-hover-bg rounded transition-all">Clear all</button>
+                    <button class="notif-close p-1 text-text-subtle hover:text-text-theme hover:bg-hover-bg-strong rounded transition-all">
                         <span class="material-symbols-outlined text-[16px]">close</span>
                     </button>
                 </div>
@@ -2409,6 +3169,69 @@ function showNotifications() {
 // SETTINGS
 // =====================================================
 
+// =====================================================
+// THEME (light/dark mode)
+// =====================================================
+
+function setTheme(theme, { explicit = false } = {}) {
+    state.settings.theme = theme;
+    if (explicit) state.settings._themeExplicit = true;
+    const html = document.documentElement;
+    if (theme === 'dark') {
+        html.classList.add('dark');
+    } else {
+        html.classList.remove('dark');
+    }
+    saveToStorage();
+    updateNglBackground(theme);
+}
+
+function updateNglBackground(theme) {
+    if (state.nglStage) {
+        try {
+            state.nglStage.setParameters({
+                backgroundColor: theme === 'dark' ? '#000000' : '#f0f5f6',
+            });
+        } catch (e) {
+            // NGL may not support setParameters in all versions
+        }
+    }
+}
+
+function initTheme() {
+    const stored = state.settings && state.settings.theme;
+    if (stored === 'light' || stored === 'dark') {
+        setTheme(stored);
+    } else {
+        const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+        setTheme(prefersDark ? 'dark' : 'light');
+    }
+}
+
+function initThemeToggle() {
+    const btn = document.getElementById('themeToggle');
+    if (btn) {
+        btn.addEventListener('click', () => {
+            const next = state.settings.theme === 'dark' ? 'light' : 'dark';
+            setTheme(next, { explicit: true });
+            showToast(`Theme: ${next}`, 'success');
+        });
+    }
+
+    // React to system preference if user hasn't explicitly chosen
+    try {
+        window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
+            // Only auto-switch if the user hasn't made an explicit choice in this session
+            // (Setting persists, so once set it stays set.)
+            if (!state.settings._themeExplicit) {
+                setTheme(e.matches ? 'dark' : 'light');
+            }
+        });
+    } catch (e) {
+        // Older browsers may not support addEventListener on MediaQueryList
+    }
+}
+
 function initSettings() {
     const settingsBtn = document.querySelector('.settings-btn');
     if (settingsBtn) {
@@ -2428,60 +3251,129 @@ function initSettings() {
 }
 
 function showSettingsPanel() {
+    const MODELS = {
+        openai: [
+            { id: 'gpt-5.5', name: 'GPT-5.5', desc: 'Newest flagship' },
+            { id: 'gpt-5.5-pro', name: 'GPT-5.5 Pro', desc: 'Smarter & more precise' },
+            { id: 'gpt-5.4', name: 'GPT-5.4', desc: 'Affordable coding & work' },
+            { id: 'gpt-5.4-pro', name: 'GPT-5.4 Pro', desc: 'Smarter GPT-5.4' },
+            { id: 'gpt-5.4-mini', name: 'GPT-5.4 Mini', desc: 'Strong mini for coding' },
+            { id: 'gpt-5.4-nano', name: 'GPT-5.4 Nano', desc: 'Cheapest GPT-5.4' },
+            { id: 'gpt-5', name: 'GPT-5', desc: 'Agentic reasoning' },
+            { id: 'gpt-5-pro', name: 'GPT-5 Pro', desc: 'Smarter GPT-5' },
+            { id: 'gpt-5-mini', name: 'GPT-5 Mini', desc: 'Budget reasoning' },
+            { id: 'gpt-5-nano', name: 'GPT-5 Nano', desc: 'Fast & cheap' },
+            { id: 'o3', name: 'o3', desc: 'Advanced reasoning' },
+            { id: 'o3-pro', name: 'o3 Pro', desc: 'Max compute reasoning' },
+            { id: 'gpt-4.1', name: 'GPT-4.1', desc: 'Production workhorse' },
+            { id: 'gpt-4.1-mini', name: 'GPT-4.1 Mini', desc: 'Mid-tier production' },
+            { id: 'gpt-4.1-nano', name: 'GPT-4.1 Nano', desc: 'Ultra cheap' },
+        ],
+        gemini: [
+            { id: 'gemini-3.1-pro', name: 'Gemini 3.1 Pro', desc: 'Latest reasoning-first' },
+            { id: 'gemini-3-flash', name: 'Gemini 3 Flash', desc: 'Best multimodal' },
+            { id: 'gemini-3.1-flash-lite', name: 'Gemini 3.1 Flash-Lite', desc: 'Most cost-efficient' },
+            { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro', desc: 'Complex reasoning (stable)' },
+            { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash', desc: 'Fast & capable (stable)' },
+            { id: 'gemini-2.5-flash-lite', name: 'Gemini 2.5 Flash-Lite', desc: 'High-throughput (stable)' },
+            { id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash', desc: 'Cost-effective general' },
+            { id: 'gemini-2.0-flash-lite', name: 'Gemini 2.0 Flash-Lite', desc: 'Ultra-efficient simple' },
+        ],
+    };
+
+    const currentProvider = state.settings.llmProvider || 'gemini';
+    const currentModel = state.settings.llmModel || '';
+
     // Create modal
     const modal = document.createElement('div');
-    modal.className = 'fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm';
+    modal.className = 'fixed inset-0 z-50 flex items-center justify-center bg-overlay backdrop-blur-sm';
     modal.id = 'settingsModal';
 
     modal.innerHTML = `
-        <div class="bg-surface-dark border border-white/10 rounded-xl shadow-2xl w-full max-w-md mx-4 overflow-hidden animate-fadeIn">
-            <div class="flex items-center justify-between p-4 border-b border-white/5">
-                <h3 class="text-lg font-bold text-white flex items-center gap-2">
+        <div class="bg-surface-dark border border-border-inverse rounded-xl shadow-2xl w-full max-w-lg mx-4 overflow-hidden animate-fadeIn max-h-[90vh] flex flex-col">
+            <div class="flex items-center justify-between p-4 border-b border-border-subtle-inv flex-shrink-0">
+                <h3 class="text-lg font-bold text-text-theme flex items-center gap-2">
                     <span class="material-symbols-outlined text-primary">settings</span>
                     Settings
                 </h3>
-                <button class="settings-close p-1.5 text-slate-400 hover:text-white hover:bg-white/10 rounded-lg transition-all">
+                <button class="settings-close p-1.5 text-text-subtle hover:text-text-theme hover:bg-hover-bg-strong rounded-lg transition-all">
                     <span class="material-symbols-outlined">close</span>
                 </button>
             </div>
-            <div class="p-4 space-y-4">
+            <div class="p-4 space-y-4 overflow-y-auto custom-scrollbar flex-1">
                 <div class="flex items-center justify-between py-2">
                     <div>
-                        <p class="text-sm font-medium text-white">Auto-scroll</p>
-                        <p class="text-xs text-slate-400">Scroll to new messages automatically</p>
+                        <p class="text-sm font-medium text-text-theme">Theme</p>
+                        <p class="text-xs text-text-subtle">Switch between light and dark mode</p>
                     </div>
-                    <button class="setting-toggle w-12 h-6 rounded-full ${state.settings.autoScroll ? 'bg-primary' : 'bg-slate-700'} relative transition-colors" data-setting="autoScroll">
+                    <button class="setting-toggle w-12 h-6 rounded-full ${state.settings.theme === 'dark' ? 'bg-primary' : 'bg-hover-bg-strong'} relative transition-colors" data-setting="theme">
+                        <span class="absolute top-1 ${state.settings.theme === 'dark' ? 'right-1' : 'left-1'} w-4 h-4 bg-white rounded-full transition-all"></span>
+                    </button>
+                </div>
+                <div class="flex items-center justify-between py-2">
+                    <div>
+                        <p class="text-sm font-medium text-text-theme">Auto-scroll</p>
+                        <p class="text-xs text-text-subtle">Scroll to new messages automatically</p>
+                    </div>
+                    <button class="setting-toggle w-12 h-6 rounded-full ${state.settings.autoScroll ? 'bg-primary' : 'bg-hover-bg-strong'} relative transition-colors" data-setting="autoScroll">
                         <span class="absolute top-1 ${state.settings.autoScroll ? 'right-1' : 'left-1'} w-4 h-4 bg-white rounded-full transition-all"></span>
                     </button>
                 </div>
                 <div class="flex items-center justify-between py-2">
                     <div>
-                        <p class="text-sm font-medium text-white">Notifications</p>
-                        <p class="text-xs text-slate-400">Show toast notifications</p>
+                        <p class="text-sm font-medium text-text-theme">Notifications</p>
+                        <p class="text-xs text-text-subtle">Show toast notifications</p>
                     </div>
-                    <button class="setting-toggle w-12 h-6 rounded-full ${state.settings.notifications ? 'bg-primary' : 'bg-slate-700'} relative transition-colors" data-setting="notifications">
+                    <button class="setting-toggle w-12 h-6 rounded-full ${state.settings.notifications ? 'bg-primary' : 'bg-hover-bg-strong'} relative transition-colors" data-setting="notifications">
                         <span class="absolute top-1 ${state.settings.notifications ? 'right-1' : 'left-1'} w-4 h-4 bg-white rounded-full transition-all"></span>
                     </button>
                 </div>
-                <div class="pt-4 border-t border-white/5 space-y-3">
-                    <p class="text-sm font-medium text-white flex items-center gap-2">
+
+                <!-- LLM Provider & Model Selection -->
+                <div class="pt-4 border-t border-border-subtle-inv space-y-3">
+                    <p class="text-sm font-medium text-text-theme flex items-center gap-2">
+                        <span class="material-symbols-outlined text-primary text-[18px]">tune</span>
+                        LLM Configuration
+                    </p>
+                    <div>
+                        <label class="block text-xs text-text-muted mb-1">Provider</label>
+                        <select id="llmProvider" class="w-full px-3 py-2 rounded-lg bg-hover-bg-strong border border-border-inverse text-sm text-text-theme focus:border-primary/50 focus:ring-1 focus:ring-primary/30 outline-none">
+                            <option value="gemini" ${currentProvider === 'gemini' ? 'selected' : ''}>Google Gemini</option>
+                            <option value="openai" ${currentProvider === 'openai' ? 'selected' : ''}>OpenAI</option>
+                            <option value="ollama" ${currentProvider === 'ollama' ? 'selected' : ''}>Ollama (local)</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs text-text-muted mb-1">Model</label>
+                        <select id="llmModel" class="w-full px-3 py-2 rounded-lg bg-hover-bg-strong border border-border-inverse text-sm text-text-theme focus:border-primary/50 focus:ring-1 focus:ring-primary/30 outline-none">
+                        </select>
+                    </div>
+                    <div id="ollamaModelRow" class="${currentProvider === 'ollama' ? '' : 'hidden'}">
+                        <label class="block text-xs text-text-muted mb-1">Ollama Model Name</label>
+                        <input type="text" id="ollamaModelInput" class="w-full px-3 py-2 rounded-lg bg-hover-bg-strong border border-border-inverse text-sm text-text-theme placeholder-slate-500 focus:border-primary/50 focus:ring-1 focus:ring-primary/30 outline-none" placeholder="qwen3:14b" value="${currentProvider === 'ollama' ? (currentModel || 'qwen3:14b') : 'qwen3:14b'}" autocomplete="off"/>
+                    </div>
+                </div>
+
+                <!-- API Keys -->
+                <div class="pt-4 border-t border-border-subtle-inv space-y-3">
+                    <p class="text-sm font-medium text-text-theme flex items-center gap-2">
                         <span class="material-symbols-outlined text-primary text-[18px]">key</span>
                         API Keys (optional)
                     </p>
-                    <p class="text-xs text-slate-400">Use your own API keys. Leave blank to use server-configured keys.</p>
-                    <div>
-                        <label class="block text-xs text-slate-500 mb-1">OpenAI API Key</label>
-                        <input type="password" id="apiKeyOpenAI" class="api-key-input w-full px-3 py-2 rounded-lg bg-black/30 border border-white/10 text-sm text-white placeholder-slate-500 focus:border-primary/50 focus:ring-1 focus:ring-primary/30 outline-none" placeholder="sk-..." value="${state.settings.apiKeys?.openai || ''}" autocomplete="off"/>
+                    <p class="text-xs text-text-subtle">Use your own API keys. Leave blank to use server-configured keys.</p>
+                    <div id="openaiKeyRow">
+                        <label class="block text-xs text-text-muted mb-1">OpenAI API Key</label>
+                        <input type="password" id="apiKeyOpenAI" class="api-key-input w-full px-3 py-2 rounded-lg bg-hover-bg-strong border border-border-inverse text-sm text-text-theme placeholder-slate-500 focus:border-primary/50 focus:ring-1 focus:ring-primary/30 outline-none" placeholder="sk-..." value="${state.settings.apiKeys?.openai || ''}" autocomplete="off"/>
                     </div>
-                    <div>
-                        <label class="block text-xs text-slate-500 mb-1">Google Gemini API Key</label>
-                        <input type="password" id="apiKeyGemini" class="api-key-input w-full px-3 py-2 rounded-lg bg-black/30 border border-white/10 text-sm text-white placeholder-slate-500 focus:border-primary/50 focus:ring-1 focus:ring-primary/30 outline-none" placeholder="AIza..." value="${state.settings.apiKeys?.gemini || ''}" autocomplete="off"/>
+                    <div id="geminiKeyRow">
+                        <label class="block text-xs text-text-muted mb-1">Google Gemini API Key</label>
+                        <input type="password" id="apiKeyGemini" class="api-key-input w-full px-3 py-2 rounded-lg bg-hover-bg-strong border border-border-inverse text-sm text-text-theme placeholder-slate-500 focus:border-primary/50 focus:ring-1 focus:ring-primary/30 outline-none" placeholder="AIza..." value="${state.settings.apiKeys?.gemini || ''}" autocomplete="off"/>
                     </div>
-                    <button class="api-keys-save w-full py-2 px-4 text-sm font-medium bg-primary/20 hover:bg-primary/30 border border-primary/30 text-primary rounded-lg transition-all">
-                        Save API Keys
+                    <button class="settings-save-all w-full py-2 px-4 text-sm font-medium bg-primary/20 hover:bg-primary/30 border border-primary/30 text-primary rounded-lg transition-all">
+                        Save Settings
                     </button>
                 </div>
-                <div class="pt-4 border-t border-white/5">
+                <div class="pt-4 border-t border-border-subtle-inv">
                     <button class="clear-all-data w-full py-2.5 px-4 text-sm font-medium text-red-400 hover:text-red-300 hover:bg-red-500/10 border border-red-500/30 rounded-lg transition-all">
                         Clear All Data
                     </button>
@@ -2489,6 +3381,33 @@ function showSettingsPanel() {
             </div>
         </div>
     `;
+
+    // Populate model dropdown
+    function populateModels(provider, selectedModel) {
+        const select = modal.querySelector('#llmModel');
+        if (!select) return;
+        select.innerHTML = '';
+        if (provider === 'ollama') {
+            select.innerHTML = '<option value="qwen3:14b">qwen3:14b (default)</option>';
+            return;
+        }
+        const models = MODELS[provider] || [];
+        models.forEach(m => {
+            const opt = document.createElement('option');
+            opt.value = m.id;
+            opt.textContent = `${m.name} — ${m.desc}`;
+            if (selectedModel && m.id === selectedModel) opt.selected = true;
+            select.appendChild(opt);
+        });
+        // Default selection
+        if (!selectedModel && models.length > 0) {
+            const defaults = { openai: 'gpt-5', gemini: 'gemini-3.1-flash-lite' };
+            const def = defaults[provider] || models[0].id;
+            select.value = def;
+        }
+    }
+
+    populateModels(currentProvider, currentModel);
 
     document.body.appendChild(modal);
 
@@ -2500,16 +3419,37 @@ function showSettingsPanel() {
         if (e.target === modal) modal.remove();
     });
 
+    // Provider change → repopulate models
+    modal.querySelector('#llmProvider')?.addEventListener('change', (e) => {
+        const provider = e.target.value;
+        populateModels(provider, null);
+        modal.querySelector('#ollamaModelRow')?.classList.toggle('hidden', provider !== 'ollama');
+    });
+
     // Toggle buttons
     modal.querySelectorAll('.setting-toggle').forEach(btn => {
         btn.addEventListener('click', () => {
             const setting = btn.dataset.setting;
+
+            if (setting === 'theme') {
+                // Theme is light/dark, not boolean
+                const next = state.settings.theme === 'dark' ? 'light' : 'dark';
+                setTheme(next, { explicit: true });
+                const isDark = next === 'dark';
+                btn.classList.toggle('bg-primary', isDark);
+                btn.classList.toggle('bg-hover-bg-strong', !isDark);
+                btn.querySelector('span').classList.toggle('right-1', isDark);
+                btn.querySelector('span').classList.toggle('left-1', !isDark);
+                showToast(`Theme: ${next}`, 'success');
+                return;
+            }
+
             state.settings[setting] = !state.settings[setting];
             saveToStorage();
 
             // Update toggle visual
             btn.classList.toggle('bg-primary', state.settings[setting]);
-            btn.classList.toggle('bg-slate-700', !state.settings[setting]);
+            btn.classList.toggle('bg-hover-bg-strong', !state.settings[setting]);
             btn.querySelector('span').classList.toggle('right-1', state.settings[setting]);
             btn.querySelector('span').classList.toggle('left-1', !state.settings[setting]);
 
@@ -2517,15 +3457,28 @@ function showSettingsPanel() {
         });
     });
 
-    // Save API keys
-    modal.querySelector('.api-keys-save')?.addEventListener('click', () => {
+    // Save all settings (API keys + provider/model)
+    modal.querySelector('.settings-save-all')?.addEventListener('click', () => {
         const openaiInput = modal.querySelector('#apiKeyOpenAI');
         const geminiInput = modal.querySelector('#apiKeyGemini');
+        const providerSelect = modal.querySelector('#llmProvider');
+        const modelSelect = modal.querySelector('#llmModel');
+        const ollamaInput = modal.querySelector('#ollamaModelInput');
+
         if (!state.settings.apiKeys) state.settings.apiKeys = { openai: '', gemini: '' };
         state.settings.apiKeys.openai = openaiInput?.value?.trim() || '';
         state.settings.apiKeys.gemini = geminiInput?.value?.trim() || '';
+
+        const provider = providerSelect?.value || 'gemini';
+        state.settings.llmProvider = provider;
+        if (provider === 'ollama') {
+            state.settings.llmModel = ollamaInput?.value?.trim() || 'qwen3:14b';
+        } else {
+            state.settings.llmModel = modelSelect?.value || '';
+        }
+
         saveToStorage();
-        showToast('API keys saved', 'success');
+        showToast('Settings saved', 'success');
     });
 
     // Clear all data
@@ -2544,6 +3497,54 @@ function showSettingsPanel() {
 }
 
 // =====================================================
+// ADVANCED MODE
+// =====================================================
+
+function initAdvancedModeToggle() {
+    const btn = document.getElementById('advancedModeBtn');
+    const label = document.getElementById('advancedModeLabel');
+    if (!btn) return;
+
+    updateAdvancedToggleVisual(btn, label, state.settings.advancedMode);
+
+    btn.addEventListener('click', () => {
+        state.settings.advancedMode = !state.settings.advancedMode;
+        updateAdvancedToggleVisual(btn, label, state.settings.advancedMode);
+        saveToStorage();
+        renderAllMessages();
+        showToast(
+            state.settings.advancedMode
+                ? 'Advanced mode enabled — showing all agent activity'
+                : 'Advanced mode disabled — showing summary only',
+            'info'
+        );
+    });
+}
+
+function updateAdvancedToggleVisual(btn, label, isOn) {
+    const knob = btn.querySelector('span');
+    if (isOn) {
+        btn.style.background = 'rgba(7, 182, 213, 0.4)';
+        btn.style.borderColor = 'rgba(7, 182, 213, 0.5)';
+        knob.style.transform = 'translateX(18px)';
+        knob.style.background = '#07b6d5';
+        knob.style.boxShadow = '0 0 8px rgba(7, 182, 213, 0.5)';
+        if (label) {
+            label.style.color = '#07b6d5';
+        }
+    } else {
+        btn.style.background = 'var(--tw-bg-surface-low)';
+        btn.style.borderColor = 'var(--tw-border)';
+        knob.style.transform = 'translateX(0)';
+        knob.style.background = 'var(--tw-text-muted)';
+        knob.style.boxShadow = 'none';
+        if (label) {
+            label.style.color = 'var(--tw-text-muted)';
+        }
+    }
+}
+
+// =====================================================
 // TABS
 // =====================================================
 
@@ -2554,11 +3555,11 @@ function initTabSwitcher() {
 
             // Update button states
             document.querySelectorAll('.tab-btn').forEach(b => {
-                b.classList.remove('text-white', 'border-primary', 'bg-white/5');
-                b.classList.add('text-slate-500', 'border-transparent');
+                b.classList.remove('text-text-theme', 'border-primary', 'bg-hover-bg');
+                b.classList.add('text-text-muted', 'border-transparent');
             });
-            btn.classList.add('text-white', 'border-primary', 'bg-white/5');
-            btn.classList.remove('text-slate-500', 'border-transparent');
+            btn.classList.add('text-text-theme', 'border-primary', 'bg-hover-bg');
+            btn.classList.remove('text-text-muted', 'border-transparent');
 
             // Show/hide content
             document.querySelectorAll('.tab-content').forEach(c => c.classList.add('hidden'));
@@ -2588,14 +3589,17 @@ function setProcessingState(isProcessing) {
     state.isProcessing = isProcessing;
 
     if (elements.submitBtn) {
-        elements.submitBtn.disabled = isProcessing;
+        elements.submitBtn.disabled = false; // Always enabled — acts as "Steer" during processing
         elements.submitBtn.innerHTML = isProcessing
-            ? '<span class="animate-spin material-symbols-outlined text-[18px]">progress_activity</span><span>Processing...</span>'
+            ? '<span class="material-symbols-outlined text-[18px]">navigation</span><span>Steer</span>'
             : '<span>Run Agent</span><span class="material-symbols-outlined text-[18px]">send</span>';
     }
 
     if (elements.queryInput) {
-        elements.queryInput.disabled = isProcessing;
+        elements.queryInput.disabled = false; // Keep input active for steering
+        elements.queryInput.placeholder = isProcessing
+            ? 'Steer agents \u2014 add context, redirect, or clarify...'
+            : 'Describe a protein, paste a FASTA sequence, or ask a research question...';
     }
 
     updateStatus(isProcessing ? 'processing' : 'ready');
@@ -2636,7 +3640,7 @@ function logTerminal(message) {
 
     const time = new Date().toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
     const line = document.createElement('p');
-    line.innerHTML = `<span class="text-slate-500">&gt;</span> <span class="text-slate-600">[${time}]</span> ${escapeHtml(message)}`;
+    line.innerHTML = `<span class="text-text-muted">&gt;</span> <span class="text-text-muted">[${time}]</span> ${escapeHtml(message)}`;
     elements.terminalContent.appendChild(line);
 
     // Keep only last 15 lines
@@ -2666,7 +3670,7 @@ function showToast(message, type = 'info') {
     toast.innerHTML = `
         <span class="material-symbols-outlined text-[18px]">${icons[type]}</span>
         <span class="flex-1">${escapeHtml(message)}</span>
-        <button class="toast-close p-1 hover:bg-white/10 rounded transition-colors">
+        <button class="toast-close p-1 hover:bg-hover-bg-strong rounded transition-colors">
             <span class="material-symbols-outlined text-[14px]">close</span>
         </button>
     `;
@@ -2692,7 +3696,7 @@ function showToast(message, type = 'info') {
 function getColorClass(color) {
     const colors = {
         primary: { bg: 'bg-primary/10', text: 'text-primary', border: 'border-primary/30' },
-        slate: { bg: 'bg-slate-800', text: 'text-slate-400', border: 'border-slate-700' },
+        slate: { bg: 'bg-hover-bg-strong', text: 'text-text-subtle', border: 'border-border-theme' },
         blue: { bg: 'bg-blue-500/10', text: 'text-blue-400', border: 'border-blue-500/30' },
         emerald: { bg: 'bg-emerald-500/10', text: 'text-emerald-400', border: 'border-emerald-500/30' },
         amber: { bg: 'bg-amber-500/10', text: 'text-amber-400', border: 'border-amber-500/30' },
@@ -2700,6 +3704,16 @@ function getColorClass(color) {
         indigo: { bg: 'bg-indigo-500/10', text: 'text-indigo-400', border: 'border-indigo-500/30' },
         rose: { bg: 'bg-rose-500/10', text: 'text-rose-400', border: 'border-rose-500/30' },
         purple: { bg: 'bg-purple-500/10', text: 'text-purple-400', border: 'border-purple-500/30' },
+        cyan: { bg: 'bg-cyan-500/10', text: 'text-cyan-400', border: 'border-cyan-500/30' },
+        teal: { bg: 'bg-teal-500/10', text: 'text-teal-400', border: 'border-teal-500/30' },
+        sky: { bg: 'bg-sky-500/10', text: 'text-sky-400', border: 'border-sky-500/30' },
+        green: { bg: 'bg-green-500/10', text: 'text-green-400', border: 'border-green-500/30' },
+        lime: { bg: 'bg-lime-500/10', text: 'text-lime-400', border: 'border-lime-500/30' },
+        yellow: { bg: 'bg-yellow-500/10', text: 'text-yellow-400', border: 'border-yellow-500/30' },
+        orange: { bg: 'bg-orange-500/10', text: 'text-orange-400', border: 'border-orange-500/30' },
+        red: { bg: 'bg-red-500/10', text: 'text-red-400', border: 'border-red-500/30' },
+        violet: { bg: 'bg-violet-500/10', text: 'text-violet-400', border: 'border-violet-500/30' },
+        fuchsia: { bg: 'bg-fuchsia-500/10', text: 'text-fuchsia-400', border: 'border-fuchsia-500/30' },
     };
     return colors[color] || colors.slate;
 }
@@ -2898,4 +3912,5 @@ window.BioAgents = {
     setActiveAgent,
     showToast,
     logTerminal,
+    renderAllMessages,
 };

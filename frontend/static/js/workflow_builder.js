@@ -30,6 +30,106 @@ let wbNodeDrag = null;
 let wbPanDrag = null;
 let wbRafEdges = 0;
 
+/** Live initial-inputs object edited via the bottom form; synced to textarea on demand. */
+let wbInitialInputs = {};
+
+/** Inspector params mode: 'form' or 'json'. */
+let wbParamsMode = 'form';
+
+/**
+ * Render a single labelled input field matching the workflow port type.
+ * Returns a { container, getValue() } pair.
+ */
+function wbRenderField(key, typeStr, value, onChange) {
+    const wrap = document.createElement('div');
+    wrap.className = 'wb-field';
+
+    const t = (typeStr || 'str').toLowerCase().trim();
+
+    // Booleans get a self-contained labelled row (no separate header).
+    if (t === 'bool') {
+        const labelRow = document.createElement('label');
+        labelRow.className = 'wb-field-bool-wrap';
+        const box = document.createElement('input');
+        box.type = 'checkbox';
+        box.checked = !!value;
+        box.className = 'wb-field-check';
+        box.addEventListener('change', () => onChange(box.checked));
+        const text = document.createElement('span');
+        text.className = 'wb-field-bool-text';
+        text.textContent = key;
+        labelRow.appendChild(box);
+        labelRow.appendChild(text);
+        wrap.appendChild(labelRow);
+        return { container: wrap, getValue: () => box.checked };
+    }
+
+    // Header: label + type badge
+    const labelRow = document.createElement('div');
+    labelRow.className = 'wb-field-label-row';
+    const label = document.createElement('label');
+    label.className = 'wb-field-label';
+    label.textContent = key;
+    label.title = key;
+    const typeBadge = document.createElement('span');
+    typeBadge.className = 'wb-field-type-badge';
+    typeBadge.textContent = typeStr || 'str';
+    labelRow.appendChild(label);
+    labelRow.appendChild(typeBadge);
+    wrap.appendChild(labelRow);
+
+    let input;
+    let getValue;
+
+    if (t === 'int') {
+        const inp = document.createElement('input');
+        inp.type = 'number';
+        inp.step = '1';
+        inp.value = value !== undefined && value !== null ? value : '';
+        inp.className = 'wb-field-input';
+        inp.placeholder = '0';
+        inp.addEventListener('input', () => onChange(Number(inp.value)));
+        input = inp;
+        getValue = () => (inp.value === '' ? undefined : Number(inp.value));
+    } else if (t === 'float') {
+        const inp = document.createElement('input');
+        inp.type = 'number';
+        inp.step = 'any';
+        inp.value = value !== undefined && value !== null ? value : '';
+        inp.className = 'wb-field-input';
+        inp.placeholder = '0.0';
+        inp.addEventListener('input', () => onChange(Number(inp.value)));
+        input = inp;
+        getValue = () => (inp.value === '' ? undefined : Number(inp.value));
+    } else if (t === 'str') {
+        const inp = document.createElement('input');
+        inp.type = 'text';
+        inp.value = value !== undefined && value !== null ? String(value) : '';
+        inp.className = 'wb-field-input';
+        inp.placeholder = `Enter ${key.toLowerCase()}…`;
+        inp.addEventListener('input', () => onChange(inp.value));
+        input = inp;
+        getValue = () => inp.value;
+    } else {
+        // list[float], dict, any, list, etc. — JSON textarea
+        const ta = document.createElement('textarea');
+        ta.className = 'wb-field-textarea';
+        ta.rows = 2;
+        ta.spellcheck = false;
+        ta.value = value !== undefined && value !== null ? JSON.stringify(value) : '';
+        ta.placeholder = `JSON (${typeStr})`;
+        ta.addEventListener('input', () => {
+            try { onChange(JSON.parse(ta.value)); } catch { /* partial edit */ }
+        });
+        input = ta;
+        getValue = () => { try { return JSON.parse(ta.value); } catch { return undefined; } };
+    }
+
+    wrap.appendChild(input);
+
+    return { container: wrap, getValue };
+}
+
 function wbNextNodeId() {
     wbNodeIdCounter += 1;
     return `n${wbNodeIdCounter}`;
@@ -94,6 +194,7 @@ function wbRemoveSelectedWire() {
     wbSelectedWire = null;
     wbScheduleRedrawEdges();
     wbSyncInspector();
+    wbRenderInitialInputsForm();
 }
 
 function wbRemoveWireBySpec(source, target, outP, inP, isIdentity) {
@@ -115,6 +216,7 @@ function wbRemoveWireBySpec(source, target, outP, inP, isIdentity) {
     }
     wbScheduleRedrawEdges();
     wbSyncInspector();
+    wbRenderInitialInputsForm();
 }
 
 function wbRenameNodeId(oldId, newId) {
@@ -133,6 +235,12 @@ function wbRenameNodeId(oldId, newId) {
         if (ex) Object.assign(ex.portMap, e.portMap);
         else wbState.edgeMap.set(k, { source: e.source, target: e.target, portMap: { ...e.portMap } });
     });
+    // Rename in initial inputs too
+    if (wbInitialInputs[oldId] !== undefined) {
+        wbInitialInputs[newId] = wbInitialInputs[oldId];
+        delete wbInitialInputs[oldId];
+        wbSyncInputsTextarea();
+    }
 }
 
 function wbSharedPorts(sourceType, targetType) {
@@ -168,6 +276,8 @@ function wbGetState() {
         })(),
     }));
 
+    // Sync textarea from internal state before reading
+    wbSyncInputsTextarea();
     let initial_inputs = {};
     const ta = document.getElementById('wb-initial-inputs');
     if (ta && ta.value.trim()) {
@@ -180,9 +290,191 @@ function wbGetState() {
     return { nodes, edges: wbEdgesForApi(), initial_inputs };
 }
 
-function wbSetInitialInputs(obj) {
+/** Sync the internal wbInitialInputs object to the hidden textarea. */
+function wbSyncInputsTextarea() {
     const ta = document.getElementById('wb-initial-inputs');
-    if (ta) ta.value = JSON.stringify(obj, null, 2);
+    if (ta) ta.value = JSON.stringify(wbInitialInputs, null, 2);
+}
+
+function wbSetInitialInputs(obj) {
+    wbInitialInputs = typeof obj === 'object' && obj !== null ? { ...obj } : {};
+    // Deep-clone values
+    Object.keys(wbInitialInputs).forEach((k) => {
+        if (typeof wbInitialInputs[k] === 'object' && wbInitialInputs[k] !== null) {
+            wbInitialInputs[k] = { ...wbInitialInputs[k] };
+        }
+    });
+    wbSyncInputsTextarea();
+    wbRenderInitialInputsForm();
+}
+
+/** Category color (line + soft glow) for node-input sections in the bottom form. */
+function wbCatColor(cat) {
+    const c = (cat || 'tool').toLowerCase();
+    if (c === 'data') return { line: '#06b6d4', glow: 'rgba(6, 182, 212, 0.45)' };
+    if (c === 'model') return { line: '#a855f7', glow: 'rgba(168, 85, 247, 0.45)' };
+    if (c === 'agent') return { line: '#22c55e', glow: 'rgba(34, 197, 94, 0.45)' };
+    return { line: '#f59e0b', glow: 'rgba(245, 158, 11, 0.45)' };
+}
+
+/**
+ * Compute the set of input port names on `nodeId` that are already supplied
+ * by an upstream edge (and therefore should NOT be shown as user-editable).
+ *
+ * Two edge kinds:
+ *   - explicit map: portMap = { sourceOut: targetIn }  → targetIn is connected
+ *   - identity (empty portMap): every source output whose name also exists as
+ *     a target input port is implicitly connected.
+ */
+function wbConnectedInputPorts(nodeId) {
+    const connected = new Set();
+    const targetMeta = wbMeta(wbState.nodes.find((n) => n.id === nodeId)?.type);
+    const targetInputs = Object.keys(targetMeta?.inputs || {});
+
+    wbState.edgeMap.forEach((e) => {
+        if (e.target !== nodeId) return;
+        const pm = e.portMap || {};
+        if (Object.keys(pm).length) {
+            Object.values(pm).forEach((inP) => connected.add(inP));
+        } else {
+            const sourceMeta = wbMeta(wbState.nodes.find((n) => n.id === e.source)?.type);
+            const sourceOutputs = Object.keys(sourceMeta?.outputs || {});
+            sourceOutputs.forEach((o) => {
+                if (targetInputs.includes(o)) connected.add(o);
+            });
+        }
+    });
+    return connected;
+}
+
+/**
+ * Render per-node input forms in the bottom "Form" tab.
+ * For each canvas node that has input ports, show a collapsible section
+ * with typed input fields derived from the node's input_schema.
+ * Sections are laid out in a responsive grid; fields within each section
+ * are in a sub-grid that wraps based on available width.
+ */
+function wbRenderInitialInputsForm() {
+    const container = document.getElementById('wb-initial-inputs-form');
+    if (!container) return;
+    container.innerHTML = '';
+    container.classList.add('wb-inputs-grid');
+
+    if (!wbState.nodes.length) {
+        const empty = document.createElement('div');
+        empty.className = 'wb-inputs-empty';
+        empty.innerHTML = `
+            <span class="material-symbols-outlined wb-inputs-empty-icon">drag_pan</span>
+            <div>Drag nodes onto the canvas to configure their inputs here.</div>
+        `;
+        container.appendChild(empty);
+        return;
+    }
+
+    let hasAnyInputs = false;
+
+    wbState.nodes.forEach((node) => {
+        const meta = wbMeta(node.type);
+        const inputs = meta?.inputs || {};
+        const allInputKeys = Object.keys(inputs);
+        if (allInputKeys.length === 0) return; // node has no input ports at all
+
+        // Hide ports already supplied by upstream edges — those are not user-editable.
+        const connected = wbConnectedInputPorts(node.id);
+        const freeInputKeys = allInputKeys.filter((k) => !connected.has(k));
+        if (freeInputKeys.length === 0) return; // every input is wired; nothing to ask the user
+
+        hasAnyInputs = true;
+
+        const cat = wbCatColor(meta?.category);
+
+        const section = document.createElement('div');
+        section.className = 'wb-node-inputs-section';
+        section.style.setProperty('--wb-cat-color', cat.line);
+
+        // Header row: dot · id · — · name · count · chevron
+        const header = document.createElement('div');
+        header.className = 'wb-node-inputs-header';
+
+        const dot = document.createElement('span');
+        dot.className = 'wb-nid-cat';
+
+        const idChip = document.createElement('span');
+        idChip.className = 'wb-nid-id';
+        idChip.textContent = node.id;
+
+        const sep = document.createElement('span');
+        sep.className = 'wb-nid-sep';
+        sep.textContent = '·';
+
+        const name = document.createElement('span');
+        name.className = 'wb-nid-name';
+        name.textContent = meta?.name || node.type;
+        name.title = meta?.name || node.type;
+
+        const count = document.createElement('span');
+        count.className = 'wb-nid-count';
+        count.textContent = `${freeInputKeys.length} ${freeInputKeys.length === 1 ? 'field' : 'fields'}`;
+
+        const chevron = document.createElement('span');
+        chevron.className = 'material-symbols-outlined text-[18px] wb-nid-chevron';
+        chevron.textContent = 'expand_more';
+
+        header.appendChild(dot);
+        header.appendChild(idChip);
+        header.appendChild(sep);
+        header.appendChild(name);
+        header.appendChild(count);
+        header.appendChild(chevron);
+
+        // Body with form fields (inner sub-grid)
+        const body = document.createElement('div');
+        body.className = 'wb-node-inputs-body';
+
+        const nodeInputs = wbInitialInputs[node.id] || {};
+
+        freeInputKeys.forEach((portName) => {
+            const typeStr = inputs[portName];
+            const value = nodeInputs[portName];
+            const { container: fieldWrap } = wbRenderField(portName, typeStr, value, (val) => {
+                if (!wbInitialInputs[node.id]) wbInitialInputs[node.id] = {};
+                if (val === undefined || val === '') {
+                    delete wbInitialInputs[node.id][portName];
+                } else {
+                    wbInitialInputs[node.id][portName] = val;
+                }
+                wbSyncInputsTextarea();
+            });
+            // textarea fields take the full row for easier editing
+            const t = (typeStr || 'str').toLowerCase().trim();
+            if (t !== 'str' && t !== 'int' && t !== 'float' && t !== 'bool') {
+                fieldWrap.style.gridColumn = '1 / -1';
+            }
+            body.appendChild(fieldWrap);
+        });
+
+        // Collapsible toggle
+        let collapsed = false;
+        header.addEventListener('click', () => {
+            collapsed = !collapsed;
+            body.classList.toggle('collapsed', collapsed);
+            chevron.style.transform = collapsed ? 'rotate(-90deg)' : '';
+        });
+
+        section.appendChild(header);
+        section.appendChild(body);
+        container.appendChild(section);
+    });
+
+    if (!hasAnyInputs) {
+        const empty = document.createElement('div');
+        empty.className = 'wb-inputs-empty';
+        empty.innerHTML = `
+            <span class="material-symbols-outlined wb-inputs-empty-icon">check_circle</span>
+            <div>No input fields needed — every node on the canvas is fully wired.</div>
+        `;
+        container.appendChild(empty);
+    }
 }
 
 function wbApplyWorldTransform() {
@@ -505,11 +797,59 @@ function wbRenderNodes() {
                 wbMergeEdge(wbLinkDrag.sourceId, tgtId, { [wbLinkDrag.outPort]: inPort });
                 wbLinkDrag = null;
                 wbScheduleRedrawEdges();
+                wbRenderInitialInputsForm();
             });
         });
     });
 
     wbScheduleRedrawEdges();
+}
+
+/** Infer a type string from a runtime value for the params form. */
+function wbInferType(v) {
+    if (typeof v === 'boolean') return 'bool';
+    if (typeof v === 'number') return Number.isInteger(v) ? 'int' : 'float';
+    if (typeof v === 'string') return 'str';
+    if (Array.isArray(v)) return 'list';
+    if (typeof v === 'object' && v !== null) return 'dict';
+    return 'str';
+}
+
+/** Render the dynamic parameter form for a node in the inspector. */
+function wbRenderParamsForm(node, meta) {
+    const container = document.getElementById('wb-inspector-params-form');
+    const paramsTa = document.getElementById('wb-inspector-params');
+    if (!container || !paramsTa) return;
+
+    container.innerHTML = '';
+    const params = node.params || {};
+    const keys = Object.keys(params);
+
+    if (wbParamsMode === 'json') {
+        container.classList.add('hidden');
+        paramsTa.classList.remove('hidden');
+        return;
+    }
+
+    container.classList.remove('hidden');
+    paramsTa.classList.add('hidden');
+
+    if (keys.length === 0) {
+        const empty = document.createElement('div');
+        empty.className = 'wb-inputs-empty';
+        empty.textContent = 'No parameters — defaults will be used.';
+        container.appendChild(empty);
+        return;
+    }
+
+    keys.forEach((k) => {
+        const typeStr = wbInferType(params[k]);
+        const { container: fieldWrap } = wbRenderField(k, typeStr, params[k], (val) => {
+            node.params = { ...(node.params || {}), [k]: val };
+            paramsTa.value = JSON.stringify(node.params, null, 2);
+        });
+        container.appendChild(fieldWrap);
+    });
 }
 
 function wbSyncInspector() {
@@ -573,6 +913,7 @@ function wbSyncInspector() {
     if (typeEl) typeEl.textContent = n.type;
     if (descEl) descEl.textContent = meta?.description || '';
     if (paramsTa) paramsTa.value = JSON.stringify(n.params || {}, null, 2);
+    wbRenderParamsForm(n, meta);
 
     if (connEl && connWrap) {
         connEl.innerHTML = '';
@@ -646,6 +987,8 @@ function wbSyncInspector() {
 function wbWireInspectorOnce() {
     const idInp = document.getElementById('wb-inspector-id');
     const paramsTa = document.getElementById('wb-inspector-params');
+    const formBtn = document.getElementById('wb-params-form-btn');
+    const jsonBtn = document.getElementById('wb-params-json-btn');
     if (!idInp || idInp.dataset.wbBound === '1') return;
     idInp.dataset.wbBound = '1';
     idInp.addEventListener('change', () => {
@@ -672,6 +1015,19 @@ function wbWireInspectorOnce() {
             paramsTa.value = JSON.stringify(n.params || {}, null, 2);
         }
     });
+
+    // Form / JSON toggle for params
+    if (formBtn && jsonBtn) {
+        const activate = (mode) => {
+            wbParamsMode = mode;
+            formBtn.classList.toggle('active', mode === 'form');
+            jsonBtn.classList.toggle('active', mode === 'json');
+            const n = wbState.nodes.find((x) => x.id === wbState.selectedId);
+            if (n) wbRenderParamsForm(n, wbMeta(n.type));
+        };
+        formBtn.addEventListener('click', () => activate('form'));
+        jsonBtn.addEventListener('click', () => activate('json'));
+    }
 }
 
 function wbDeleteSelectedNode() {
@@ -680,9 +1036,12 @@ function wbDeleteSelectedNode() {
     if (wbSelectedWire && (wbSelectedWire.source === id || wbSelectedWire.target === id)) wbSelectedWire = null;
     wbState.nodes = wbState.nodes.filter((n) => n.id !== id);
     wbRemoveEdgesForNode(id);
+    delete wbInitialInputs[id];
+    wbSyncInputsTextarea();
     wbState.selectedId = null;
     wbRenderNodes();
     wbSyncInspector();
+    wbRenderInitialInputsForm();
 }
 
 /** Order in the template dropdown (first is the default). */
@@ -812,6 +1171,7 @@ function wbAddNodeAt(typeId, wx, wy) {
     wbState.selectedId = id;
     wbRenderNodes();
     wbSyncInspector();
+    wbRenderInitialInputsForm();
 }
 
 function wbRenderPalette() {
@@ -961,19 +1321,147 @@ async function wbRun() {
     }
 }
 
-function wbWireTemplateSelect() {
+/** Cache of remote presets fetched from /api/workflows/presets. */
+const wbRemotePresets = new Map();
+/** Cache of fully-resolved preset definitions (preset_id -> template object). */
+const wbRemoteTemplateCache = new Map();
+
+function wbRebuildTemplateOptions() {
     const sel = document.getElementById('wb-template-select');
-    if (!sel || sel.dataset.bound === '1') return;
-    sel.dataset.bound = '1';
+    if (!sel) return;
+    const current = sel.value;
     sel.innerHTML = '';
+
+    const builtinGroup = document.createElement('optgroup');
+    builtinGroup.label = 'Built-in templates';
     WB_TEMPLATE_KEYS.forEach((k) => {
         const opt = document.createElement('option');
         opt.value = k;
         opt.textContent = WB_TEMPLATES[k].label;
-        sel.appendChild(opt);
+        builtinGroup.appendChild(opt);
     });
+    sel.appendChild(builtinGroup);
+
+    // Group remote presets by category.
+    const byCat = new Map();
+    wbRemotePresets.forEach((p) => {
+        const cat = p.category || 'other';
+        if (!byCat.has(cat)) byCat.set(cat, []);
+        byCat.get(cat).push(p);
+    });
+    const catLabels = {
+        drug_discovery: 'Drug discovery scenarios',
+        protein: 'Protein workflows',
+        other: 'More presets',
+    };
+    Array.from(byCat.keys())
+        .sort()
+        .forEach((cat) => {
+            const group = document.createElement('optgroup');
+            group.label = catLabels[cat] || cat;
+            byCat
+                .get(cat)
+                .sort((a, b) => (a.name || a.id).localeCompare(b.name || b.id))
+                .forEach((p) => {
+                    const opt = document.createElement('option');
+                    opt.value = p.id;
+                    opt.textContent = p.name || p.id;
+                    group.appendChild(opt);
+                });
+            sel.appendChild(group);
+        });
+
+    if (current && (WB_TEMPLATES[current] || wbRemotePresets.has(current))) {
+        sel.value = current;
+    } else {
+        sel.value = 'uniprot_mw_text';
+    }
+}
+
+async function wbLoadRemotePresets() {
+    try {
+        const res = await fetch('/api/workflows/presets');
+        if (!res.ok) {
+            console.warn('[wb] /api/workflows/presets returned', res.status);
+            return;
+        }
+        const data = await res.json();
+        const presets = data.presets || [];
+        presets.forEach((p) => {
+            if (!p || !p.id) return;
+            if (WB_TEMPLATES[p.id]) return;
+            wbRemotePresets.set(p.id, p);
+        });
+        console.info(
+            `[wb] loaded ${presets.length} remote presets (${wbRemotePresets.size} added to templates)`,
+        );
+        wbRebuildTemplateOptions();
+    } catch (e) {
+        console.warn('[wb] failed to load remote presets:', e);
+    }
+}
+
+async function wbFetchRemoteTemplate(presetId) {
+    if (wbRemoteTemplateCache.has(presetId)) return wbRemoteTemplateCache.get(presetId);
+    const res = await fetch(`/api/workflows/presets/${encodeURIComponent(presetId)}/definition`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    const def = data.definition || { nodes: [], edges: [] };
+    const layout = data.layout || {};
+    const template = {
+        label: data.name || presetId,
+        nodes: (def.nodes || []).map((n) => ({
+            id: n.id,
+            type: n.type,
+            params: n.params || {},
+            x: layout[n.id]?.x,
+            y: layout[n.id]?.y,
+        })),
+        edges: (def.edges || []).map((e) => ({
+            source: e.source,
+            target: e.target,
+            port_map: e.port_map || {},
+        })),
+        initial_inputs: data.initial_inputs || {},
+    };
+    wbRemoteTemplateCache.set(presetId, template);
+    return template;
+}
+
+async function wbApplyTemplateAsync(key) {
+    if (WB_TEMPLATES[key]) {
+        wbApplyTemplate(key);
+        return;
+    }
+    if (!wbRemotePresets.has(key)) {
+        wbApplyTemplate('blank');
+        return;
+    }
+    const sel = document.getElementById('wb-template-select');
+    const prev = sel?.value;
+    if (sel) sel.disabled = true;
+    try {
+        const t = await wbFetchRemoteTemplate(key);
+        WB_TEMPLATES[key] = t; // register so subsequent wbApplyTemplate calls work
+        wbApplyTemplate(key);
+    } catch (e) {
+        console.error('Failed to load preset definition:', e);
+        if (typeof showToast === 'function') {
+            showToast(`Failed to load template: ${e}`, 'error');
+        }
+        if (sel && prev && prev !== key) sel.value = prev;
+    } finally {
+        if (sel) sel.disabled = false;
+    }
+}
+
+function wbWireTemplateSelect() {
+    const sel = document.getElementById('wb-template-select');
+    if (!sel || sel.dataset.bound === '1') return;
+    sel.dataset.bound = '1';
+    wbRebuildTemplateOptions();
     sel.value = 'uniprot_mw_text';
-    sel.addEventListener('change', () => wbApplyTemplate(sel.value));
+    sel.addEventListener('change', () => wbApplyTemplateAsync(sel.value));
 }
 
 function wbWireCanvasInteractions() {
@@ -982,12 +1470,21 @@ function wbWireCanvasInteractions() {
     vp.dataset.wbWired = '1';
 
     vp.addEventListener('mousedown', (e) => {
-        if (e.target.closest('.wb-node') || e.target.closest('button')) return;
-        if (e.button === 1 || (e.button === 0 && e.shiftKey)) {
-            e.preventDefault();
-            wbPanDrag = { sx: e.clientX, sy: e.clientY, tx: wbState.view.tx, ty: wbState.view.ty };
-            vp.classList.add('wb-panning');
-        }
+        // Don't hijack clicks on nodes, wires, or inspector controls.
+        if (e.target.closest('.wb-node')) return;
+        if (e.target.closest('button')) return;
+        if (e.target.closest('path.wb-wire-hit')) return;
+        // Pan on middle-mouse, shift+left-click, or plain left-click on empty canvas.
+        if (e.button !== 0 && e.button !== 1) return;
+        e.preventDefault();
+        wbPanDrag = {
+            sx: e.clientX,
+            sy: e.clientY,
+            tx: wbState.view.tx,
+            ty: wbState.view.ty,
+            moved: false,
+        };
+        vp.classList.add('wb-panning');
     });
 
     window.addEventListener('mousemove', (e) => {
@@ -1007,8 +1504,11 @@ function wbWireCanvasInteractions() {
             }
         }
         if (wbPanDrag) {
-            wbState.view.tx = wbPanDrag.tx + (e.clientX - wbPanDrag.sx);
-            wbState.view.ty = wbPanDrag.ty + (e.clientY - wbPanDrag.sy);
+            const dx = e.clientX - wbPanDrag.sx;
+            const dy = e.clientY - wbPanDrag.sy;
+            if (!wbPanDrag.moved && Math.hypot(dx, dy) > 3) wbPanDrag.moved = true;
+            wbState.view.tx = wbPanDrag.tx + dx;
+            wbState.view.ty = wbPanDrag.ty + dy;
             wbApplyWorldTransform();
             wbScheduleRedrawEdges();
         }
@@ -1026,6 +1526,9 @@ function wbWireCanvasInteractions() {
             wbScheduleRedrawEdges();
         }
         if (wbPanDrag) {
+            // Swallow the trailing click if the user actually dragged so
+            // panning doesn't deselect nodes/wires.
+            if (wbPanDrag.moved) wbState._suppressNextClick = true;
             wbPanDrag = null;
             vp.classList.remove('wb-panning');
         }
@@ -1038,14 +1541,33 @@ function wbWireCanvasInteractions() {
     vp.addEventListener(
         'wheel',
         (e) => {
-            if (!e.ctrlKey && !e.metaKey) return;
             e.preventDefault();
+            // Trackpad two-finger pan: reports wheel with deltaMode=0, small
+            // deltas, often both deltaX and deltaY, and no ctrlKey. Browsers
+            // synthesize ctrlKey=true for pinch-zoom gestures so we can split:
+            //   - ctrl/meta/pinch → zoom
+            //   - plain wheel without ctrl and with any deltaX → pan
+            //   - plain wheel without ctrl and only deltaY → zoom (mouse wheel)
+            const isPinch = e.ctrlKey || e.metaKey;
+            const isTrackpadPan =
+                !isPinch && (Math.abs(e.deltaX) > 0 || e.shiftKey);
+            if (isTrackpadPan) {
+                wbState.view.tx -= e.deltaX;
+                wbState.view.ty -= e.deltaY;
+                wbApplyWorldTransform();
+                wbScheduleRedrawEdges();
+                return;
+            }
             const rect = vp.getBoundingClientRect();
             const mx = e.clientX - rect.left;
             const my = e.clientY - rect.top;
             const old = wbState.view.scale;
-            const delta = e.deltaY > 0 ? 0.92 : 1.08;
-            const ns = Math.min(1.8, Math.max(0.25, old * delta));
+            // Zoom speed: pinch zoom reports large deltaY, mouse wheel reports
+            // discrete steps. Normalize so both feel comparable.
+            const step = Math.min(Math.abs(e.deltaY), 50) / 50; // 0..1
+            const dir = e.deltaY > 0 ? -1 : 1;
+            const factor = 1 + dir * step * 0.12;
+            const ns = Math.min(1.8, Math.max(0.25, old * factor));
             const k = ns / old;
             wbState.view.tx = mx - (mx - wbState.view.tx) * k;
             wbState.view.ty = my - (my - wbState.view.ty) * k;
@@ -1057,7 +1579,12 @@ function wbWireCanvasInteractions() {
     );
 
     vp.addEventListener('click', (e) => {
+        if (wbState._suppressNextClick) {
+            wbState._suppressNextClick = false;
+            return;
+        }
         if (e.target.closest('.wb-node')) return;
+        if (e.target.closest('path.wb-wire-hit')) return;
         wbState.selectedId = null;
         wbSelectedWire = null;
         wbDrawEdges();
@@ -1093,7 +1620,8 @@ function wbWireBottomTabs() {
                 b.classList.toggle('border-transparent', !on);
             });
             document.querySelectorAll('.wb-bottom-panel').forEach((p) => p.classList.add('hidden'));
-            if (tab === 'inputs') document.getElementById('wb-initial-inputs')?.classList.remove('hidden');
+            if (tab === 'inputs') document.getElementById('wb-initial-inputs-form')?.classList.remove('hidden');
+            if (tab === 'inputs-json') document.getElementById('wb-initial-inputs')?.classList.remove('hidden');
             if (tab === 'sink') document.getElementById('wb-sink-json')?.classList.remove('hidden');
             if (tab === 'nodes') document.getElementById('wb-builder-nodes-json')?.classList.remove('hidden');
         });
@@ -1136,8 +1664,11 @@ async function initWorkflowBuilder() {
     });
 
     try {
-        const res = await fetch('/api/workflows/node-types');
-        const data = await res.json();
+        const [typesRes] = await Promise.all([
+            fetch('/api/workflows/node-types'),
+            wbLoadRemotePresets(),
+        ]);
+        const data = await typesRes.json();
         wbNodeTypes = data.node_types || [];
         const hint = document.getElementById('wb-node-type-count');
         if (hint) hint.textContent = String(wbNodeTypes.length);
@@ -1145,7 +1676,7 @@ async function initWorkflowBuilder() {
         wbRenderPalette();
 
         if (!wbState.nodes.length) {
-            wbApplyTemplate(document.getElementById('wb-template-select')?.value || 'uniprot_mw_text');
+            await wbApplyTemplateAsync(document.getElementById('wb-template-select')?.value || 'uniprot_mw_text');
         } else {
             wbApplyWorldTransform();
             wbRenderNodes();
