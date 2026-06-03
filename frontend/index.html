@@ -579,6 +579,10 @@
                     <span class="material-symbols-outlined text-[20px]">info</span>
                     <span class="font-medium text-sm">About</span>
                 </a>
+                <a href="#" id="nav-admin" class="nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-text-subtle hover:text-text-theme hover:bg-hover-bg transition-all">
+                    <span class="material-symbols-outlined text-[20px]">admin_panel_settings</span>
+                    <span class="font-medium text-sm">Admin</span>
+                </a>
             </div>
 
         <!-- Settings Footer -->
@@ -1324,11 +1328,74 @@
         </div>
     </div>
 
+    <!-- Admin Dashboard View -->
+    <div id="admin-view" class="hidden fixed inset-0 z-30 bg-background-dark overflow-y-auto">
+        <!-- Login form (shown when not authenticated) -->
+        <div id="admin-login" class="flex items-center justify-center min-h-screen">
+            <div class="admin-login-card">
+                <div class="text-center mb-8">
+                    <span class="material-symbols-outlined text-5xl text-primary">admin_panel_settings</span>
+                    <h2 class="text-2xl font-bold text-text-theme mt-4">Admin Dashboard</h2>
+                    <p class="text-text-subtle text-sm mt-1">BioAgents Administration</p>
+                </div>
+                <form id="admin-login-form" class="space-y-4">
+                    <div>
+                        <label class="block text-sm font-medium text-text-secondary mb-1">Password</label>
+                        <input type="password" id="admin-password" class="admin-search-input w-full px-4 py-3 text-base" placeholder="Enter admin password">
+                    </div>
+                    <div id="admin-login-error" class="text-sm text-accent-rose hidden"></div>
+                    <button type="submit" class="w-full py-3 bg-primary text-slate-900 font-bold rounded-lg hover:bg-primary/90 transition-all">Sign In</button>
+                </form>
+                <button onclick="document.getElementById('admin-view').classList.add('hidden');document.querySelector('.flex-1.grid.grid-cols-12').classList.remove('hidden');if(typeof showResearch==='function')showResearch();" class="mt-4 w-full py-2 text-sm text-text-subtle hover:text-text-theme transition-all">← Back to Research</button>
+            </div>
+        </div>
+        <!-- Dashboard (shown when authenticated) -->
+        <div id="admin-dashboard" class="hidden">
+            <!-- Top bar -->
+            <div class="admin-topbar">
+                <div class="flex items-center gap-3">
+                    <span class="material-symbols-outlined text-primary">admin_panel_settings</span>
+                    <h1 class="text-lg font-bold text-text-theme">Admin Dashboard</h1>
+                </div>
+                <div class="flex items-center gap-2">
+                    <button id="admin-refresh" class="admin-topbar-btn" title="Refresh">
+                        <span class="material-symbols-outlined text-[18px]">refresh</span>
+                    </button>
+                    <button id="admin-logout" class="admin-topbar-btn" title="Logout">
+                        <span class="material-symbols-outlined text-[18px]">logout</span>
+                    </button>
+                </div>
+            </div>
+            <!-- Content area -->
+            <div class="admin-content space-y-6">
+                <!-- Stats cards -->
+                <div id="admin-stats-cards" class="grid grid-cols-2 md:grid-cols-4 gap-4"></div>
+                <!-- Tab navigation -->
+                <div class="admin-tabs">
+                    <button data-tab="overview" class="admin-tab active">Overview</button>
+                    <button data-tab="clients" class="admin-tab">Clients</button>
+                    <button data-tab="sessions" class="admin-tab">Sessions</button>
+                    <button data-tab="chats" class="admin-tab">Chats</button>
+                    <button data-tab="experiments" class="admin-tab">Experiments</button>
+                    <button data-tab="workflows" class="admin-tab">Workflows</button>
+                    <button data-tab="tools" class="admin-tab">Tool Calls</button>
+                    <button data-tab="decisions" class="admin-tab">Decisions</button>
+                    <button data-tab="logs" class="admin-tab">Activity Log</button>
+                    <button data-tab="timeline" class="admin-tab">Session Detail</button>
+                </div>
+                <!-- Tab content -->
+                <div id="admin-tab-content"></div>
+            </div>
+        </div>
+    </div>
+
     <!-- Scripts -->
     <script src="static/js/workflows.js"></script>
     <script src="static/js/workflow_builder.js"></script>
     <script src="static/js/drug_discovery.js"></script>
     <script src="static/js/experiments.js"></script>
+    <script src="static/js/admin.js"></script>
+    <link rel="stylesheet" href="static/css/admin.css">
     <script src="static/js/app.js"></script>
     <script>
         // View switching between Research and Experiments
@@ -1712,9 +1779,10 @@
             }
 
             const aboutView = document.getElementById('about-view');
+            const adminView = document.getElementById('admin-view');
 
-            const allViews = [researchView, expView, workflowsView, workflowBuilderView, drugDiscoveryView, aboutView];
-            const allNavIds = ['nav-research','nav-experiments','nav-workflows','nav-workflow-builder','nav-drug-discovery','nav-about'];
+            const allViews = [researchView, expView, workflowsView, workflowBuilderView, drugDiscoveryView, aboutView, adminView];
+            const allNavIds = ['nav-research','nav-experiments','nav-workflows','nav-workflow-builder','nav-drug-discovery','nav-about','nav-admin'];
 
             function clearActive() {
                 allNavIds.forEach(id => navInactive(document.getElementById(id)));
@@ -1782,6 +1850,17 @@
             }
             document.getElementById('nav-about')?.addEventListener('click', e => { e.preventDefault(); showAbout(); });
             document.getElementById('about-close')?.addEventListener('click', e => { e.preventDefault(); showResearch(); });
+
+            function showAdmin() {
+                allViews.forEach(v => v.classList.add('hidden'));
+                adminView.classList.remove('hidden');
+                adminView.style.display = '';
+                clearActive();
+                navActive(document.getElementById('nav-admin'));
+                document.getElementById('projectTitle').textContent = 'Admin Dashboard';
+                if (typeof initAdmin === 'function') initAdmin();
+            }
+            document.getElementById('nav-admin')?.addEventListener('click', e => { e.preventDefault(); showAdmin(); });
         })();
     </script>
 </body>
