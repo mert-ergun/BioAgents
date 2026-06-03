@@ -1,4 +1,4 @@
-"""LLM provider configuration supporting OpenAI, Ollama, and Google Gemini."""
+"""LLM provider configuration supporting OpenAI, Ollama, Google Gemini, and OpenRouter."""
 
 import os
 from contextvars import ContextVar
@@ -120,7 +120,7 @@ def _get_or_create_rate_limiter(provider: str, requests_per_minute: int) -> Rate
 
 
 def get_llm(
-    provider: Literal["openai", "ollama", "gemini"] | None = None,
+    provider: Literal["openai", "ollama", "gemini", "openrouter"] | None = None,
     model: str | None = None,
     temperature: float = 0.0,
     prompt_name: str | None = None,
@@ -129,7 +129,7 @@ def get_llm(
     Get a configured LLM instance with optional rate limiting.
 
     Args:
-        provider: The LLM provider to use ('openai', 'ollama', or 'gemini').
+        provider: The LLM provider to use ('openai', 'ollama', 'gemini', or 'openrouter').
                   If None, reads from LLM_PROVIDER env var (defaults to 'openai')
         model: The model name. If None, uses defaults or prompt metadata:
                - Prompt metadata (if prompt_name provided and models defined)
@@ -137,6 +137,7 @@ def get_llm(
                  * OpenAI: 'gpt-5.1'
                  * Ollama: 'qwen3:14b'
                  * Gemini: 'gemini-3.1-flash-lite'
+                 * OpenRouter: 'deepseek/deepseek-v4-flash'
         temperature: The temperature for generation (0.0 = deterministic)
         prompt_name: Optional prompt identifier used to look up provider-specific
                      model recommendations in the XML metadata
@@ -150,12 +151,13 @@ def get_llm(
         - GEMINI_RATE_LIMIT: Max requests per minute for Gemini (default: 8)
           Default is conservative to provide buffer below the 10 req/min free tier limit
         - OLLAMA_RATE_LIMIT: Max requests per minute for Ollama (default: no limit)
+        - OPENROUTER_RATE_LIMIT: Max requests per minute for OpenRouter (default: no limit)
 
         Request timeouts (HTTP; avoids hanging forever on a stuck API call):
-        - LLM_REQUEST_TIMEOUT: Default seconds for OpenAI and Gemini (default: 600).
+        - LLM_REQUEST_TIMEOUT: Default seconds for OpenAI, Gemini, and OpenRouter (default: 600).
           Set to ``0`` to disable.
-        - GEMINI_REQUEST_TIMEOUT / OPENAI_REQUEST_TIMEOUT / OLLAMA_REQUEST_TIMEOUT:
-          Override per provider.
+        - GEMINI_REQUEST_TIMEOUT / OPENAI_REQUEST_TIMEOUT / OLLAMA_REQUEST_TIMEOUT
+          / OPENROUTER_REQUEST_TIMEOUT: Override per provider.
 
         Additional safety limits (see ``bioagents.limits``):
         - GEMINI_THINKING_BUDGET: Thinking token budget for Gemini (default: 0 = disabled).
@@ -169,9 +171,9 @@ def get_llm(
         provider = _provider_override.get()  # type: ignore[assignment]
     if provider is None:
         provider_str = os.getenv("LLM_PROVIDER", "openai").lower()
-        if provider_str not in ("openai", "ollama", "gemini"):
+        if provider_str not in ("openai", "ollama", "gemini", "openrouter"):
             raise ValueError(
-                f"Invalid LLM_PROVIDER: {provider_str}. Must be one of: openai, ollama, gemini"
+                f"Invalid LLM_PROVIDER: {provider_str}. Must be one of: openai, ollama, gemini, openrouter"
             )
         provider = provider_str  # type: ignore[assignment]
     if model is None:
@@ -274,6 +276,37 @@ def get_llm(
         rate_limiter = _get_or_create_rate_limiter("gemini", requests_per_minute)
         if rate_limiter:
             return RateLimitedLLM(llm, rate_limiter)
+
+        return llm
+
+    elif provider == "openrouter":
+        model = model or "deepseek/deepseek-v4-flash"
+        api_key = _get_api_key("openrouter") or os.getenv("OPENROUTER_API_KEY")
+        if not api_key:
+            raise ValueError(
+                "OPENROUTER_API_KEY not set. Add it in Settings or set the "
+                "OPENROUTER_API_KEY environment variable."
+            )
+
+        openrouter_timeout = _request_timeout_seconds(
+            "OPENROUTER_REQUEST_TIMEOUT",
+            _request_timeout_seconds("LLM_REQUEST_TIMEOUT", 600.0),
+        )
+        llm = ChatOpenAI(
+            model=model,
+            temperature=temperature,
+            base_url="https://openrouter.ai/api/v1",
+            api_key=SecretStr(api_key),
+            timeout=openrouter_timeout,
+        )
+        llm = _wrap_llm_with_invoke_timeout(llm)
+
+        rate_limit = os.getenv("OPENROUTER_RATE_LIMIT")
+        if rate_limit:
+            requests_per_minute = int(rate_limit)
+            rate_limiter = _get_or_create_rate_limiter("openrouter", requests_per_minute)
+            if rate_limiter:
+                return RateLimitedLLM(llm, rate_limiter)
 
         return llm
 

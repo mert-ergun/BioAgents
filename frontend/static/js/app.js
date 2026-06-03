@@ -79,6 +79,7 @@ const state = {
         apiKeys: {
             openai: '',
             gemini: '',
+            openrouter: '',
         },
     },
     notifications: [],
@@ -1076,6 +1077,7 @@ function getApiKeysPayload() {
     const payload = {};
     if (keys.openai?.trim()) payload.openai = keys.openai.trim();
     if (keys.gemini?.trim()) payload.gemini = keys.gemini.trim();
+    if (keys.openrouter?.trim()) payload.openrouter = keys.openrouter.trim();
     return Object.keys(payload).length ? payload : undefined;
 }
 
@@ -3279,6 +3281,17 @@ function showSettingsPanel() {
             { id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash', desc: 'Cost-effective general' },
             { id: 'gemini-2.0-flash-lite', name: 'Gemini 2.0 Flash-Lite', desc: 'Ultra-efficient simple' },
         ],
+        openrouter: [
+            { id: 'deepseek/deepseek-v4-flash', name: 'DeepSeek V4 Flash', desc: 'Cost-effective reasoning' },
+            { id: 'anthropic/claude-sonnet-4.6', name: 'Claude Sonnet 4.6', desc: 'Balanced & capable' },
+            { id: 'anthropic/claude-opus-4.7', name: 'Claude Opus 4.7', desc: 'Most powerful' },
+            { id: 'openai/gpt-5.5', name: 'GPT-5.5', desc: 'Latest OpenAI' },
+            { id: 'google/gemini-3.5-flash', name: 'Gemini 3.5 Flash', desc: 'Latest Google' },
+            { id: 'google/gemini-2.5-flash', name: 'Gemini 2.5 Flash', desc: 'Fast & efficient' },
+            { id: 'deepseek/deepseek-v4-pro', name: 'DeepSeek V4 Pro', desc: 'Advanced reasoning' },
+            { id: 'qwen/qwen3-235b-a22b-2507', name: 'Qwen3 235B', desc: 'Alibaba MoE model' },
+            { id: 'openai/gpt-4o-mini', name: 'GPT-4o Mini', desc: 'Budget OpenAI' },
+        ],
     };
 
     const currentProvider = state.settings.llmProvider || 'gemini';
@@ -3341,6 +3354,7 @@ function showSettingsPanel() {
                             <option value="gemini" ${currentProvider === 'gemini' ? 'selected' : ''}>Google Gemini</option>
                             <option value="openai" ${currentProvider === 'openai' ? 'selected' : ''}>OpenAI</option>
                             <option value="ollama" ${currentProvider === 'ollama' ? 'selected' : ''}>Ollama (local)</option>
+                            <option value="openrouter" ${currentProvider === 'openrouter' ? 'selected' : ''}>OpenRouter</option>
                         </select>
                     </div>
                     <div>
@@ -3351,6 +3365,10 @@ function showSettingsPanel() {
                     <div id="ollamaModelRow" class="${currentProvider === 'ollama' ? '' : 'hidden'}">
                         <label class="block text-xs text-text-muted mb-1">Ollama Model Name</label>
                         <input type="text" id="ollamaModelInput" class="w-full px-3 py-2 rounded-lg bg-hover-bg-strong border border-border-inverse text-sm text-text-theme placeholder-slate-500 focus:border-primary/50 focus:ring-1 focus:ring-primary/30 outline-none" placeholder="qwen3:14b" value="${currentProvider === 'ollama' ? (currentModel || 'qwen3:14b') : 'qwen3:14b'}" autocomplete="off"/>
+                    </div>
+                    <div id="openrouterModelRow" class="${currentProvider === 'openrouter' ? '' : 'hidden'}">
+                        <label class="block text-xs text-text-muted mb-1">OpenRouter Custom Model</label>
+                        <input type="text" id="openrouterModelInput" class="w-full px-3 py-2 rounded-lg bg-hover-bg-strong border border-border-inverse text-sm text-text-theme placeholder-slate-500 focus:border-primary/50 focus:ring-1 focus:ring-primary/30 outline-none" placeholder="deepseek/deepseek-v4-flash" value="${currentProvider === 'openrouter' ? (currentModel || 'deepseek/deepseek-v4-flash') : 'deepseek/deepseek-v4-flash'}" autocomplete="off"/>
                     </div>
                 </div>
 
@@ -3368,6 +3386,10 @@ function showSettingsPanel() {
                     <div id="geminiKeyRow">
                         <label class="block text-xs text-text-muted mb-1">Google Gemini API Key</label>
                         <input type="password" id="apiKeyGemini" class="api-key-input w-full px-3 py-2 rounded-lg bg-hover-bg-strong border border-border-inverse text-sm text-text-theme placeholder-slate-500 focus:border-primary/50 focus:ring-1 focus:ring-primary/30 outline-none" placeholder="AIza..." value="${state.settings.apiKeys?.gemini || ''}" autocomplete="off"/>
+                    </div>
+                    <div id="openrouterKeyRow">
+                        <label class="block text-xs text-text-muted mb-1">OpenRouter API Key</label>
+                        <input type="password" id="apiKeyOpenRouter" class="api-key-input w-full px-3 py-2 rounded-lg bg-hover-bg-strong border border-border-inverse text-sm text-text-theme placeholder-slate-500 focus:border-primary/50 focus:ring-1 focus:ring-primary/30 outline-none" placeholder="sk-or-..." value="${state.settings.apiKeys?.openrouter || ''}" autocomplete="off"/>
                     </div>
                     <button class="settings-save-all w-full py-2 px-4 text-sm font-medium bg-primary/20 hover:bg-primary/30 border border-primary/30 text-primary rounded-lg transition-all">
                         Save Settings
@@ -3391,6 +3413,20 @@ function showSettingsPanel() {
             select.innerHTML = '<option value="qwen3:14b">qwen3:14b (default)</option>';
             return;
         }
+        if (provider === 'openrouter') {
+            const models = MODELS.openrouter || [];
+            models.forEach(m => {
+                const opt = document.createElement('option');
+                opt.value = m.id;
+                opt.textContent = `${m.name} — ${m.desc}`;
+                if (selectedModel && m.id === selectedModel) opt.selected = true;
+                select.appendChild(opt);
+            });
+            if (!selectedModel) {
+                select.value = 'deepseek/deepseek-v4-flash';
+            }
+            return;
+        }
         const models = MODELS[provider] || [];
         models.forEach(m => {
             const opt = document.createElement('option');
@@ -3401,7 +3437,7 @@ function showSettingsPanel() {
         });
         // Default selection
         if (!selectedModel && models.length > 0) {
-            const defaults = { openai: 'gpt-5', gemini: 'gemini-3.1-flash-lite' };
+            const defaults = { openai: 'gpt-5', gemini: 'gemini-3.1-flash-lite', openrouter: 'deepseek/deepseek-v4-flash' };
             const def = defaults[provider] || models[0].id;
             select.value = def;
         }
@@ -3424,6 +3460,7 @@ function showSettingsPanel() {
         const provider = e.target.value;
         populateModels(provider, null);
         modal.querySelector('#ollamaModelRow')?.classList.toggle('hidden', provider !== 'ollama');
+        modal.querySelector('#openrouterModelRow')?.classList.toggle('hidden', provider !== 'openrouter');
     });
 
     // Toggle buttons
@@ -3461,18 +3498,23 @@ function showSettingsPanel() {
     modal.querySelector('.settings-save-all')?.addEventListener('click', () => {
         const openaiInput = modal.querySelector('#apiKeyOpenAI');
         const geminiInput = modal.querySelector('#apiKeyGemini');
+        const openrouterInput = modal.querySelector('#apiKeyOpenRouter');
         const providerSelect = modal.querySelector('#llmProvider');
         const modelSelect = modal.querySelector('#llmModel');
         const ollamaInput = modal.querySelector('#ollamaModelInput');
+        const openrouterModelInput = modal.querySelector('#openrouterModelInput');
 
-        if (!state.settings.apiKeys) state.settings.apiKeys = { openai: '', gemini: '' };
+        if (!state.settings.apiKeys) state.settings.apiKeys = { openai: '', gemini: '', openrouter: '' };
         state.settings.apiKeys.openai = openaiInput?.value?.trim() || '';
         state.settings.apiKeys.gemini = geminiInput?.value?.trim() || '';
+        state.settings.apiKeys.openrouter = openrouterInput?.value?.trim() || '';
 
         const provider = providerSelect?.value || 'gemini';
         state.settings.llmProvider = provider;
         if (provider === 'ollama') {
             state.settings.llmModel = ollamaInput?.value?.trim() || 'qwen3:14b';
+        } else if (provider === 'openrouter') {
+            state.settings.llmModel = openrouterModelInput?.value?.trim() || modelSelect?.value || 'deepseek/deepseek-v4-flash';
         } else {
             state.settings.llmModel = modelSelect?.value || '';
         }
