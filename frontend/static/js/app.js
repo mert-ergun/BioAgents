@@ -60,6 +60,19 @@ const state = {
     isProcessing: false,
     reconnectAttempts: 0,
     currentSessionId: null,
+    clientId: (() => {
+        if (!localStorage.getItem('bioagents_client_id')) {
+            const raw = navigator.userAgent + screen.width + screen.height + new Date().getTimezoneOffset();
+            let hash = 0;
+            for (let i = 0; i < raw.length; i++) {
+                const char = raw.charCodeAt(i);
+                hash = ((hash << 5) - hash) + char;
+                hash = hash & hash;
+            }
+            localStorage.setItem('bioagents_client_id', Math.abs(hash).toString(16).padStart(16, '0'));
+        }
+        return localStorage.getItem('bioagents_client_id');
+    })(),
     sessions: [],
     messages: [],
     auditLog: [],
@@ -1062,7 +1075,7 @@ async function handleSubmit() {
     try {
         const apiKeys = getApiKeysPayload();
         if (state.isConnected && state.ws?.readyState === WebSocket.OPEN) {
-            state.ws.send(JSON.stringify({ type: 'query', content: query, api_keys: apiKeys, session_id: state.currentSessionId, provider: state.settings.llmProvider || undefined, model: state.settings.llmModel || undefined }));
+            state.ws.send(JSON.stringify({ type: 'query', content: query, api_keys: apiKeys, session_id: state.currentSessionId, client_id: state.clientId, provider: state.settings.llmProvider || undefined, model: state.settings.llmModel || undefined }));
         } else {
             await sendQueryViaRest(query, apiKeys);
         }

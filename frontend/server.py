@@ -72,6 +72,16 @@ app.mount("/static", StaticFiles(directory=FRONTEND_DIR / "static"), name="stati
 include_workflow_routes(app)
 include_drug_discovery_routes(app)
 
+# Admin dashboard and logging
+from frontend.admin_database import AdminDatabase  # noqa: E402
+from frontend.admin_routes import include_admin_routes  # noqa: E402
+from frontend.client_tracker import generate_client_id as _gen_client_id  # noqa: E402
+from frontend.logging_middleware import ActivityLoggingMiddleware  # noqa: E402
+
+admin_db = AdminDatabase()
+include_admin_routes(app, admin_db=admin_db)
+app.add_middleware(ActivityLoggingMiddleware, db=admin_db)
+
 # =====================================================
 # MODELS
 # =====================================================
@@ -640,6 +650,44 @@ async def websocket_endpoint(websocket: WebSocket):
                 ws_provider = data.get("provider")
                 ws_model = data.get("model")
                 if query:
+                    # Log user query to admin database
+                    ws_client_id = data.get("client_id") or _gen_client_id(
+                        websocket.client.host if websocket.client else "unknown",
+                        websocket.headers.get("user-agent", "unknown"),
+                    )
+                    try:
+                        admin_db.upsert_client(
+                            client_id=ws_client_id,
+                            ip_hash=_gen_client_id(
+                                websocket.client.host if websocket.client else "unknown", ""
+                            ),
+                            user_agent_hash=_gen_client_id(
+                                "", websocket.headers.get("user-agent", "unknown")
+                            ),
+                        )
+                        if session_id:
+                            admin_db.upsert_session(
+                                session_id=session_id,
+                                client_id=ws_client_id,
+                                provider=ws_provider,
+                                model=ws_model,
+                            )
+                            admin_db.increment_session_counter(session_id, "total_queries")
+                        admin_db.log_chat_message(
+                            client_id=ws_client_id,
+                            session_id=session_id or "unknown",
+                            role="user",
+                            content=query,
+                        )
+                        admin_db.log_activity(
+                            client_id=ws_client_id,
+                            session_id=session_id,
+                            action="query",
+                            details={"query_length": len(query)},
+                        )
+                    except Exception:
+                        logger.debug("Failed to log query to admin DB", exc_info=True)
+
                     # Create a steering queue for this query execution
                     steering_queue: asyncio.Queue[str] = asyncio.Queue()
 
@@ -683,6 +731,7 @@ async def websocket_endpoint(websocket: WebSocket):
                             steering_queue=steering_queue,
                             approval_queue=approval_queue,
                             engagement_queue=engagement_queue,
+                            client_id=ws_client_id,
                         )
                     except WebSocketDisconnect:
                         raise
@@ -715,6 +764,7 @@ async def run_bioagents_streaming(
     engagement_queue: asyncio.Queue[dict] | None = None,
     provider: str | None = None,
     model: str | None = None,
+    client_id: str | None = None,
 ):
     """Execute BioAgents query with WebSocket streaming and optional steering/approval support."""
     import uuid
@@ -839,6 +889,22 @@ async def run_bioagents_streaming(
                                 f"Engagement request sent: type={engagement_data.get('engagement_type')}, "
                                 f"question={engagement_data.get('question', '')[:80]}"
                             )
+                            # Log engagement request to admin DB
+                            try:
+                                admin_db.log_engagement_event(
+                                    client_id=client_id,
+                                    session_id=session_id or "unknown",
+                                    engagement_id=engagement_data.get("id", "unknown"),
+                                    engagement_type=engagement_data.get("engagement_type"),
+                                    question=engagement_data.get("question"),
+                                    options=json.dumps(engagement_data.get("options", [])),
+                                    context=engagement_data.get("context"),
+                                    agent=engagement_data.get("agent"),
+                                )
+                            except Exception:
+                                logger.debug(
+                                    "Failed to log engagement request to admin DB", exc_info=True
+                                )
                             try:
                                 response = await asyncio.wait_for(
                                     engagement_queue.get()
@@ -860,6 +926,18 @@ async def run_bioagents_streaming(
                                 logger.info(
                                     f"Engagement response received: {resume_payload['content'][:80]}"
                                 )
+                                # Log engagement response to admin DB
+                                try:
+                                    admin_db.update_engagement_event(
+                                        engagement_id=engagement_data.get("id"),
+                                        response_content=response.get("content", ""),
+                                        selected_option=response.get("selected_option"),
+                                    )
+                                except Exception:
+                                    logger.debug(
+                                        "Failed to log engagement response to admin DB",
+                                        exc_info=True,
+                                    )
                             except TimeoutError:
                                 resume_payload = {"content": ""}
                                 if not await safe_send(
@@ -870,6 +948,17 @@ async def run_bioagents_streaming(
                                 ):
                                     break
                                 logger.info("Engagement timed out, proceeding with best judgment")
+                                # Log engagement timeout to admin DB
+                                try:
+                                    admin_db.update_engagement_event(
+                                        engagement_id=engagement_data.get("id"),
+                                        timed_out=True,
+                                    )
+                                except Exception:
+                                    logger.debug(
+                                        "Failed to log engagement timeout to admin DB",
+                                        exc_info=True,
+                                    )
 
                             _stream_input = Command(resume=resume_payload)
                             resume_after_engagement = True
@@ -1022,6 +1111,43 @@ async def run_bioagents_streaming(
                     "messages": step_messages,
                 }
                 full_audit.append(audit_entry)
+
+                # Log agent response to admin database
+                if node_name in STREAM_UI_AGENTS and step_messages:
+                    try:
+                        for msg_info in step_messages:
+                            if msg_info["type"] == "AIMessage":
+                                tc_data = None
+                                if isinstance(m, AIMessage) and getattr(m, "tool_calls", None):
+                                    tc_data = [
+                                        {"name": tc.get("name"), "args": tc.get("args")}
+                                        for tc in m.tool_calls
+                                    ]
+                                admin_db.log_chat_message(
+                                    client_id=client_id,
+                                    session_id=session_id or "unknown",
+                                    role="assistant",
+                                    agent=node_name,
+                                    content=str(msg_info["content"]),
+                                    tool_calls=tc_data,
+                                )
+                    except Exception:
+                        logger.debug("Failed to log agent response to admin DB", exc_info=True)
+
+                # Log agent decision/reasoning to admin database
+                try:
+                    admin_db.log_agent_decision(
+                        client_id=client_id,
+                        session_id=session_id or "unknown",
+                        agent=node_name,
+                        decision=node_output.get("next", "Continue"),
+                        reasoning=node_output.get("reasoning", ""),
+                        step_messages=json.dumps(step_messages, default=str),
+                        step_index=len(full_audit),
+                    )
+                except Exception:
+                    logger.debug("Failed to log agent decision to admin DB", exc_info=True)
+
                 if not await safe_send({"type": "audit", "entries": full_audit}):
                     break
 
@@ -1048,6 +1174,20 @@ async def run_bioagents_streaming(
                                     }
                                 ):
                                     break
+                                # Log tool call to admin database
+                                try:
+                                    admin_db.log_tool_event(
+                                        client_id=client_id,
+                                        session_id=session_id or "unknown",
+                                        agent=node_name,
+                                        tool_name=tc.get("name", "unknown"),
+                                        event_type="call",
+                                        arguments=json.dumps(tc.get("args", {}), default=str),
+                                    )
+                                except Exception:
+                                    logger.debug(
+                                        "Failed to log tool call to admin DB", exc_info=True
+                                    )
                         elif isinstance(m, ToolMessage) and m.content:
                             tc_content = m.content
                             if isinstance(tc_content, list):
@@ -1087,6 +1227,23 @@ async def run_bioagents_streaming(
                                         }
                                     ):
                                         break
+                                    # Log tool approval request to admin DB
+                                    try:
+                                        admin_db.log_tool_approval_event(
+                                            client_id=client_id,
+                                            session_id=session_id or "unknown",
+                                            request_id=request_id,
+                                            tool_name=tool_name,
+                                            agent=node_name,
+                                            reason=reason,
+                                            risk_level=risk_level,
+                                            outcome="pending",
+                                        )
+                                    except Exception:
+                                        logger.debug(
+                                            "Failed to log approval request to admin DB",
+                                            exc_info=True,
+                                        )
 
                                     # Drain any approval responses that arrived
                                     if approval_queue is not None:
@@ -1103,6 +1260,17 @@ async def run_bioagents_streaming(
                                                             "message": f"Tool '{tool_name}' approved for this session",
                                                         }
                                                     )
+                                                    # Log approval to admin DB
+                                                    try:
+                                                        admin_db.update_tool_approval_event(
+                                                            request_id=request_id,
+                                                            outcome="approved",
+                                                        )
+                                                    except Exception:
+                                                        logger.debug(
+                                                            "Failed to log approval to admin DB",
+                                                            exc_info=True,
+                                                        )
                                             except asyncio.QueueEmpty:
                                                 break
                                     continue
@@ -1117,6 +1285,21 @@ async def run_bioagents_streaming(
                                         }
                                     ):
                                         break
+                                    # Log policy block to admin DB
+                                    try:
+                                        admin_db.log_tool_approval_event(
+                                            client_id=client_id,
+                                            session_id=session_id or "unknown",
+                                            request_id=str(uuid.uuid4()),
+                                            tool_name=tool_name,
+                                            agent=node_name,
+                                            outcome="blocked",
+                                            reason=tc_content[:500],
+                                        )
+                                    except Exception:
+                                        logger.debug(
+                                            "Failed to log policy block to admin DB", exc_info=True
+                                        )
                                     continue
 
                             if not await safe_send(
@@ -1130,6 +1313,23 @@ async def run_bioagents_streaming(
                                 }
                             ):
                                 break
+                            # Log tool result to admin DB
+                            try:
+                                result_str = (
+                                    tc_content if isinstance(tc_content, str) else str(tc_content)
+                                )
+                                truncated = len(result_str) > 100000
+                                admin_db.log_tool_event(
+                                    client_id=client_id,
+                                    session_id=session_id or "unknown",
+                                    agent=node_name,
+                                    tool_name=tool_name,
+                                    event_type="result",
+                                    result=result_str[:100000] if truncated else result_str,
+                                    result_truncated=1 if truncated else 0,
+                                )
+                            except Exception:
+                                logger.debug("Failed to log tool result to admin DB", exc_info=True)
 
                 if _client_disconnected:
                     break
@@ -1246,6 +1446,21 @@ async def run_bioagents_streaming(
                                             {"type": "artifact", "artifact": artifact}
                                         ):
                                             break
+                                        # Log artifact to admin DB
+                                        try:
+                                            admin_db.log_artifact_event(
+                                                client_id=client_id,
+                                                session_id=session_id or "unknown",
+                                                artifact_name=artifact["name"],
+                                                artifact_path=artifact.get("path"),
+                                                artifact_type=artifact.get("type"),
+                                                artifact_size=artifact.get("size"),
+                                                source_agent=node_name,
+                                            )
+                                        except Exception:
+                                            logger.debug(
+                                                "Failed to log artifact to admin DB", exc_info=True
+                                            )
                                         if not await safe_send(
                                             {
                                                 "type": "log",
@@ -1422,6 +1637,19 @@ async def start_experiment_run(request: ExperimentRunRequest):
     background_task.add_done_callback(
         lambda t: t.exception() if not t.cancelled() else None
     )  # consume result so exceptions don't go unobserved
+
+    # Log experiment start to admin database
+    try:
+        admin_db.log_experiment(
+            client_id=_gen_client_id("experiment_runner", "system"),
+            run_id=pending_run_id,
+            use_case_ids=request.use_case_ids,
+            config=request.config,
+            status="started",
+        )
+    except Exception:
+        logger.debug("Failed to log experiment to admin DB", exc_info=True)
+
     return {"status": "started", "run_id": pending_run_id, "use_case_count": len(use_cases)}
 
 
