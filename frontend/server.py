@@ -937,6 +937,9 @@ async def run_bioagents_streaming(
 
         _stream_input = initial_state
 
+        # Show supervisor as active immediately when execution starts
+        await safe_send({"type": "agent_update", "agent": "supervisor"})
+
         while True:
             resume_after_engagement = False
 
@@ -1042,8 +1045,35 @@ async def run_bioagents_streaming(
                 if node_output is None:
                     node_output = {}
 
-                # Send agent update — bail out if client is gone
-                if not await safe_send({"type": "agent_update", "agent": node_name}):
+                # Determine which agent should be displayed as active.
+                # LangGraph yields steps for COMPLETED nodes. To show the
+                # agent that is *currently* running, we look ahead at what
+                # the graph will execute next based on routing logic.
+                _next_display_agent: str | None = None
+
+                if node_name == "supervisor":
+                    # Supervisor finished routing → show the target agent
+                    routed = node_output.get("next", "FINISH")
+                    _next_display_agent = "summary" if routed == "FINISH" else routed
+                elif node_name.endswith("_tools"):
+                    # Tool node → returns to calling agent; keep current display
+                    pass
+                elif node_name == "summary":
+                    _next_display_agent = "summary"
+                else:
+                    # Regular agent completed → check for pending tool calls
+                    step_msgs = node_output.get("messages", [])
+                    last_msg = step_msgs[-1] if step_msgs else None
+                    if last_msg and getattr(last_msg, "tool_calls", None):
+                        # Agent called tools → tool execution is part of its work
+                        pass
+                    else:
+                        # Agent done → routes back to supervisor
+                        _next_display_agent = "supervisor"
+
+                if _next_display_agent is not None and not await safe_send(
+                    {"type": "agent_update", "agent": _next_display_agent}
+                ):
                     break
 
                 # Process messages
