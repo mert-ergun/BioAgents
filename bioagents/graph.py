@@ -129,26 +129,6 @@ class AgentState(dict):
     tool_usage_log: list[dict] | None = None
 
 
-def _count_agent_tool_rounds(messages: list, agent_name: str) -> int:
-    """Count tool-call rounds this agent has taken since the last supervisor handoff."""
-    from langchain_core.messages import AIMessage, HumanMessage
-
-    rounds = 0
-    for msg in reversed(messages):
-        if isinstance(msg, HumanMessage):
-            content = msg.content if isinstance(msg.content, str) else str(msg.content)
-            if "[SUPERVISOR TASK]" in content:
-                break
-        if (
-            isinstance(msg, AIMessage)
-            and getattr(msg, "name", "") == agent_name
-            and hasattr(msg, "tool_calls")
-            and msg.tool_calls
-        ):
-            rounds += 1
-    return rounds
-
-
 def _detect_consecutive_duplicate_calls(messages: list, agent_name: str) -> tuple[bool, str]:
     """Detect consecutive identical tool calls (same name + same args) by the same agent.
 
@@ -238,27 +218,7 @@ def agent_node(state, agent, name):
     """Wrapper for agent nodes that adds agent identification and ACE tracking."""
     from langchain_core.messages import AIMessage
 
-    from bioagents.limits import MAX_AGENT_TOOL_ROUNDS, MAX_TU_TOOL_CALLS_PER_AGENT
-
-    if MAX_AGENT_TOOL_ROUNDS and MAX_AGENT_TOOL_ROUNDS > 0:
-        rounds = _count_agent_tool_rounds(state.get("messages", []), name)
-        if rounds >= MAX_AGENT_TOOL_ROUNDS:
-            logger.warning(
-                "Agent '%s' hit max tool rounds (%d) — forcing return to supervisor.",
-                name,
-                MAX_AGENT_TOOL_ROUNDS,
-            )
-            partial = _extract_best_agent_content(state.get("messages", []), name)
-            if partial:
-                content = partial
-            else:
-                content = (
-                    f"[MAX_TOOL_ROUNDS] Agent '{name}' reached the tool-round limit "
-                    f"({MAX_AGENT_TOOL_ROUNDS}). The supervisor should proceed with "
-                    f"available results or try a different approach."
-                )
-            error_msg = AIMessage(content=content, name=name)
-            return {"messages": [error_msg]}
+    from bioagents.limits import MAX_TU_TOOL_CALLS_PER_AGENT
 
     # Check for consecutive duplicate tool calls (loop detection)
     is_loop, loop_desc = _detect_consecutive_duplicate_calls(state.get("messages", []), name)
