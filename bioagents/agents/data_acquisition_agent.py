@@ -17,7 +17,11 @@ DATA_ACQUISITION_AGENT_PROMPT = (
     "For full UniProt entries (plain-text .txt / flat files), always use "
     "download_uniprot_flat_file — never fetch_url_content for rest.uniprot.org …/uniprotkb/… .txt "
     "because those responses are huge and stall the workflow. After saving, summarize from the "
-    "returned preview or confirm the path and file size."
+    "returned preview or confirm the path and file size.\n\n"
+    "IMPORTANT: When downloading AlphaFold structures, ALWAYS use model_v6 URLs (NOT v4 or v3). "
+    "Example: https://alphafold.ebi.ac.uk/files/AF-P04637-F1-model_v6.pdb "
+    "Older versions (v1-v4) have been removed from the AlphaFold DB server and return 404 errors. "
+    "For protein structures, prefer the download_structure_file tool which handles this automatically."
 )
 
 
