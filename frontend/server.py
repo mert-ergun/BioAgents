@@ -142,18 +142,25 @@ manager = ConnectionManager()
 # Session-based reference storage: {session_id: ReferenceManager}
 _session_references: dict[str, Any] = {}
 
-# Compact session context: stores only user queries, final summaries, and file
-# paths from previous queries — NOT raw node messages. This keeps the context
-# bounded (a few KB per query) regardless of how many agents/tools ran.
+# Compact session context: stores user queries, final summaries, file paths,
+# and node output index cards from previous turns. The index cards form a
+# "catalog" that is always injected, while full content is available on-demand
+# via the `retrieve_previous_context` tool. This keeps the context bounded
+# (a few KB per query) regardless of how many agents/tools ran.
 #
 # Structure: {session_id: list[dict]}
-#   Each dict: {"query": str, "summary": str, "files": list[str]}
+#   Each dict: {"query": str, "summary": str, "files": list[str],
+#               "node_outputs": dict[str, {"index": str, "content": str, "agent": str}]}
 #
 # Thread-safety note: only mutated from the single-threaded uvicorn event loop.
 _session_contexts: dict[str, list[dict[str, Any]]] = {}
 
 # Maximum number of sessions to keep in memory (LRU eviction).
 _MAX_SESSION_CONTEXTS = 50
+
+# Character budgets for catalog sections.
+_CATALOG_OVERVIEW_BUDGET = 1500  # summaries + files per turn
+_CATALOG_INDEX_BUDGET = 2500  # node output index cards
 
 
 def _prune_session_contexts() -> None:
@@ -163,7 +170,14 @@ def _prune_session_contexts() -> None:
 
 
 def _build_context_system_message(session_id: str | None) -> SystemMessage | None:
-    """Build a compact SystemMessage from previous queries in this session.
+    """Build a catalog SystemMessage from previous queries in this session.
+
+    The message has two sections:
+    1. Turn overview: query, files, summary per turn (compact).
+    2. Node output index cards: one-line summaries of each agent's output.
+
+    Agents can call `retrieve_previous_context` to get the full content of any
+    entry in the catalog.
 
     Returns None if there is no previous context for this session.
     """
@@ -174,28 +188,75 @@ def _build_context_system_message(session_id: str | None) -> SystemMessage | Non
     if not prev_turns:
         return None
 
-    parts: list[str] = ["[PREVIOUS SESSION CONTEXT]"]
+    has_node_outputs = any(turn.get("node_outputs") for turn in prev_turns)
 
+    # --- Section 1: Turn overviews ---
+    overview_parts: list[str] = []
+    overview_budget = _CATALOG_OVERVIEW_BUDGET
     for i, turn in enumerate(prev_turns, 1):
-        parts.append(f"\nQuery {i}: {turn['query'][:300]}")
+        entry = f'\nTurn {i}: "{turn["query"][:200]}"'
         if turn.get("files"):
-            parts.append("  Files: " + ", ".join(turn["files"]))
+            entry += "\n  Files: " + ", ".join(turn["files"][:10])
         if turn.get("summary"):
-            parts.append(f"  Result: {turn['summary'][:600]}")
+            entry += f"\n  Summary: {turn['summary'][:400]}"
+        if len(entry) > overview_budget:
+            overview_parts.append("\n... [older turns omitted]")
+            break
+        overview_parts.append(entry)
+        overview_budget -= len(entry)
+
+    # --- Section 2: Node output index cards ---
+    index_parts: list[str] = []
+    index_budget = _CATALOG_INDEX_BUDGET
+    if has_node_outputs:
+        for _i, turn in enumerate(prev_turns, 1):
+            node_outputs = turn.get("node_outputs", {})
+            if not node_outputs:
+                continue
+            for _key, data in node_outputs.items():
+                agent = data.get("agent", "unknown")
+                index_text = data.get("index", "")
+                card = f"  [{agent}] {index_text}"
+                if len(card) > index_budget:
+                    index_parts.append("  ... [more entries omitted]")
+                    break
+                index_parts.append(card)
+                index_budget -= len(card)
+            if index_budget <= 0:
+                break
+
+    # --- Assemble full message ---
+    parts: list[str] = ["[PREVIOUS SESSION CATALOG]"]
+    parts.append(
+        "Previous work in this session. Use the `retrieve_previous_context` tool "
+        "to get full details on any catalog entry below.\n"
+    )
+    parts.extend(overview_parts)
+
+    if index_parts:
+        parts.append("\n\nAvailable details (index cards):")
+        parts.extend(index_parts)
 
     parts.append(
-        "\n[END PREVIOUS CONTEXT]\n\n"
+        "\n\n[END CATALOG]\n\n"
         "The user is continuing a conversation. The above describes what was "
-        "previously discussed. Use this to resolve references like 'this protein', "
-        "'the structure', 'that file' in the new query. Re-use previously "
-        "downloaded files when possible."
+        "previously discussed. Use `retrieve_previous_context` when you need "
+        "specific details (e.g. scores, analysis results, tool outputs) from "
+        "previous turns. Resolve references like 'this protein', 'the structure', "
+        "'that file' in the new query. Re-use previously downloaded files."
     )
 
     text = "\n".join(parts)
-    if len(text) > 4000:
-        text = text[:4000] + "\n... [context truncated]"
+    total_budget = _CATALOG_OVERVIEW_BUDGET + _CATALOG_INDEX_BUDGET + 500
+    if len(text) > total_budget:
+        text = text[:total_budget] + "\n... [context truncated]"
 
-    logger.debug("Injecting session context for %s (%d turns)", session_id, len(prev_turns))
+    logger.debug(
+        "Injecting session catalog for %s (%d turns, has_node_outputs=%s)",
+        session_id,
+        len(prev_turns),
+        has_node_outputs,
+    )
     return SystemMessage(content=text)
 
 
@@ -875,8 +936,26 @@ async def run_bioagents_streaming(
 
     # Create graph with checkpointer to support mid-execution state updates (steering)
     checkpointer = MemorySaver()
+
+    # Build session context retrieval tool bound to this session's previous turns.
+    # When there is prior context, agents get a catalog + a tool to pull details.
+    _session_context_tool = None
+    if session_id and session_id in _session_contexts:
+        from bioagents.tools.session_context_tools import (
+            create_retrieve_previous_context_tool,
+        )
+
+        prev_node_outputs = [turn.get("node_outputs", {}) for turn in _session_contexts[session_id]]
+        if any(prev_node_outputs):  # only create tool if there's data to retrieve
+            _session_context_tool = create_retrieve_previous_context_tool(prev_node_outputs)
+
     await safe_send({"type": "log", "message": "Initializing agents..."})
-    graph = await asyncio.to_thread(create_graph, checkpointer=checkpointer, policy=session_policy)
+    graph = await asyncio.to_thread(
+        create_graph,
+        checkpointer=checkpointer,
+        policy=session_policy,
+        session_context_tool=_session_context_tool,
+    )
 
     # Thread ID for checkpoint-based state updates
     thread_id = f"session_{session_id or uuid.uuid4().hex[:8]}"
@@ -893,9 +972,11 @@ async def run_bioagents_streaming(
 
     full_audit: list[dict[str, Any]] = []
     # Compact accumulator for session context — only stores the user query,
-    # the final summary output, and file paths (NOT every node's messages).
+    # the final summary output, file paths, and node output index cards.
     _turn_summary: str = ""
     _turn_files: set[str] = set()
+    _turn_node_outputs: dict[str, dict[str, Any]] = {}  # key → {index, content, agent}
+    _turn_node_idx: int = 0
     sent_artifacts: set[str] = set()
     sent_structures: set[str] = set()
     sent_protein_ids: set[str] = set()
@@ -1084,13 +1165,25 @@ async def run_bioagents_streaming(
                             break
 
                         # --- Compact session context extraction ---
-                        # Only keep Summary/Report outputs and file paths.
+                        # Capture Summary/Report outputs, file paths, and node output
+                        # index cards for the catalog + on-demand retrieval system.
                         if isinstance(m, AIMessage):
                             name = getattr(m, "name", "")
-                            ai_content = m.content if isinstance(m.content, str) else ""
+                            # Handle both string and list-format content
+                            raw_content = m.content
+                            if isinstance(raw_content, str):
+                                ai_content = raw_content
+                            elif isinstance(raw_content, list):
+                                ai_content = " ".join(
+                                    b.get("text", "") if isinstance(b, dict) else str(b)
+                                    for b in raw_content
+                                )
+                            else:
+                                ai_content = str(raw_content) if raw_content else ""
+
                             if ai_content:
                                 # Capture final summary/report output
-                                if name in ("Summary", "Report") and len(ai_content) > 100:
+                                if name in ("Summary", "Report") and len(ai_content) > 50:
                                     _turn_summary = ai_content[:800]
                                 # Extract file paths
                                 _file_matches = re.findall(
@@ -1098,15 +1191,57 @@ async def run_bioagents_streaming(
                                     ai_content,
                                 )
                                 _turn_files.update(_file_matches)
+                                # Store node output index card for all non-supervisor,
+                                # non-summary agents. Include both final responses
+                                # and tool-calling messages (which often contain
+                                # intermediate reasoning the next agent may need).
+                                has_tool_calls = hasattr(m, "tool_calls") and m.tool_calls
+                                if (
+                                    name
+                                    and name not in ("Supervisor", "Summary", "Report")
+                                    and not has_tool_calls
+                                    and len(ai_content) > 30
+                                ):
+                                    _key = f"{name}_{_turn_node_idx}"
+                                    _turn_node_outputs[_key] = {
+                                        "index": ai_content[:120].replace("\n", " "),
+                                        "content": ai_content[:2000],
+                                        "agent": name,
+                                    }
+                                    _turn_node_idx += 1
                         elif isinstance(m, ToolMessage):
-                            tc = m.content if isinstance(m.content, str) else ""
+                            raw_tc = m.content
+                            if isinstance(raw_tc, str):
+                                tc = raw_tc
+                            elif isinstance(raw_tc, list):
+                                tc = " ".join(
+                                    b.get("text", "") if isinstance(b, dict) else str(b)
+                                    for b in raw_tc
+                                )
+                            else:
+                                tc = str(raw_tc) if raw_tc else ""
+
                             if tc:
+                                # Extract file paths
                                 _file_matches = re.findall(
                                     r"(?:to|at)[:\s]+([^\s'\"]+\.(?:pdb|fasta|cif|csv|json))",
                                     tc,
                                     re.IGNORECASE,
                                 )
                                 _turn_files.update(_file_matches)
+
+                                # Also store tool results as node outputs — these
+                                # contain the actual data (scores, structures, etc.)
+                                # that agents often need to retrieve.
+                                tool_name = getattr(m, "name", "")
+                                if tool_name and len(tc) > 30:
+                                    _key = f"tool_{tool_name}_{_turn_node_idx}"
+                                    _turn_node_outputs[_key] = {
+                                        "index": f"[{tool_name}] {tc[:100].replace(chr(10), ' ')}",
+                                        "content": tc[:2000],
+                                        "agent": tool_name,
+                                    }
+                                    _turn_node_idx += 1
                         # --- End compact extraction ---
 
                         msg_info = {
@@ -1624,23 +1759,25 @@ async def run_bioagents_streaming(
                 _session_references[session_id] = reference_manager
 
             # Save compact session context for follow-up queries.
-            # Only stores the user query, final summary, and file paths —
-            # not every node's internal messages.
+            # Stores the user query, final summary, file paths, and node output
+            # index cards (for the catalog + on-demand retrieval system).
             if session_id:
                 turn_ctx: dict[str, Any] = {
                     "query": query,
                     "summary": _turn_summary,
                     "files": sorted(_turn_files),
+                    "node_outputs": dict(_turn_node_outputs),
                 }
                 if session_id not in _session_contexts:
                     _session_contexts[session_id] = []
                 _session_contexts[session_id].append(turn_ctx)
                 _prune_session_contexts()
                 logger.debug(
-                    "Saved session context for %s (turn %d, %d files)",
+                    "Saved session context for %s (turn %d, %d files, %d node outputs)",
                     session_id,
                     len(_session_contexts[session_id]),
                     len(_turn_files),
+                    len(_turn_node_outputs),
                 )
 
             # Send completion with all references (only if still connected)
@@ -1843,12 +1980,11 @@ async def demo_structure(identifier: str):
 
     try:
         if is_uniprot:
-            # AlphaFold structure
-            url = f"https://alphafold.ebi.ac.uk/files/AF-{identifier}-F1-model_v4.pdb"
+            # AlphaFold structure - try v6 first (current), then v4 as fallback
+            url = f"https://alphafold.ebi.ac.uk/files/AF-{identifier}-F1-model_v6.pdb"
             response = requests.get(url, timeout=30)
             if response.status_code == 404:
-                # Try v3
-                url = f"https://alphafold.ebi.ac.uk/files/AF-{identifier}-F1-model_v3.pdb"
+                url = f"https://alphafold.ebi.ac.uk/files/AF-{identifier}-F1-model_v4.pdb"
                 response = requests.get(url, timeout=30)
         else:
             # PDB structure

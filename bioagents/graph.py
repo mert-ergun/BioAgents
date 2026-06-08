@@ -49,6 +49,7 @@ from bioagents.tools.analysis_tools import (
     calculate_molecular_weight,
     run_aggrescan3d,
 )
+from bioagents.tools.docking_tools import get_docking_tools
 from bioagents.tools.environment_tools import get_environment_tools
 from bioagents.tools.file_tools import get_file_tools
 from bioagents.tools.genomics_tools import get_genomics_tools
@@ -380,7 +381,10 @@ ALL_MEMBERS = [
 
 
 def create_graph(
-    _initialize_references: bool = True, checkpointer=None, policy: ToolPolicy | None = None
+    _initialize_references: bool = True,
+    checkpointer=None,
+    policy: ToolPolicy | None = None,
+    session_context_tool=None,
 ):
     """Create and compile the multi-agent LangGraph workflow.
 
@@ -396,6 +400,9 @@ def create_graph(
         checkpointer: Optional LangGraph checkpointer for mid-execution state updates.
         policy: Optional ToolPolicy instance. If provided, tool nodes use the
             approval gate. If None, default policy is used (auto-approve everything).
+        session_context_tool: Optional LangChain tool for retrieving previous session
+            context. When provided, it is appended to every tool-using agent's tool
+            list and corresponding tool node so agents can pull prior-turn details.
     """
     # ---- existing tool lists ----
     research_tools = [
@@ -432,6 +439,34 @@ def create_graph(
     git_tools_list = get_git_tools()
     env_tools = get_environment_tools()
     viz_tools = get_visualization_tools()
+    docking_tools = get_docking_tools()
+
+    # ---- inject session context retrieval tool ----
+    # If a session_context_tool is provided (created per-request with session data),
+    # append it to every tool list that feeds a tool-using agent + its tool node.
+    if session_context_tool is not None:
+        _sct = session_context_tool
+        for tl in (
+            research_tools,
+            analysis_tools_list,
+            tb_tools,
+            pd_tools,
+            lit_tools,
+            web_tools,
+            paper_rep_tools,
+            data_acq_tools,
+            gen_tools,
+            trans_tools,
+            struct_tools,
+            phylo_tools,
+            td_tools,
+            sh_tools,
+            git_tools_list,
+            env_tools,
+            viz_tools,
+            docking_tools,
+        ):
+            tl.append(_sct)
 
     # ---- create agents ----
     research_agent = create_research_agent(research_tools)
@@ -488,6 +523,7 @@ def create_graph(
     git_tool_node = make_approval_tool_node(git_tools_list, policy=active_policy)
     environment_tool_node = make_approval_tool_node(env_tools, policy=active_policy)
     visualization_tool_node = make_approval_tool_node(viz_tools, policy=active_policy)
+    docking_tool_node = make_approval_tool_node(docking_tools, policy=active_policy)
 
     # ---- build graph ----
     workflow = StateGraph(AgentState)
@@ -573,6 +609,7 @@ def create_graph(
     workflow.add_node("git_tools", git_tool_node)
     workflow.add_node("environment_tools", environment_tool_node)
     workflow.add_node("visualization_tools", visualization_tool_node)
+    workflow.add_node("docking_tools", docking_tool_node)
 
     # ---- entry point ----
     workflow.set_entry_point("supervisor")
@@ -710,6 +747,7 @@ def create_graph(
         ("git", "git_tools"),
         ("environment", "environment_tools"),
         ("visualization", "visualization_tools"),
+        ("docking", "docking_tools"),
     ]
 
     for agent_name, tool_node_name in tool_agent_pairs:
@@ -727,7 +765,6 @@ def create_graph(
         "dl",
         "critic",
         "report",
-        "docking",
         "planner",
         "tool_validator",
         "prompt_optimizer",

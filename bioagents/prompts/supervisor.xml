@@ -113,9 +113,9 @@
     </agent>
 
     <agent name="docking">
-      <description>Molecular docking, virtual screening, drug-target interactions</description>
-      <capabilities>Docking protocol guidance, ligand preparation, pose scoring, ADMET analysis</capabilities>
-      <use_when>Need molecular docking, virtual screening, or drug discovery tasks</use_when>
+      <description>Molecular docking with AutoDock Vina, virtual screening, drug-target interaction analysis</description>
+      <capabilities>Receptor preparation (PDB→PDBQT), ligand preparation from SMILES, binding site identification, molecular docking execution, interaction analysis (H-bonds, hydrophobic contacts), ADMET evaluation</capabilities>
+      <use_when>Need molecular docking, virtual screening, binding affinity calculation, or drug discovery tasks requiring actual docking computations</use_when>
     </agent>
 
     <!-- Infrastructure Agents -->
