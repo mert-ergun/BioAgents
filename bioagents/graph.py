@@ -590,6 +590,9 @@ def create_graph(
         messages = state.get("messages", [])
         engagement_data = None
 
+        # First: look for an explicit ENGAGEMENT_PENDING marker (set by
+        # supervisor when an agent requests user input or when the LLM
+        # routing decides user_input is needed).
         for msg in reversed(messages[-5:]):
             content = getattr(msg, "content", "")
             if not isinstance(content, str):
@@ -606,10 +609,44 @@ def create_graph(
                     }
                 break
 
-        payload = engagement_data or {
-            "type": "clarification",
-            "question": "How would you like to proceed?",
-        }
+        # Fallback: if no ENGAGEMENT_PENDING marker was found, build a
+        # contextual question from the supervisor's most recent task
+        # description and the original user query.
+        if engagement_data is None:
+            context_hint = ""
+            original_query = ""
+            for msg in messages:
+                if isinstance(msg, HumanMessage) and "[SUPERVISOR TASK]" not in str(msg.content):
+                    original_query = str(msg.content)[:300]
+                    break
+
+            for msg in reversed(messages[-10:]):
+                content = getattr(msg, "content", "")
+                if isinstance(msg, HumanMessage) and "[SUPERVISOR TASK]" in str(content):
+                    # Extract the task description after the prefix
+                    task = str(content).replace("[SUPERVISOR TASK]", "").strip()
+                    context_hint = task[:300]
+                    break
+
+            if context_hint:
+                question = f"I need clarification: {context_hint}. How would you like to proceed?"
+            elif original_query:
+                question = (
+                    f"Regarding your request ({original_query[:100]}...), "
+                    "how would you like to proceed?"
+                )
+            else:
+                question = "How would you like to proceed?"
+
+            engagement_data = {
+                "type": "clarification",
+                "question": question,
+                "options": [],
+                "context": context_hint or original_query,
+                "agent": "Supervisor",
+            }
+
+        payload = engagement_data
 
         response = interrupt(payload)
 

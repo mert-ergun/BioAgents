@@ -525,13 +525,35 @@ def create_supervisor_agent(members: list[str]):
                 result.next_agent,
             )
 
-        handoff_messages = []
+        handoff_messages: list[BaseMessage] = []
         if result.next_agent != "FINISH" and result.task_for_agent:
-            handoff_msg = HumanMessage(
-                content=f"[SUPERVISOR TASK] {result.task_for_agent}", name="Supervisor"
-            )
-            handoff_messages.append(handoff_msg)
-            logger.info(f"Supervisor handoff to {result.next_agent}: {result.task_for_agent}")
+            # When routing to user_input via LLM decision, create a proper
+            # ENGAGEMENT_PENDING marker so the user_input_node can formulate
+            # a contextual question for the user.
+            if result.next_agent == "user_input":
+                engagement_id = str(uuid.uuid4())[:8]
+                engagement_data = {
+                    "id": engagement_id,
+                    "type": "clarification",
+                    "question": result.task_for_agent,
+                    "options": [],
+                    "context": result.reasoning,
+                    "agent": "Supervisor",
+                }
+                engagement_marker = SystemMessage(
+                    content=f"[ENGAGEMENT_PENDING] {json.dumps(engagement_data)}"
+                )
+                handoff_messages.append(engagement_marker)
+                logger.info(
+                    "Supervisor engagement handoff to user_input: %s",
+                    result.task_for_agent[:100],
+                )
+            else:
+                handoff_msg = HumanMessage(
+                    content=f"[SUPERVISOR TASK] {result.task_for_agent}", name="Supervisor"
+                )
+                handoff_messages.append(handoff_msg)
+                logger.info(f"Supervisor handoff to {result.next_agent}: {result.task_for_agent}")
 
         return {
             "next": result.next_agent,
