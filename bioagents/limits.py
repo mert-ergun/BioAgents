@@ -36,11 +36,6 @@ RATE_LIMIT_MAX_WAIT_SEC = _env_float("BIOAGENTS_RATE_LIMIT_MAX_WAIT_SEC", 120.0)
 # Total wall time for one graph.stream session (server / API). 0 = disabled.
 GRAPH_STREAM_WALL_CLOCK_SEC = _env_float("BIOAGENTS_GRAPH_STREAM_WALL_CLOCK_SEC", 7200.0)
 
-# Max tool-call rounds a single agent may take before being forced back to the
-# supervisor.  Prevents runaway agent↔tools loops (e.g. data_acquisition retrying
-# downloads endlessly).  0 = disabled.
-MAX_AGENT_TOOL_ROUNDS = _env_int("BIOAGENTS_MAX_AGENT_TOOL_ROUNDS", 5)
-
 # Default LangGraph recursion cap (also set per call in server).
 GRAPH_RECURSION_LIMIT = max(10, _env_int("BIOAGENTS_GRAPH_RECURSION_LIMIT", 100))
 
