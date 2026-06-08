@@ -19,7 +19,7 @@ from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 # Import BioAgents components
-from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from pydantic import BaseModel
 
 from bioagents.graph import ALL_MEMBERS, create_graph
@@ -141,6 +141,75 @@ manager = ConnectionManager()
 
 # Session-based reference storage: {session_id: ReferenceManager}
 _session_references: dict[str, Any] = {}
+
+# Compact session context: stores only user queries, final summaries, and file
+# paths from previous queries — NOT raw node messages. This keeps the context
+# bounded (a few KB per query) regardless of how many agents/tools ran.
+#
+# Structure: {session_id: list[dict]}
+#   Each dict: {"query": str, "summary": str, "files": list[str]}
+#
+# Thread-safety note: only mutated from the single-threaded uvicorn event loop.
+_session_contexts: dict[str, list[dict[str, Any]]] = {}
+
+# Maximum number of sessions to keep in memory (LRU eviction).
+_MAX_SESSION_CONTEXTS = 50
+
+
+def _prune_session_contexts() -> None:
+    """Evict oldest session contexts when the store exceeds the cap."""
+    while len(_session_contexts) > _MAX_SESSION_CONTEXTS:
+        _session_contexts.popitem(last=False)
+
+
+def _build_context_system_message(session_id: str | None) -> SystemMessage | None:
+    """Build a compact SystemMessage from previous queries in this session.
+
+    Returns None if there is no previous context for this session.
+    """
+    if not session_id or session_id not in _session_contexts:
+        return None
+
+    prev_turns = _session_contexts[session_id]
+    if not prev_turns:
+        return None
+
+    parts: list[str] = ["[PREVIOUS SESSION CONTEXT]"]
+
+    for i, turn in enumerate(prev_turns, 1):
+        parts.append(f"\nQuery {i}: {turn['query'][:300]}")
+        if turn.get("files"):
+            parts.append("  Files: " + ", ".join(turn["files"]))
+        if turn.get("summary"):
+            parts.append(f"  Result: {turn['summary'][:600]}")
+
+    parts.append(
+        "\n[END PREVIOUS CONTEXT]\n\n"
+        "The user is continuing a conversation. The above describes what was "
+        "previously discussed. Use this to resolve references like 'this protein', "
+        "'the structure', 'that file' in the new query. Re-use previously "
+        "downloaded files when possible."
+    )
+
+    text = "\n".join(parts)
+    if len(text) > 4000:
+        text = text[:4000] + "\n... [context truncated]"
+
+    logger.debug("Injecting session context for %s (%d turns)", session_id, len(prev_turns))
+    return SystemMessage(content=text)
+
+
+def _build_contextual_initial_state(session_id: str | None, query: str) -> dict[str, Any]:
+    """Build initial state with previous session context injected as a SystemMessage."""
+    messages: list = []
+
+    ctx_msg = _build_context_system_message(session_id)
+    if ctx_msg is not None:
+        messages.append(ctx_msg)
+
+    messages.append(HumanMessage(content=query))
+    return {"messages": messages}
+
 
 # =====================================================
 # ARTIFACT GENERATION
@@ -396,6 +465,7 @@ async def query_bioagents(request: QueryRequest):
 
         graph = create_graph()
         reference_manager = ReferenceManager()
+        # REST API does not currently carry session_id, so no cross-query context.
         initial_state = {
             "messages": [HumanMessage(content=request.query)],
             "references": reference_manager,
@@ -819,11 +889,13 @@ async def run_bioagents_streaming(
     # uses msgpack serialization which can't handle arbitrary Python objects.
     # References are extracted in the streaming loop instead.
     reference_manager = ReferenceManager()
-    initial_state: dict[str, Any] = {
-        "messages": [HumanMessage(content=query)],
-    }
+    initial_state: dict[str, Any] = _build_contextual_initial_state(session_id, query)
 
     full_audit: list[dict[str, Any]] = []
+    # Compact accumulator for session context — only stores the user query,
+    # the final summary output, and file paths (NOT every node's messages).
+    _turn_summary: str = ""
+    _turn_files: set[str] = set()
     sent_artifacts: set[str] = set()
     sent_structures: set[str] = set()
     sent_protein_ids: set[str] = set()
@@ -980,6 +1052,33 @@ async def run_bioagents_streaming(
                     for m in node_output["messages"]:
                         if _client_disconnected:
                             break
+
+                        # --- Compact session context extraction ---
+                        # Only keep Summary/Report outputs and file paths.
+                        if isinstance(m, AIMessage):
+                            name = getattr(m, "name", "")
+                            ai_content = m.content if isinstance(m.content, str) else ""
+                            if ai_content:
+                                # Capture final summary/report output
+                                if name in ("Summary", "Report") and len(ai_content) > 100:
+                                    _turn_summary = ai_content[:800]
+                                # Extract file paths
+                                _file_matches = re.findall(
+                                    r"(/?\w+[\w/-]+\.(?:pdb|fasta|cif|csv|json))",
+                                    ai_content,
+                                )
+                                _turn_files.update(_file_matches)
+                        elif isinstance(m, ToolMessage):
+                            tc = m.content if isinstance(m.content, str) else ""
+                            if tc:
+                                _file_matches = re.findall(
+                                    r"(?:to|at)[:\s]+([^\s'\"]+\.(?:pdb|fasta|cif|csv|json))",
+                                    tc,
+                                    re.IGNORECASE,
+                                )
+                                _turn_files.update(_file_matches)
+                        # --- End compact extraction ---
+
                         msg_info = {
                             "type": m.__class__.__name__,
                             "content": m.content if hasattr(m, "content") else str(m),
@@ -1493,6 +1592,26 @@ async def run_bioagents_streaming(
             # Persist references for this session
             if session_id and reference_manager:
                 _session_references[session_id] = reference_manager
+
+            # Save compact session context for follow-up queries.
+            # Only stores the user query, final summary, and file paths —
+            # not every node's internal messages.
+            if session_id:
+                turn_ctx: dict[str, Any] = {
+                    "query": query,
+                    "summary": _turn_summary,
+                    "files": sorted(_turn_files),
+                }
+                if session_id not in _session_contexts:
+                    _session_contexts[session_id] = []
+                _session_contexts[session_id].append(turn_ctx)
+                _prune_session_contexts()
+                logger.debug(
+                    "Saved session context for %s (turn %d, %d files)",
+                    session_id,
+                    len(_session_contexts[session_id]),
+                    len(_turn_files),
+                )
 
             # Send completion with all references (only if still connected)
             if not _client_disconnected:
