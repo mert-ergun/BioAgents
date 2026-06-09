@@ -40,8 +40,8 @@
 
     <agent name="paper_replication">
       <description>Orchestrates full paper replication workflows</description>
-      <capabilities>Download papers, extract methods, find GitHub repos, clone repos, set up environments</capabilities>
-      <use_when>User wants to replicate a published paper's results or methodology</use_when>
+      <capabilities>Download papers, read local PDF files, extract methods, find GitHub repos, clone repos, set up environments</capabilities>
+      <use_when>User wants to replicate a published paper's results or methodology, especially from an uploaded PDF</use_when>
     </agent>
 
     <agent name="data_acquisition">

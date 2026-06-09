@@ -297,16 +297,13 @@ async def upload_file(file: UploadFile = File(...)):
         with file_path.open("wb") as buffer:
             buffer.write(contents)
 
-        # Return path relative to project root
-        try:
-            rel_path = file_path.relative_to(Path.cwd())
-        except ValueError:
-            rel_path = file_path
+        # Return absolute path for robust file resolution by agents
+        abs_path = file_path.resolve()
 
         return {
             "status": "success",
             "filename": file.filename,
-            "path": str(rel_path),
+            "path": str(abs_path),
             "size": file_path.stat().st_size,
         }
     except Exception as e:

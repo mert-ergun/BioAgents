@@ -1214,7 +1214,7 @@ function initFileAttachment() {
                 const content = await file.text();
                 loadStructure(content);
             } else if (ext === 'pdf') {
-                prompt = `I have uploaded a PDF document: ${file.name}\nPath: ${data.path}\n\nPlease extract and summarize the information from this PDF.`;
+                prompt = `I have uploaded a PDF document: ${file.name}\nLocal file path: ${data.path}\n\nPlease use the extract_pdf_text_spacy_layout tool with the path "${data.path}" to read this PDF first, then analyze its contents and provide a summary of the key findings, methods, and results.`;
             } else if (ext === 'csv' || ext === 'xlsx' || ext === 'tsv') {
                 prompt = `I have uploaded a dataset: ${file.name}\nPath: ${data.path}\n\nPlease load this data and perform analysis/modeling.`;
             } else if (ext === 'fasta' || ext === 'fa') {
