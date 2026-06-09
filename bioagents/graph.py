@@ -55,6 +55,7 @@ from bioagents.tools.file_tools import get_file_tools
 from bioagents.tools.genomics_tools import get_genomics_tools
 from bioagents.tools.git_tools import get_git_tools
 from bioagents.tools.literature_tools import get_literature_tools
+from bioagents.tools.paperqa_wrapper import search_local_papers_with_paperqa
 from bioagents.tools.pdf_tools import (
     extract_pdf_text_spacy_layout,
     fetch_webpage_as_pdf_text,
@@ -371,6 +372,7 @@ def create_graph(
         tool_universe_call_tool,
         fetch_webpage_as_pdf_text,
         extract_pdf_text_spacy_layout,
+        search_local_papers_with_paperqa,
         fetch_alphafold_structure,
         fetch_pdb_structure,
         download_structure_file,
@@ -388,7 +390,7 @@ def create_graph(
     _tu_tools = [tool_universe_find_tools, tool_universe_call_tool]
     lit_tools = get_literature_tools() + _tu_tools
     web_tools = get_web_tools()
-    paper_rep_tools = get_web_tools() + get_git_tools()
+    paper_rep_tools = get_web_tools() + get_git_tools() + [extract_pdf_text_spacy_layout]
     data_acq_tools = get_web_tools() + get_file_tools() + [download_uniprot_flat_file]
     gen_tools = get_genomics_tools() + _tu_tools
     trans_tools = get_transcriptomics_tools() + _tu_tools
