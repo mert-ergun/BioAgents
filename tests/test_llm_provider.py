@@ -208,11 +208,118 @@ class TestGetLLM:
 
             mock_openai.assert_called_once()
 
+    @patch.dict(
+        os.environ, {"LLM_PROVIDER": "openrouter", "OPENROUTER_API_KEY": "test-key"}, clear=True
+    )
+    def test_openrouter_is_valid_env_provider(self):
+        """Test that 'openrouter' is accepted as a valid LLM_PROVIDER env value."""
+        with patch("bioagents.llms.llm_provider.ChatOpenAI") as mock_openai:
+            mock_llm = Mock()
+            mock_openai.return_value = mock_llm
+
+            get_llm()
+
     @patch.dict(os.environ, {"LLM_PROVIDER": "invalid_provider"}, clear=True)
     def test_invalid_provider_from_env(self):
         """Test that ValueError is raised for invalid provider in env var."""
         with pytest.raises(ValueError, match="Invalid LLM_PROVIDER"):
             get_llm()
+
+    @patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}, clear=True)
+    def test_openrouter_provider_default(self):
+        """Test getting OpenRouter LLM with defaults."""
+        with patch("bioagents.llms.llm_provider.ChatOpenAI") as mock_openai:
+            mock_llm = Mock()
+            mock_openai.return_value = mock_llm
+
+            get_llm(provider="openrouter")
+
+            mock_openai.assert_called_once()
+            call_kwargs = mock_openai.call_args[1]
+            assert call_kwargs["model"] == "deepseek/deepseek-v4-flash"
+            assert call_kwargs["temperature"] == 0.0
+            assert call_kwargs["base_url"] == "https://openrouter.ai/api/v1"
+
+    @patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}, clear=True)
+    def test_openrouter_provider_custom_model(self):
+        """Test getting OpenRouter LLM with custom model (slug with slash)."""
+        with patch("bioagents.llms.llm_provider.ChatOpenAI") as mock_openai:
+            mock_llm = Mock()
+            mock_openai.return_value = mock_llm
+
+            get_llm(provider="openrouter", model="openai/gpt-5.2", temperature=0.7)
+
+            call_kwargs = mock_openai.call_args[1]
+            assert call_kwargs["model"] == "openai/gpt-5.2"
+            assert call_kwargs["temperature"] == 0.7
+
+    @patch.dict(os.environ, {}, clear=True)
+    def test_openrouter_provider_missing_api_key(self):
+        """Test that ValueError is raised when OPENROUTER_API_KEY is missing."""
+        with pytest.raises(ValueError, match="OPENROUTER_API_KEY"):
+            get_llm(provider="openrouter")
+
+    @patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}, clear=True)
+    def test_openrouter_base_url(self):
+        """Test that OpenRouter uses the correct base URL."""
+        with patch("bioagents.llms.llm_provider.ChatOpenAI") as mock_openai:
+            mock_llm = Mock()
+            mock_openai.return_value = mock_llm
+
+            get_llm(provider="openrouter")
+
+            call_kwargs = mock_openai.call_args[1]
+            assert call_kwargs["base_url"] == "https://openrouter.ai/api/v1"
+
+    @patch.dict(
+        os.environ,
+        {"OPENROUTER_API_KEY": "test-key", "OPENROUTER_RATE_LIMIT": "20"},
+        clear=True,
+    )
+    def test_openrouter_with_rate_limiting(self):
+        """Test OpenRouter LLM with rate limiting enabled."""
+        with patch("bioagents.llms.llm_provider.ChatOpenAI") as mock_openai:
+            mock_llm = Mock()
+            mock_openai.return_value = mock_llm
+
+            result = get_llm(provider="openrouter")
+
+            assert isinstance(result, RateLimitedLLM)
+            assert isinstance(result.llm, TimeoutBoundLLM)
+            assert result.llm._llm == mock_llm
+
+    @patch.dict(
+        os.environ,
+        {"OPENROUTER_API_KEY": "test-key", "OPENROUTER_REQUEST_TIMEOUT": "300"},
+        clear=True,
+    )
+    def test_openrouter_timeout(self):
+        """Test OpenRouter with custom timeout."""
+        with patch("bioagents.llms.llm_provider.ChatOpenAI") as mock_openai:
+            mock_llm = Mock()
+            mock_openai.return_value = mock_llm
+
+            get_llm(provider="openrouter")
+
+            call_kwargs = mock_openai.call_args[1]
+            assert call_kwargs["timeout"] == 300.0
+
+    @patch.dict(
+        os.environ,
+        {"LLM_PROVIDER": "openrouter", "OPENROUTER_API_KEY": "test-key"},
+        clear=True,
+    )
+    def test_openrouter_env_provider(self):
+        """Test reading OpenRouter provider from environment variable."""
+        with patch("bioagents.llms.llm_provider.ChatOpenAI") as mock_openai:
+            mock_llm = Mock()
+            mock_openai.return_value = mock_llm
+
+            get_llm()
+
+            mock_openai.assert_called_once()
+            call_kwargs = mock_openai.call_args[1]
+            assert call_kwargs["base_url"] == "https://openrouter.ai/api/v1"
 
     def test_invalid_provider_explicit(self):
         """Test that ValueError is raised for invalid provider."""
@@ -237,6 +344,11 @@ class TestStructuredOutputRoutingKwargs:
 
     @patch.dict(os.environ, {"LLM_PROVIDER": "openai"}, clear=True)
     def test_openai_uses_default_function_calling_kwargs(self):
+        assert get_structured_output_kwargs_for_routing() == {}
+
+    @patch.dict(os.environ, {"LLM_PROVIDER": "openrouter"}, clear=True)
+    def test_openrouter_uses_default_function_calling_kwargs(self):
+        """OpenRouter uses the OpenAI-compatible API, so default function_calling works."""
         assert get_structured_output_kwargs_for_routing() == {}
 
     @patch.dict(os.environ, {"LLM_PROVIDER": "gemini"}, clear=True)

@@ -2,15 +2,15 @@
 requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
-# Use CPU-only PyTorch (no CUDA shared-lib dependencies).
-# Switch to "https://download.pytorch.org/whl/cu126" for GPU support.
+# Use CUDA-enabled PyTorch for GPU support.
+# Switch back to "https://download.pytorch.org/whl/cpu" for CPU-only.
 [[tool.uv.index]]
-url = "https://download.pytorch.org/whl/cpu"
-name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cu126"
+name = "pytorch-cu126"
 explicit = true
 
 [tool.uv.sources]
-torch = { index = "pytorch-cpu" }
+torch = { index = "pytorch-cu126" }
 
 [project]
 name = "bioagents"
@@ -41,6 +41,10 @@ dependencies = [
     "websockets>=14.0",
     "paper-qa>=2026.2.16",
     "pydantic>=2.0.0",  # For input validation in rdkit tools
+    "vina>=1.2.7",
+    "meeko>=0.7.1",
+    "gemmi>=0.7.5",
+    "pymupdf>=1.25.0",
 ]
 # Note: rdkit-agent (Node.js CLI) must be installed separately:
 #   npm install -g rdkit-agent

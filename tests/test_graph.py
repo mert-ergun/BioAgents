@@ -551,7 +551,7 @@ class TestGraphStructure:
 
         create_graph()
 
-        assert mock_tool_node.call_count == 17
+        assert mock_tool_node.call_count == 18
 
     @_apply_new_agent_patches
     @patch("bioagents.graph.create_summary_agent")

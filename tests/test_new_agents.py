@@ -401,9 +401,11 @@ class TestDockingAgent:
         assert "messages" in result
         assert len(result["messages"]) > 0
 
+    @patch("bioagents.agents.docking_agent.get_docking_tools")
     @patch("bioagents.agents.docking_agent.get_llm")
-    def test_retry_on_empty_response(self, mock_llm):
-        llm = _make_mock_llm(with_tools=False)
+    def test_retry_on_empty_response(self, mock_llm, mock_tools):
+        mock_tools.return_value = []
+        llm = _make_mock_llm(with_tools=True)
         llm.invoke.side_effect = [AIMessage(content=""), AIMessage(content="Docked")]
         mock_llm.return_value = llm
 

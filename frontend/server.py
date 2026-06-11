@@ -19,7 +19,7 @@ from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 # Import BioAgents components
-from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from pydantic import BaseModel
 
 from bioagents.graph import ALL_MEMBERS, create_graph
@@ -71,6 +71,16 @@ FRONTEND_DIR = Path(__file__).parent
 app.mount("/static", StaticFiles(directory=FRONTEND_DIR / "static"), name="static")
 include_workflow_routes(app)
 include_drug_discovery_routes(app)
+
+# Admin dashboard and logging
+from frontend.admin_database import AdminDatabase  # noqa: E402
+from frontend.admin_routes import include_admin_routes  # noqa: E402
+from frontend.client_tracker import generate_client_id as _gen_client_id  # noqa: E402
+from frontend.logging_middleware import ActivityLoggingMiddleware  # noqa: E402
+
+admin_db = AdminDatabase()
+include_admin_routes(app, admin_db=admin_db)
+app.add_middleware(ActivityLoggingMiddleware, db=admin_db)
 
 # =====================================================
 # MODELS
@@ -132,6 +142,136 @@ manager = ConnectionManager()
 # Session-based reference storage: {session_id: ReferenceManager}
 _session_references: dict[str, Any] = {}
 
+# Compact session context: stores user queries, final summaries, file paths,
+# and node output index cards from previous turns. The index cards form a
+# "catalog" that is always injected, while full content is available on-demand
+# via the `retrieve_previous_context` tool. This keeps the context bounded
+# (a few KB per query) regardless of how many agents/tools ran.
+#
+# Structure: {session_id: list[dict]}
+#   Each dict: {"query": str, "summary": str, "files": list[str],
+#               "node_outputs": dict[str, {"index": str, "content": str, "agent": str}]}
+#
+# Thread-safety note: only mutated from the single-threaded uvicorn event loop.
+_session_contexts: dict[str, list[dict[str, Any]]] = {}
+
+# Maximum number of sessions to keep in memory (LRU eviction).
+_MAX_SESSION_CONTEXTS = 50
+
+# Character budgets for catalog sections.
+_CATALOG_OVERVIEW_BUDGET = 1500  # summaries + files per turn
+_CATALOG_INDEX_BUDGET = 2500  # node output index cards
+
+
+def _prune_session_contexts() -> None:
+    """Evict oldest session contexts when the store exceeds the cap."""
+    while len(_session_contexts) > _MAX_SESSION_CONTEXTS:
+        _session_contexts.popitem(last=False)
+
+
+def _build_context_system_message(session_id: str | None) -> SystemMessage | None:
+    """Build a catalog SystemMessage from previous queries in this session.
+
+    The message has two sections:
+    1. Turn overview: query, files, summary per turn (compact).
+    2. Node output index cards: one-line summaries of each agent's output.
+
+    Agents can call `retrieve_previous_context` to get the full content of any
+    entry in the catalog.
+
+    Returns None if there is no previous context for this session.
+    """
+    if not session_id or session_id not in _session_contexts:
+        return None
+
+    prev_turns = _session_contexts[session_id]
+    if not prev_turns:
+        return None
+
+    has_node_outputs = any(turn.get("node_outputs") for turn in prev_turns)
+
+    # --- Section 1: Turn overviews ---
+    overview_parts: list[str] = []
+    overview_budget = _CATALOG_OVERVIEW_BUDGET
+    for i, turn in enumerate(prev_turns, 1):
+        entry = f'\nTurn {i}: "{turn["query"][:200]}"'
+        if turn.get("files"):
+            entry += "\n  Files: " + ", ".join(turn["files"][:10])
+        if turn.get("summary"):
+            entry += f"\n  Summary: {turn['summary'][:400]}"
+        if len(entry) > overview_budget:
+            overview_parts.append("\n... [older turns omitted]")
+            break
+        overview_parts.append(entry)
+        overview_budget -= len(entry)
+
+    # --- Section 2: Node output index cards ---
+    index_parts: list[str] = []
+    index_budget = _CATALOG_INDEX_BUDGET
+    if has_node_outputs:
+        for _i, turn in enumerate(prev_turns, 1):
+            node_outputs = turn.get("node_outputs", {})
+            if not node_outputs:
+                continue
+            for _key, data in node_outputs.items():
+                agent = data.get("agent", "unknown")
+                index_text = data.get("index", "")
+                card = f"  [{agent}] {index_text}"
+                if len(card) > index_budget:
+                    index_parts.append("  ... [more entries omitted]")
+                    break
+                index_parts.append(card)
+                index_budget -= len(card)
+            if index_budget <= 0:
+                break
+
+    # --- Assemble full message ---
+    parts: list[str] = ["[PREVIOUS SESSION CATALOG]"]
+    parts.append(
+        "Previous work in this session. Use the `retrieve_previous_context` tool "
+        "to get full details on any catalog entry below.\n"
+    )
+    parts.extend(overview_parts)
+
+    if index_parts:
+        parts.append("\n\nAvailable details (index cards):")
+        parts.extend(index_parts)
+
+    parts.append(
+        "\n\n[END CATALOG]\n\n"
+        "The user is continuing a conversation. The above describes what was "
+        "previously discussed. Use `retrieve_previous_context` when you need "
+        "specific details (e.g. scores, analysis results, tool outputs) from "
+        "previous turns. Resolve references like 'this protein', 'the structure', "
+        "'that file' in the new query. Re-use previously downloaded files."
+    )
+
+    text = "\n".join(parts)
+    total_budget = _CATALOG_OVERVIEW_BUDGET + _CATALOG_INDEX_BUDGET + 500
+    if len(text) > total_budget:
+        text = text[:total_budget] + "\n... [context truncated]"
+
+    logger.debug(
+        "Injecting session catalog for %s (%d turns, has_node_outputs=%s)",
+        session_id,
+        len(prev_turns),
+        has_node_outputs,
+    )
+    return SystemMessage(content=text)
+
+
+def _build_contextual_initial_state(session_id: str | None, query: str) -> dict[str, Any]:
+    """Build initial state with previous session context injected as a SystemMessage."""
+    messages: list = []
+
+    ctx_msg = _build_context_system_message(session_id)
+    if ctx_msg is not None:
+        messages.append(ctx_msg)
+
+    messages.append(HumanMessage(content=query))
+    return {"messages": messages}
+
+
 # =====================================================
 # ARTIFACT GENERATION
 # =====================================================
@@ -157,16 +297,13 @@ async def upload_file(file: UploadFile = File(...)):
         with file_path.open("wb") as buffer:
             buffer.write(contents)
 
-        # Return path relative to project root
-        try:
-            rel_path = file_path.relative_to(Path.cwd())
-        except ValueError:
-            rel_path = file_path
+        # Return absolute path for robust file resolution by agents
+        abs_path = file_path.resolve()
 
         return {
             "status": "success",
             "filename": file.filename,
-            "path": str(rel_path),
+            "path": str(abs_path),
             "size": file_path.stat().st_size,
         }
     except Exception as e:
@@ -386,6 +523,7 @@ async def query_bioagents(request: QueryRequest):
 
         graph = create_graph()
         reference_manager = ReferenceManager()
+        # REST API does not currently carry session_id, so no cross-query context.
         initial_state = {
             "messages": [HumanMessage(content=request.query)],
             "references": reference_manager,
@@ -640,6 +778,44 @@ async def websocket_endpoint(websocket: WebSocket):
                 ws_provider = data.get("provider")
                 ws_model = data.get("model")
                 if query:
+                    # Log user query to admin database
+                    ws_client_id = data.get("client_id") or _gen_client_id(
+                        websocket.client.host if websocket.client else "unknown",
+                        websocket.headers.get("user-agent", "unknown"),
+                    )
+                    try:
+                        admin_db.upsert_client(
+                            client_id=ws_client_id,
+                            ip_hash=_gen_client_id(
+                                websocket.client.host if websocket.client else "unknown", ""
+                            ),
+                            user_agent_hash=_gen_client_id(
+                                "", websocket.headers.get("user-agent", "unknown")
+                            ),
+                        )
+                        if session_id:
+                            admin_db.upsert_session(
+                                session_id=session_id,
+                                client_id=ws_client_id,
+                                provider=ws_provider,
+                                model=ws_model,
+                            )
+                            admin_db.increment_session_counter(session_id, "total_queries")
+                        admin_db.log_chat_message(
+                            client_id=ws_client_id,
+                            session_id=session_id or "unknown",
+                            role="user",
+                            content=query,
+                        )
+                        admin_db.log_activity(
+                            client_id=ws_client_id,
+                            session_id=session_id,
+                            action="query",
+                            details={"query_length": len(query)},
+                        )
+                    except Exception:
+                        logger.debug("Failed to log query to admin DB", exc_info=True)
+
                     # Create a steering queue for this query execution
                     steering_queue: asyncio.Queue[str] = asyncio.Queue()
 
@@ -683,6 +859,7 @@ async def websocket_endpoint(websocket: WebSocket):
                             steering_queue=steering_queue,
                             approval_queue=approval_queue,
                             engagement_queue=engagement_queue,
+                            client_id=ws_client_id,
                         )
                     except WebSocketDisconnect:
                         raise
@@ -715,6 +892,7 @@ async def run_bioagents_streaming(
     engagement_queue: asyncio.Queue[dict] | None = None,
     provider: str | None = None,
     model: str | None = None,
+    client_id: str | None = None,
 ):
     """Execute BioAgents query with WebSocket streaming and optional steering/approval support."""
     import uuid
@@ -755,8 +933,26 @@ async def run_bioagents_streaming(
 
     # Create graph with checkpointer to support mid-execution state updates (steering)
     checkpointer = MemorySaver()
+
+    # Build session context retrieval tool bound to this session's previous turns.
+    # When there is prior context, agents get a catalog + a tool to pull details.
+    _session_context_tool = None
+    if session_id and session_id in _session_contexts:
+        from bioagents.tools.session_context_tools import (
+            create_retrieve_previous_context_tool,
+        )
+
+        prev_node_outputs = [turn.get("node_outputs", {}) for turn in _session_contexts[session_id]]
+        if any(prev_node_outputs):  # only create tool if there's data to retrieve
+            _session_context_tool = create_retrieve_previous_context_tool(prev_node_outputs)
+
     await safe_send({"type": "log", "message": "Initializing agents..."})
-    graph = await asyncio.to_thread(create_graph, checkpointer=checkpointer, policy=session_policy)
+    graph = await asyncio.to_thread(
+        create_graph,
+        checkpointer=checkpointer,
+        policy=session_policy,
+        session_context_tool=_session_context_tool,
+    )
 
     # Thread ID for checkpoint-based state updates
     thread_id = f"session_{session_id or uuid.uuid4().hex[:8]}"
@@ -769,11 +965,15 @@ async def run_bioagents_streaming(
     # uses msgpack serialization which can't handle arbitrary Python objects.
     # References are extracted in the streaming loop instead.
     reference_manager = ReferenceManager()
-    initial_state: dict[str, Any] = {
-        "messages": [HumanMessage(content=query)],
-    }
+    initial_state: dict[str, Any] = _build_contextual_initial_state(session_id, query)
 
     full_audit: list[dict[str, Any]] = []
+    # Compact accumulator for session context — only stores the user query,
+    # the final summary output, file paths, and node output index cards.
+    _turn_summary: str = ""
+    _turn_files: set[str] = set()
+    _turn_node_outputs: dict[str, dict[str, Any]] = {}  # key → {index, content, agent}
+    _turn_node_idx: int = 0
     sent_artifacts: set[str] = set()
     sent_structures: set[str] = set()
     sent_protein_ids: set[str] = set()
@@ -815,6 +1015,9 @@ async def run_bioagents_streaming(
 
         _stream_input = initial_state
 
+        # Show supervisor as active immediately when execution starts
+        await safe_send({"type": "agent_update", "agent": "supervisor"})
+
         while True:
             resume_after_engagement = False
 
@@ -839,6 +1042,22 @@ async def run_bioagents_streaming(
                                 f"Engagement request sent: type={engagement_data.get('engagement_type')}, "
                                 f"question={engagement_data.get('question', '')[:80]}"
                             )
+                            # Log engagement request to admin DB
+                            try:
+                                admin_db.log_engagement_event(
+                                    client_id=client_id,
+                                    session_id=session_id or "unknown",
+                                    engagement_id=engagement_data.get("id", "unknown"),
+                                    engagement_type=engagement_data.get("engagement_type"),
+                                    question=engagement_data.get("question"),
+                                    options=json.dumps(engagement_data.get("options", [])),
+                                    context=engagement_data.get("context"),
+                                    agent=engagement_data.get("agent"),
+                                )
+                            except Exception:
+                                logger.debug(
+                                    "Failed to log engagement request to admin DB", exc_info=True
+                                )
                             try:
                                 response = await asyncio.wait_for(
                                     engagement_queue.get()
@@ -860,6 +1079,18 @@ async def run_bioagents_streaming(
                                 logger.info(
                                     f"Engagement response received: {resume_payload['content'][:80]}"
                                 )
+                                # Log engagement response to admin DB
+                                try:
+                                    admin_db.update_engagement_event(
+                                        engagement_id=engagement_data.get("id"),
+                                        response_content=response.get("content", ""),
+                                        selected_option=response.get("selected_option"),
+                                    )
+                                except Exception:
+                                    logger.debug(
+                                        "Failed to log engagement response to admin DB",
+                                        exc_info=True,
+                                    )
                             except TimeoutError:
                                 resume_payload = {"content": ""}
                                 if not await safe_send(
@@ -870,6 +1101,17 @@ async def run_bioagents_streaming(
                                 ):
                                     break
                                 logger.info("Engagement timed out, proceeding with best judgment")
+                                # Log engagement timeout to admin DB
+                                try:
+                                    admin_db.update_engagement_event(
+                                        engagement_id=engagement_data.get("id"),
+                                        timed_out=True,
+                                    )
+                                except Exception:
+                                    logger.debug(
+                                        "Failed to log engagement timeout to admin DB",
+                                        exc_info=True,
+                                    )
 
                             _stream_input = Command(resume=resume_payload)
                             resume_after_engagement = True
@@ -881,8 +1123,35 @@ async def run_bioagents_streaming(
                 if node_output is None:
                     node_output = {}
 
-                # Send agent update — bail out if client is gone
-                if not await safe_send({"type": "agent_update", "agent": node_name}):
+                # Determine which agent should be displayed as active.
+                # LangGraph yields steps for COMPLETED nodes. To show the
+                # agent that is *currently* running, we look ahead at what
+                # the graph will execute next based on routing logic.
+                _next_display_agent: str | None = None
+
+                if node_name == "supervisor":
+                    # Supervisor finished routing → show the target agent
+                    routed = node_output.get("next", "FINISH")
+                    _next_display_agent = "summary" if routed == "FINISH" else routed
+                elif node_name.endswith("_tools"):
+                    # Tool node → returns to calling agent; keep current display
+                    pass
+                elif node_name == "summary":
+                    _next_display_agent = "summary"
+                else:
+                    # Regular agent completed → check for pending tool calls
+                    step_msgs = node_output.get("messages", [])
+                    last_msg = step_msgs[-1] if step_msgs else None
+                    if last_msg and getattr(last_msg, "tool_calls", None):
+                        # Agent called tools → tool execution is part of its work
+                        pass
+                    else:
+                        # Agent done → routes back to supervisor
+                        _next_display_agent = "supervisor"
+
+                if _next_display_agent is not None and not await safe_send(
+                    {"type": "agent_update", "agent": _next_display_agent}
+                ):
                     break
 
                 # Process messages
@@ -891,6 +1160,87 @@ async def run_bioagents_streaming(
                     for m in node_output["messages"]:
                         if _client_disconnected:
                             break
+
+                        # --- Compact session context extraction ---
+                        # Capture Summary/Report outputs, file paths, and node output
+                        # index cards for the catalog + on-demand retrieval system.
+                        if isinstance(m, AIMessage):
+                            name = getattr(m, "name", "")
+                            # Handle both string and list-format content
+                            raw_content = m.content
+                            if isinstance(raw_content, str):
+                                ai_content = raw_content
+                            elif isinstance(raw_content, list):
+                                ai_content = " ".join(
+                                    b.get("text", "") if isinstance(b, dict) else str(b)
+                                    for b in raw_content
+                                )
+                            else:
+                                ai_content = str(raw_content) if raw_content else ""
+
+                            if ai_content:
+                                # Capture final summary/report output
+                                if name in ("Summary", "Report") and len(ai_content) > 50:
+                                    _turn_summary = ai_content[:800]
+                                # Extract file paths
+                                _file_matches = re.findall(
+                                    r"(/?\w+[\w/-]+\.(?:pdb|fasta|cif|csv|json))",
+                                    ai_content,
+                                )
+                                _turn_files.update(_file_matches)
+                                # Store node output index card for all non-supervisor,
+                                # non-summary agents. Include both final responses
+                                # and tool-calling messages (which often contain
+                                # intermediate reasoning the next agent may need).
+                                has_tool_calls = hasattr(m, "tool_calls") and m.tool_calls
+                                if (
+                                    name
+                                    and name not in ("Supervisor", "Summary", "Report")
+                                    and not has_tool_calls
+                                    and len(ai_content) > 30
+                                ):
+                                    _key = f"{name}_{_turn_node_idx}"
+                                    _turn_node_outputs[_key] = {
+                                        "index": ai_content[:120].replace("\n", " "),
+                                        "content": ai_content[:2000],
+                                        "agent": name,
+                                    }
+                                    _turn_node_idx += 1
+                        elif isinstance(m, ToolMessage):
+                            raw_tc = m.content
+                            if isinstance(raw_tc, str):
+                                tc = raw_tc
+                            elif isinstance(raw_tc, list):
+                                tc = " ".join(
+                                    b.get("text", "") if isinstance(b, dict) else str(b)
+                                    for b in raw_tc
+                                )
+                            else:
+                                tc = str(raw_tc) if raw_tc else ""
+
+                            if tc:
+                                # Extract file paths
+                                _file_matches = re.findall(
+                                    r"(?:to|at)[:\s]+([^\s'\"]+\.(?:pdb|fasta|cif|csv|json))",
+                                    tc,
+                                    re.IGNORECASE,
+                                )
+                                _turn_files.update(_file_matches)
+
+                                # Also store tool results as node outputs — these
+                                # contain the actual data (scores, structures, etc.)
+                                # that agents often need to retrieve.
+                                tool_name = getattr(m, "name", "")
+                                if tool_name and len(tc) > 30:
+                                    _key = f"tool_{tool_name}_{_turn_node_idx}"
+                                    _turn_node_outputs[_key] = {
+                                        "index": f"[{tool_name}] {tc[:100].replace(chr(10), ' ')}",
+                                        "content": tc[:2000],
+                                        "agent": tool_name,
+                                    }
+                                    _turn_node_idx += 1
+                        # --- End compact extraction ---
+
                         msg_info = {
                             "type": m.__class__.__name__,
                             "content": m.content if hasattr(m, "content") else str(m),
@@ -1022,6 +1372,43 @@ async def run_bioagents_streaming(
                     "messages": step_messages,
                 }
                 full_audit.append(audit_entry)
+
+                # Log agent response to admin database
+                if node_name in STREAM_UI_AGENTS and step_messages:
+                    try:
+                        for msg_info in step_messages:
+                            if msg_info["type"] == "AIMessage":
+                                tc_data = None
+                                if isinstance(m, AIMessage) and getattr(m, "tool_calls", None):
+                                    tc_data = [
+                                        {"name": tc.get("name"), "args": tc.get("args")}
+                                        for tc in m.tool_calls
+                                    ]
+                                admin_db.log_chat_message(
+                                    client_id=client_id,
+                                    session_id=session_id or "unknown",
+                                    role="assistant",
+                                    agent=node_name,
+                                    content=str(msg_info["content"]),
+                                    tool_calls=tc_data,
+                                )
+                    except Exception:
+                        logger.debug("Failed to log agent response to admin DB", exc_info=True)
+
+                # Log agent decision/reasoning to admin database
+                try:
+                    admin_db.log_agent_decision(
+                        client_id=client_id,
+                        session_id=session_id or "unknown",
+                        agent=node_name,
+                        decision=node_output.get("next", "Continue"),
+                        reasoning=node_output.get("reasoning", ""),
+                        step_messages=json.dumps(step_messages, default=str),
+                        step_index=len(full_audit),
+                    )
+                except Exception:
+                    logger.debug("Failed to log agent decision to admin DB", exc_info=True)
+
                 if not await safe_send({"type": "audit", "entries": full_audit}):
                     break
 
@@ -1048,6 +1435,20 @@ async def run_bioagents_streaming(
                                     }
                                 ):
                                     break
+                                # Log tool call to admin database
+                                try:
+                                    admin_db.log_tool_event(
+                                        client_id=client_id,
+                                        session_id=session_id or "unknown",
+                                        agent=node_name,
+                                        tool_name=tc.get("name", "unknown"),
+                                        event_type="call",
+                                        arguments=json.dumps(tc.get("args", {}), default=str),
+                                    )
+                                except Exception:
+                                    logger.debug(
+                                        "Failed to log tool call to admin DB", exc_info=True
+                                    )
                         elif isinstance(m, ToolMessage) and m.content:
                             tc_content = m.content
                             if isinstance(tc_content, list):
@@ -1087,6 +1488,23 @@ async def run_bioagents_streaming(
                                         }
                                     ):
                                         break
+                                    # Log tool approval request to admin DB
+                                    try:
+                                        admin_db.log_tool_approval_event(
+                                            client_id=client_id,
+                                            session_id=session_id or "unknown",
+                                            request_id=request_id,
+                                            tool_name=tool_name,
+                                            agent=node_name,
+                                            reason=reason,
+                                            risk_level=risk_level,
+                                            outcome="pending",
+                                        )
+                                    except Exception:
+                                        logger.debug(
+                                            "Failed to log approval request to admin DB",
+                                            exc_info=True,
+                                        )
 
                                     # Drain any approval responses that arrived
                                     if approval_queue is not None:
@@ -1103,6 +1521,17 @@ async def run_bioagents_streaming(
                                                             "message": f"Tool '{tool_name}' approved for this session",
                                                         }
                                                     )
+                                                    # Log approval to admin DB
+                                                    try:
+                                                        admin_db.update_tool_approval_event(
+                                                            request_id=request_id,
+                                                            outcome="approved",
+                                                        )
+                                                    except Exception:
+                                                        logger.debug(
+                                                            "Failed to log approval to admin DB",
+                                                            exc_info=True,
+                                                        )
                                             except asyncio.QueueEmpty:
                                                 break
                                     continue
@@ -1117,6 +1546,21 @@ async def run_bioagents_streaming(
                                         }
                                     ):
                                         break
+                                    # Log policy block to admin DB
+                                    try:
+                                        admin_db.log_tool_approval_event(
+                                            client_id=client_id,
+                                            session_id=session_id or "unknown",
+                                            request_id=str(uuid.uuid4()),
+                                            tool_name=tool_name,
+                                            agent=node_name,
+                                            outcome="blocked",
+                                            reason=tc_content[:500],
+                                        )
+                                    except Exception:
+                                        logger.debug(
+                                            "Failed to log policy block to admin DB", exc_info=True
+                                        )
                                     continue
 
                             if not await safe_send(
@@ -1130,6 +1574,23 @@ async def run_bioagents_streaming(
                                 }
                             ):
                                 break
+                            # Log tool result to admin DB
+                            try:
+                                result_str = (
+                                    tc_content if isinstance(tc_content, str) else str(tc_content)
+                                )
+                                truncated = len(result_str) > 100000
+                                admin_db.log_tool_event(
+                                    client_id=client_id,
+                                    session_id=session_id or "unknown",
+                                    agent=node_name,
+                                    tool_name=tool_name,
+                                    event_type="result",
+                                    result=result_str[:100000] if truncated else result_str,
+                                    result_truncated=1 if truncated else 0,
+                                )
+                            except Exception:
+                                logger.debug("Failed to log tool result to admin DB", exc_info=True)
 
                 if _client_disconnected:
                     break
@@ -1246,6 +1707,21 @@ async def run_bioagents_streaming(
                                             {"type": "artifact", "artifact": artifact}
                                         ):
                                             break
+                                        # Log artifact to admin DB
+                                        try:
+                                            admin_db.log_artifact_event(
+                                                client_id=client_id,
+                                                session_id=session_id or "unknown",
+                                                artifact_name=artifact["name"],
+                                                artifact_path=artifact.get("path"),
+                                                artifact_type=artifact.get("type"),
+                                                artifact_size=artifact.get("size"),
+                                                source_agent=node_name,
+                                            )
+                                        except Exception:
+                                            logger.debug(
+                                                "Failed to log artifact to admin DB", exc_info=True
+                                            )
                                         if not await safe_send(
                                             {
                                                 "type": "log",
@@ -1278,6 +1754,28 @@ async def run_bioagents_streaming(
             # Persist references for this session
             if session_id and reference_manager:
                 _session_references[session_id] = reference_manager
+
+            # Save compact session context for follow-up queries.
+            # Stores the user query, final summary, file paths, and node output
+            # index cards (for the catalog + on-demand retrieval system).
+            if session_id:
+                turn_ctx: dict[str, Any] = {
+                    "query": query,
+                    "summary": _turn_summary,
+                    "files": sorted(_turn_files),
+                    "node_outputs": dict(_turn_node_outputs),
+                }
+                if session_id not in _session_contexts:
+                    _session_contexts[session_id] = []
+                _session_contexts[session_id].append(turn_ctx)
+                _prune_session_contexts()
+                logger.debug(
+                    "Saved session context for %s (turn %d, %d files, %d node outputs)",
+                    session_id,
+                    len(_session_contexts[session_id]),
+                    len(_turn_files),
+                    len(_turn_node_outputs),
+                )
 
             # Send completion with all references (only if still connected)
             if not _client_disconnected:
@@ -1422,6 +1920,19 @@ async def start_experiment_run(request: ExperimentRunRequest):
     background_task.add_done_callback(
         lambda t: t.exception() if not t.cancelled() else None
     )  # consume result so exceptions don't go unobserved
+
+    # Log experiment start to admin database
+    try:
+        admin_db.log_experiment(
+            client_id=_gen_client_id("experiment_runner", "system"),
+            run_id=pending_run_id,
+            use_case_ids=request.use_case_ids,
+            config=request.config,
+            status="started",
+        )
+    except Exception:
+        logger.debug("Failed to log experiment to admin DB", exc_info=True)
+
     return {"status": "started", "run_id": pending_run_id, "use_case_count": len(use_cases)}
 
 
@@ -1466,12 +1977,11 @@ async def demo_structure(identifier: str):
 
     try:
         if is_uniprot:
-            # AlphaFold structure
-            url = f"https://alphafold.ebi.ac.uk/files/AF-{identifier}-F1-model_v4.pdb"
+            # AlphaFold structure - try v6 first (current), then v4 as fallback
+            url = f"https://alphafold.ebi.ac.uk/files/AF-{identifier}-F1-model_v6.pdb"
             response = requests.get(url, timeout=30)
             if response.status_code == 404:
-                # Try v3
-                url = f"https://alphafold.ebi.ac.uk/files/AF-{identifier}-F1-model_v3.pdb"
+                url = f"https://alphafold.ebi.ac.uk/files/AF-{identifier}-F1-model_v4.pdb"
                 response = requests.get(url, timeout=30)
         else:
             # PDB structure

@@ -103,6 +103,12 @@ def search_google_scholar(query: str, num_results: int = 5) -> str:
 def download_file_from_url(url: str, output_path: str = "") -> str:
     """Download a file from a URL to the sandbox workspace.
 
+    IMPORTANT URL FORMAT NOTES:
+    - AlphaFold DB structures: use model_v6 (NOT v4 or v3, which are removed).
+      Example: https://alphafold.ebi.ac.uk/files/AF-P04637-F1-model_v6.pdb
+    - For protein structures, prefer using download_structure_file tool instead,
+      which handles URL construction automatically.
+
     Args:
         url: The URL of the file to download.
         output_path: Optional output file path in the sandbox. If empty,

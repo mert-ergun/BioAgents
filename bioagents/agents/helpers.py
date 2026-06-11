@@ -312,6 +312,18 @@ def prepare_messages_for_agent(
     if first_human and first_human not in windowed:
         windowed = [first_human, *windowed]
 
+    # Preserve session catalog SystemMessage so follow-up queries can
+    # reference previous work even after the conversation grows long.
+    session_context_msg = None
+    for msg in messages:
+        if isinstance(msg, SystemMessage):
+            content = get_message_content(msg)
+            if "[PREVIOUS SESSION CATALOG]" in content:
+                session_context_msg = msg
+                break
+    if session_context_msg and session_context_msg not in windowed:
+        windowed.insert(0, session_context_msg)
+
     for task_msg in supervisor_tasks:
         if task_msg not in windowed:
             windowed.insert(1 if first_human else 0, task_msg)

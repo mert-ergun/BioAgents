@@ -49,11 +49,13 @@ from bioagents.tools.analysis_tools import (
     calculate_molecular_weight,
     run_aggrescan3d,
 )
+from bioagents.tools.docking_tools import get_docking_tools
 from bioagents.tools.environment_tools import get_environment_tools
 from bioagents.tools.file_tools import get_file_tools
 from bioagents.tools.genomics_tools import get_genomics_tools
 from bioagents.tools.git_tools import get_git_tools
 from bioagents.tools.literature_tools import get_literature_tools
+from bioagents.tools.paperqa_wrapper import search_local_papers_with_paperqa
 from bioagents.tools.pdf_tools import (
     extract_pdf_text_spacy_layout,
     fetch_webpage_as_pdf_text,
@@ -126,26 +128,6 @@ class AgentState(dict):
     iteration_count: int = 0
     error_log: list[str] | None = None
     tool_usage_log: list[dict] | None = None
-
-
-def _count_agent_tool_rounds(messages: list, agent_name: str) -> int:
-    """Count tool-call rounds this agent has taken since the last supervisor handoff."""
-    from langchain_core.messages import AIMessage, HumanMessage
-
-    rounds = 0
-    for msg in reversed(messages):
-        if isinstance(msg, HumanMessage):
-            content = msg.content if isinstance(msg.content, str) else str(msg.content)
-            if "[SUPERVISOR TASK]" in content:
-                break
-        if (
-            isinstance(msg, AIMessage)
-            and getattr(msg, "name", "") == agent_name
-            and hasattr(msg, "tool_calls")
-            and msg.tool_calls
-        ):
-            rounds += 1
-    return rounds
 
 
 def _detect_consecutive_duplicate_calls(messages: list, agent_name: str) -> tuple[bool, str]:
@@ -237,27 +219,7 @@ def agent_node(state, agent, name):
     """Wrapper for agent nodes that adds agent identification and ACE tracking."""
     from langchain_core.messages import AIMessage
 
-    from bioagents.limits import MAX_AGENT_TOOL_ROUNDS, MAX_TU_TOOL_CALLS_PER_AGENT
-
-    if MAX_AGENT_TOOL_ROUNDS and MAX_AGENT_TOOL_ROUNDS > 0:
-        rounds = _count_agent_tool_rounds(state.get("messages", []), name)
-        if rounds >= MAX_AGENT_TOOL_ROUNDS:
-            logger.warning(
-                "Agent '%s' hit max tool rounds (%d) — forcing return to supervisor.",
-                name,
-                MAX_AGENT_TOOL_ROUNDS,
-            )
-            partial = _extract_best_agent_content(state.get("messages", []), name)
-            if partial:
-                content = partial
-            else:
-                content = (
-                    f"[MAX_TOOL_ROUNDS] Agent '{name}' reached the tool-round limit "
-                    f"({MAX_AGENT_TOOL_ROUNDS}). The supervisor should proceed with "
-                    f"available results or try a different approach."
-                )
-            error_msg = AIMessage(content=content, name=name)
-            return {"messages": [error_msg]}
+    from bioagents.limits import MAX_TU_TOOL_CALLS_PER_AGENT
 
     # Check for consecutive duplicate tool calls (loop detection)
     is_loop, loop_desc = _detect_consecutive_duplicate_calls(state.get("messages", []), name)
@@ -380,7 +342,10 @@ ALL_MEMBERS = [
 
 
 def create_graph(
-    _initialize_references: bool = True, checkpointer=None, policy: ToolPolicy | None = None
+    _initialize_references: bool = True,
+    checkpointer=None,
+    policy: ToolPolicy | None = None,
+    session_context_tool=None,
 ):
     """Create and compile the multi-agent LangGraph workflow.
 
@@ -396,6 +361,9 @@ def create_graph(
         checkpointer: Optional LangGraph checkpointer for mid-execution state updates.
         policy: Optional ToolPolicy instance. If provided, tool nodes use the
             approval gate. If None, default policy is used (auto-approve everything).
+        session_context_tool: Optional LangChain tool for retrieving previous session
+            context. When provided, it is appended to every tool-using agent's tool
+            list and corresponding tool node so agents can pull prior-turn details.
     """
     # ---- existing tool lists ----
     research_tools = [
@@ -404,6 +372,7 @@ def create_graph(
         tool_universe_call_tool,
         fetch_webpage_as_pdf_text,
         extract_pdf_text_spacy_layout,
+        search_local_papers_with_paperqa,
         fetch_alphafold_structure,
         fetch_pdb_structure,
         download_structure_file,
@@ -421,7 +390,7 @@ def create_graph(
     _tu_tools = [tool_universe_find_tools, tool_universe_call_tool]
     lit_tools = get_literature_tools() + _tu_tools
     web_tools = get_web_tools()
-    paper_rep_tools = get_web_tools() + get_git_tools()
+    paper_rep_tools = get_web_tools() + get_git_tools() + [extract_pdf_text_spacy_layout]
     data_acq_tools = get_web_tools() + get_file_tools() + [download_uniprot_flat_file]
     gen_tools = get_genomics_tools() + _tu_tools
     trans_tools = get_transcriptomics_tools() + _tu_tools
@@ -432,6 +401,34 @@ def create_graph(
     git_tools_list = get_git_tools()
     env_tools = get_environment_tools()
     viz_tools = get_visualization_tools()
+    docking_tools = get_docking_tools()
+
+    # ---- inject session context retrieval tool ----
+    # If a session_context_tool is provided (created per-request with session data),
+    # append it to every tool list that feeds a tool-using agent + its tool node.
+    if session_context_tool is not None:
+        _sct = session_context_tool
+        for tl in (
+            research_tools,
+            analysis_tools_list,
+            tb_tools,
+            pd_tools,
+            lit_tools,
+            web_tools,
+            paper_rep_tools,
+            data_acq_tools,
+            gen_tools,
+            trans_tools,
+            struct_tools,
+            phylo_tools,
+            td_tools,
+            sh_tools,
+            git_tools_list,
+            env_tools,
+            viz_tools,
+            docking_tools,
+        ):
+            tl.append(_sct)
 
     # ---- create agents ----
     research_agent = create_research_agent(research_tools)
@@ -488,6 +485,7 @@ def create_graph(
     git_tool_node = make_approval_tool_node(git_tools_list, policy=active_policy)
     environment_tool_node = make_approval_tool_node(env_tools, policy=active_policy)
     visualization_tool_node = make_approval_tool_node(viz_tools, policy=active_policy)
+    docking_tool_node = make_approval_tool_node(docking_tools, policy=active_policy)
 
     # ---- build graph ----
     workflow = StateGraph(AgentState)
@@ -573,6 +571,7 @@ def create_graph(
     workflow.add_node("git_tools", git_tool_node)
     workflow.add_node("environment_tools", environment_tool_node)
     workflow.add_node("visualization_tools", visualization_tool_node)
+    workflow.add_node("docking_tools", docking_tool_node)
 
     # ---- entry point ----
     workflow.set_entry_point("supervisor")
@@ -590,6 +589,9 @@ def create_graph(
         messages = state.get("messages", [])
         engagement_data = None
 
+        # First: look for an explicit ENGAGEMENT_PENDING marker (set by
+        # supervisor when an agent requests user input or when the LLM
+        # routing decides user_input is needed).
         for msg in reversed(messages[-5:]):
             content = getattr(msg, "content", "")
             if not isinstance(content, str):
@@ -606,10 +608,44 @@ def create_graph(
                     }
                 break
 
-        payload = engagement_data or {
-            "type": "clarification",
-            "question": "How would you like to proceed?",
-        }
+        # Fallback: if no ENGAGEMENT_PENDING marker was found, build a
+        # contextual question from the supervisor's most recent task
+        # description and the original user query.
+        if engagement_data is None:
+            context_hint = ""
+            original_query = ""
+            for msg in messages:
+                if isinstance(msg, HumanMessage) and "[SUPERVISOR TASK]" not in str(msg.content):
+                    original_query = str(msg.content)[:300]
+                    break
+
+            for msg in reversed(messages[-10:]):
+                content = getattr(msg, "content", "")
+                if isinstance(msg, HumanMessage) and "[SUPERVISOR TASK]" in str(content):
+                    # Extract the task description after the prefix
+                    task = str(content).replace("[SUPERVISOR TASK]", "").strip()
+                    context_hint = task[:300]
+                    break
+
+            if context_hint:
+                question = f"I need clarification: {context_hint}. How would you like to proceed?"
+            elif original_query:
+                question = (
+                    f"Regarding your request ({original_query[:100]}...), "
+                    "how would you like to proceed?"
+                )
+            else:
+                question = "How would you like to proceed?"
+
+            engagement_data = {
+                "type": "clarification",
+                "question": question,
+                "options": [],
+                "context": context_hint or original_query,
+                "agent": "Supervisor",
+            }
+
+        payload = engagement_data
 
         response = interrupt(payload)
 
@@ -673,6 +709,7 @@ def create_graph(
         ("git", "git_tools"),
         ("environment", "environment_tools"),
         ("visualization", "visualization_tools"),
+        ("docking", "docking_tools"),
     ]
 
     for agent_name, tool_node_name in tool_agent_pairs:
@@ -690,7 +727,6 @@ def create_graph(
         "dl",
         "critic",
         "report",
-        "docking",
         "planner",
         "tool_validator",
         "prompt_optimizer",
