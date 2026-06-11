@@ -473,7 +473,12 @@ def create_research_agent(tools: list):
                             f"{context_note}"
                         )
                     ),
-                    AIMessage(content="", tool_calls=my_tool_calls),
+                    # BURASI DEĞİŞTİ:
+                    AIMessage(
+                        content="", 
+                        tool_calls=my_tool_calls,
+                        additional_kwargs=initiator.additional_kwargs if hasattr(initiator, "additional_kwargs") else {}
+                    ),
                     *tool_results_per_sub_agent[i],
                 ]
                 res = create_retry_response(
@@ -599,11 +604,18 @@ def create_research_agent(tools: list):
             logger.info("Research Agent: All sub-agents finished. Proceeding to merge.")
             return _handle_merge(messages, combined_content, original_request)
 
+        # BURASI EKLENDİ: Tüm ajanların signature'larını birleştir
+        merged_kwargs = {}
+        for resp, _ in results:
+            if hasattr(resp, "additional_kwargs") and resp.additional_kwargs:
+                merged_kwargs.update(resp.additional_kwargs)
+
         return {
             "messages": [
                 AIMessage(
                     content=combined_content,
                     tool_calls=all_tool_calls,
+                    additional_kwargs=merged_kwargs # BURASI EKLENDİ
                 )
             ]
         }

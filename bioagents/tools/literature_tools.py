@@ -284,6 +284,46 @@ def fetch_paper_metadata(doi: str) -> str:
         return f"Error fetching paper metadata: {e}"
 
 
+@tool
+def search_litsense(query: str, max_results: int = 5) -> str:
+    """Search LitSense for relevant biomedical sentences based on a query.
+
+    Args:
+        query: Search query string.
+        max_results: Maximum number of results to return (default 5, max 30).
+
+    Returns:
+        JSON string with paper PMID, matching sentence, and relevance score.
+    """
+    try:
+        max_results = min(max(max_results, 1), 30)
+        # Using the LitSense 2.0 API endpoint for sentence-level retrieval
+        url = "https://www.ncbi.nlm.nih.gov/research/litsense2-api/api/sentences/"
+        params: dict[str, str] = {
+            "query": query, 
+            "rerank": "true"
+        }
+        
+        response = requests.get(url, params=params, timeout=HTTP_TIMEOUT)
+        response.raise_for_status()
+        data = response.json()
+
+        results = []
+        for item in data[:max_results]:
+            results.append({
+                "pmid": item.get("pmid", ""),
+                "sentence": item.get("text", ""),
+                "score": item.get("score", "")
+            })
+
+        if not results:
+            return f"No LitSense results found for: '{query}'"
+        
+        return json.dumps(results, indent=2)
+    except Exception as e:
+        return f"Error searching LitSense: {e}"
+
+
 def get_literature_tools() -> list:
     """Return all literature search tools."""
-    return [search_pubmed, search_arxiv, search_biorxiv, fetch_paper_metadata]
+    return [search_pubmed, search_arxiv, search_biorxiv, fetch_paper_metadata, search_litsense]
