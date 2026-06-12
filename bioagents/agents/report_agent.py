@@ -6,6 +6,7 @@ import re
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
+from bioagents.agents.helpers import invoke_with_retry, prepare_messages_for_agent
 from bioagents.llms.llm_provider import get_llm
 from bioagents.prompts.prompt_loader import load_prompt
 
@@ -94,55 +95,14 @@ def create_report_agent():
             # ───────────────────────────────────────────────────────────────────
 
             # Find user message
-            user_message = None
             for m in messages:
                 if isinstance(m, HumanMessage):
-                    user_message = m
                     break
 
-            if user_message is None:
-                user_message = HumanMessage(content="Generate a comprehensive report.")
+            windowed = prepare_messages_for_agent(messages, "report", summary_mode=True)
+            messages_with_system = [SystemMessage(content=REPORT_AGENT_PROMPT), *windowed]
 
-            # Format memory for the report
-            memory_context = format_memory_for_report(memory)
-
-            # Build full prompt with memory context embedded
-            full_prompt = f"""{REPORT_AGENT_SYSTEM_PROMPT}
-
-SHARED MEMORY STATE:
-{memory_context}
-"""
-
-            # Invoke LLM directly (no tool execution needed)
-            logger.info("Report agent generating report from shared memory...")
-            response = llm.invoke(
-                [
-                    SystemMessage(content=full_prompt),
-                    user_message,
-                ]
-            )
-
-            raw_output = response.content if hasattr(response, "content") else str(response)
-
-            logger.info(f"Report agent raw output (first 300 chars): {raw_output[:300]}")
-
-            # Parse JSON with robust fallback
-            structured_data = parse_report_json(raw_output, memory)
-
-            logger.info(f"Report agent structured data keys: {list(structured_data.keys())}")
-
-            out_msg = (
-                response
-                if isinstance(response, AIMessage)
-                else AIMessage(content=raw_output, name="Report")
-            )
-            return {
-                "data": structured_data,
-                "raw_output": raw_output,
-                "tool_calls": [],
-                "error": None,
-                "messages": [out_msg],
-            }
+            return invoke_with_retry("Report", llm, messages_with_system)
 
         except Exception as e:
             logger.error(f"Report agent error: {e}", exc_info=True)

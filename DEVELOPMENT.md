@@ -3,6 +3,15 @@
 ## Setup
 
 This project uses `uv` for dependency management and `pre-commit` for code quality checks.
+If you prefer a zero-setup environment, use the Docker stack documented in the
+main [README](README.md#option-a--docker-recommended):
+
+```bash
+cp .env.template .env                   # fill in LLM keys
+docker compose up --build               # web UI on http://localhost:8000
+docker compose run --rm tests           # run the test suite in the image
+docker compose run --rm shell           # interactive shell inside the container
+```
 
 ### Initial Setup
 

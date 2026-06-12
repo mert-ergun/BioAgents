@@ -1,0 +1,83 @@
+# Version control / dev tooling
+.git
+.github
+.gitignore
+.pre-commit-config.yaml
+
+# Python caches / build artifacts
+__pycache__
+**/__pycache__
+*.py[cod]
+*.pyc
+*.pyo
+*.egg-info
+.mypy_cache
+.pytest_cache
+.ruff_cache
+.tox
+.nox
+.coverage
+.coverage.*
+coverage.xml
+htmlcov
+build
+dist
+
+# Virtualenvs
+.venv
+venv
+env
+ENV
+
+# Editors / IDE
+.idea
+.vscode
+.claude
+.cursor
+
+# Local env
+.env
+.env.local
+
+# Runtime outputs (mounted as volumes or generated at runtime)
+generated_artifacts
+uploads
+experiment_runs
+sandbox_workdir
+output
+outputs
+logs
+debug_tool_outputs
+.bioagents_cache
+benchmarks/results
+notebooks
+
+# Heavy vendored repos that are mounted or fetched on demand, NOT shipped in image
+RFdiffusion
+ProteinMPNN
+DeepLearningExamples
+DEEPScreen2
+ace
+
+# Demo data / binary artifacts left at repo root — NOT needed inside image.
+# The data/ directory is still copied (see Dockerfile) for sample PDBs.
+binder_designs
+p53_binder_designs
+pd1_binder_designs
+test_backbones
+test_gpu_backbones
+test_metrics
+*.pdb
+!data/**/*.pdb
+
+# Large docs / presentation files
+output.txt
+Untitled
+feature_importance.png
+
+# Docker artifacts
+Dockerfile*
+docker-compose*.yml
+!Dockerfile
+!docker-compose.yml
+.dockerignore

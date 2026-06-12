@@ -1,0 +1,6 @@
+{
+  "tool": "get_webpage_text_from_url",
+  "result": {
+    "text": "About Environment Team Blog FAQ Paper GitHub Contact Us\n... with 150 specialized tools, 59 databases, and 105 software to automate\nTry it now! Join Slack Follow us on X Follow on LinkedIn\n0:00\nVariant interpretation Perturb-seq data analysis ADMET property prediction Cloning protocol design CRISPR sc\nVariant interpretation\nLearn how Biomni streamlines genetic variant\ninterpretation\nWatch Video\n150 59 105\nSpecialized Tools Databases Software\n• DNA/RNA sequence analysis • Genomic variants • Bioinformatics packages\n• Protein structure prediction • Protein structures • Molecular modeling\n• CRISPR guide design • Pathway information • Single-cell analysis\n• Cell type annotation • Disease associations • Statistical frameworks\n• Drug-target interaction • Drug interactions • Visualization libraries\n• Pharmacokinetic modeling • Literature repositories • Machine learning tools\nquery_pubmed alphafold plink\nExplore Full Environment Catalog\nTry it now! About Biomni\nQuick Links Contact Us\nAbout kexinh@cs.stanford.edu\nA general-purpose biomedical AI Environment\nagent Send us a message\nOur Team\nFAQ\nResearch Paper\nGitHub Repository\nGet Access\n© 2025 Biomni. All rights reserved."
+  }
+}

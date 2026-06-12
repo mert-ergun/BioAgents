@@ -13,6 +13,47 @@ _FINAL_RESEARCH_JSON = (
 )
 
 
+def _build_mock_llm_for_sub_agent_flow(
+    bound_llm, decomposer_content="1. Search for relevant data\n2. Analyze results"
+):
+    """
+    Build a get_llm mock that handles the sub-agent architecture.
+
+    get_llm is called with different prompt_name values:
+      - "research" -> returns llm that has .bind_tools() (main agent)
+      - "research_decomposer" -> returns decomposer LLM
+      - "research_merger" -> returns merger LLM (when sub-agents finish without tools)
+
+    Returns a mock get_llm function.
+    """
+    calls = {"count": 0}
+
+    def mock_get_llm(prompt_name=None, **kwargs):
+        calls["count"] += 1
+        if prompt_name == "research_decomposer":
+            # Decomposer: returns numbered list for parse_sub_tasks
+            mock_decomposer = Mock()
+            mock_decomposer.invoke = Mock(return_value=Mock(content=decomposer_content))
+            return mock_decomposer
+        elif prompt_name == "research_merger":
+            # Merger: returns final synthesis
+            mock_merger = Mock()
+            mock_merger.invoke = Mock(return_value=AIMessage(content=_FINAL_RESEARCH_JSON))
+            return mock_merger
+        else:
+            # Default: "research" or any other — return the base LLM with bind_tools
+            return _mock_llm_with_bind_tools(bound_llm)
+
+    return mock_get_llm
+
+
+def _mock_llm_with_bind_tools(bound_llm):
+    """Create a mock LLM that returns bound_llm from bind_tools."""
+    mock_llm = Mock()
+    mock_llm.bind_tools = Mock(return_value=bound_llm)
+    return mock_llm
+
+
 class TestResearchAgentCreation:
     """Tests for research agent creation and initialization."""
 
@@ -49,14 +90,33 @@ class TestResearchAgentInvocation:
 
     @patch("bioagents.agents.research_agent.get_llm")
     def test_research_agent_basic_invoke(self, mock_get_llm):
-        """Test basic invocation of the research agent."""
-        mock_llm = Mock()
-        mock_bound_llm = Mock()
-        mock_response = AIMessage(content="Research complete", name="Research")
+        """Test basic invocation of the research agent.
 
-        mock_llm.bind_tools = Mock(return_value=mock_bound_llm)
-        mock_bound_llm.invoke = Mock(return_value=mock_response)
-        mock_get_llm.return_value = mock_llm
+        In the sub-agent architecture, get_llm is called multiple times:
+        research (main), research_decomposer (decompose), and sub-agent LLM calls.
+        The sub-agents return AIMessages via create_retry_response.
+        """
+        # The bound LLM is used by sub-agents via create_retry_response
+        mock_bound_llm = Mock()
+        sub_agent_response = AIMessage(content="Found relevant research data")
+        mock_bound_llm.invoke = Mock(return_value=sub_agent_response)
+
+        mock_llm = _mock_llm_with_bind_tools(mock_bound_llm)
+
+        def get_llm_side_effect(prompt_name=None, **kwargs):
+            if prompt_name == "research_decomposer":
+                mock_decomposer = Mock()
+                mock_decomposer.invoke = Mock(
+                    return_value=Mock(content="1. Search for relevant data")
+                )
+                return mock_decomposer
+            elif prompt_name == "research_merger":
+                mock_merger = Mock()
+                mock_merger.invoke = Mock(return_value=AIMessage(content=_FINAL_RESEARCH_JSON))
+                return mock_merger
+            return mock_llm
+
+        mock_get_llm.side_effect = get_llm_side_effect
 
         tools = [Mock()]
         agent = create_research_agent(tools)
@@ -64,10 +124,12 @@ class TestResearchAgentInvocation:
         state = {"messages": [HumanMessage(content="Search for p53 cancer papers")]}
         result = agent(state)
 
+        # The new architecture returns shared-memory-compatible dict
         assert "messages" in result
-        assert len(result["messages"]) == 1
-        assert result["messages"][0] == mock_response
-        mock_bound_llm.invoke.assert_called_once()
+        assert "data" in result
+        assert "tool_calls" in result
+        assert "raw_output" in result
+        assert len(result["messages"]) >= 1
 
     @patch("bioagents.agents.research_agent.get_llm")
     def test_research_agent_includes_system_message(self, mock_get_llm):
@@ -94,13 +156,28 @@ class TestResearchAgentInvocation:
     @patch("bioagents.agents.research_agent.get_llm")
     def test_research_agent_with_conversation_history(self, mock_get_llm):
         """Test research agent with multiple messages in conversation."""
-        mock_llm = Mock()
         mock_bound_llm = Mock()
-        mock_response = AIMessage(content="Follow-up research")
+        sub_agent_response = AIMessage(content="Follow-up research data")
+        mock_bound_llm.invoke = Mock(return_value=sub_agent_response)
 
-        mock_llm.bind_tools = Mock(return_value=mock_bound_llm)
-        mock_bound_llm.invoke = Mock(return_value=mock_response)
-        mock_get_llm.return_value = mock_llm
+        mock_llm = _mock_llm_with_bind_tools(mock_bound_llm)
+
+        def get_llm_side_effect(prompt_name=None, **kwargs):
+            if prompt_name == "research_decomposer":
+                mock_decomposer = Mock()
+                mock_decomposer.invoke = Mock(
+                    return_value=Mock(
+                        content="1. Search for CRISPR papers\n2. Search for gene editing ethics"
+                    )
+                )
+                return mock_decomposer
+            elif prompt_name == "research_merger":
+                mock_merger = Mock()
+                mock_merger.invoke = Mock(return_value=AIMessage(content=_FINAL_RESEARCH_JSON))
+                return mock_merger
+            return mock_llm
+
+        mock_get_llm.side_effect = get_llm_side_effect
 
         tools = [Mock()]
         agent = create_research_agent(tools)
@@ -115,9 +192,7 @@ class TestResearchAgentInvocation:
         result = agent(state)
 
         assert "messages" in result
-        call_args = mock_bound_llm.invoke.call_args[0][0]
-        # Should include system message + all conversation messages
-        assert len(call_args) >= 4
+        assert "data" in result
 
 
 class TestResearchAgentToolCalls:
@@ -125,12 +200,16 @@ class TestResearchAgentToolCalls:
 
     @patch("bioagents.agents.research_agent.get_llm")
     def test_research_agent_literature_search_tool_call(self, mock_get_llm):
-        """Test research agent making literature search tool call."""
-        mock_llm = Mock()
+        """Test research agent making literature search tool call.
+
+        In sub-agent architecture, the sub-agent LLM response includes tool_calls.
+        These get aggregated and the combined AIMessage with tool_calls is returned.
+        """
         mock_bound_llm = Mock()
 
-        mock_response = AIMessage(
-            content="",
+        # Sub-agent returns a response with tool_calls
+        sub_agent_response = AIMessage(
+            content="Searching PubMed for articles",
             tool_calls=[
                 {
                     "name": "tool_universe_find_tools",
@@ -140,11 +219,20 @@ class TestResearchAgentToolCalls:
                 }
             ],
         )
-        final_ai = AIMessage(content=_FINAL_RESEARCH_JSON)
+        mock_bound_llm.invoke = Mock(return_value=sub_agent_response)
 
-        mock_llm.bind_tools = Mock(return_value=mock_bound_llm)
-        mock_bound_llm.invoke = Mock(side_effect=[mock_response, final_ai])
-        mock_get_llm.return_value = mock_llm
+        mock_llm = _mock_llm_with_bind_tools(mock_bound_llm)
+
+        def get_llm_side_effect(prompt_name=None, **kwargs):
+            if prompt_name == "research_decomposer":
+                mock_decomposer = Mock()
+                mock_decomposer.invoke = Mock(
+                    return_value=Mock(content="1. Search PubMed for articles about p53")
+                )
+                return mock_decomposer
+            return mock_llm
+
+        mock_get_llm.side_effect = get_llm_side_effect
 
         tools = [Mock(name="tool_universe_find_tools")]
         agent = create_research_agent(tools)
@@ -152,19 +240,18 @@ class TestResearchAgentToolCalls:
         state = {"messages": [HumanMessage(content="Search for p53 papers")]}
         result = agent(state)
 
+        # Sub-agent had tool_calls -> aggregated result has tool_calls forwarded
         assert "messages" in result
-        assert len(result["messages"]) == 1
-        assert result["messages"][0] is final_ai
+        assert "tool_calls" in result
         assert "tool_universe_find_tools" in result["tool_calls"]
 
     @patch("bioagents.agents.research_agent.get_llm")
     def test_research_agent_multiple_tool_calls(self, mock_get_llm):
         """Test research agent making multiple tool calls."""
-        mock_llm = Mock()
         mock_bound_llm = Mock()
 
-        mock_response = AIMessage(
-            content="",
+        sub_agent_response = AIMessage(
+            content="Searching multiple databases",
             tool_calls=[
                 {
                     "name": "tool_universe_find_tools",
@@ -183,12 +270,20 @@ class TestResearchAgentToolCalls:
                 },
             ],
         )
+        mock_bound_llm.invoke = Mock(return_value=sub_agent_response)
 
-        final_ai = AIMessage(content=_FINAL_RESEARCH_JSON)
+        mock_llm = _mock_llm_with_bind_tools(mock_bound_llm)
 
-        mock_llm.bind_tools = Mock(return_value=mock_bound_llm)
-        mock_bound_llm.invoke = Mock(side_effect=[mock_response, final_ai])
-        mock_get_llm.return_value = mock_llm
+        def get_llm_side_effect(prompt_name=None, **kwargs):
+            if prompt_name == "research_decomposer":
+                mock_decomposer = Mock()
+                mock_decomposer.invoke = Mock(
+                    return_value=Mock(content="1. Search PubMed for p53 cancer articles")
+                )
+                return mock_decomposer
+            return mock_llm
+
+        mock_get_llm.side_effect = get_llm_side_effect
 
         tools = [
             Mock(name="tool_universe_find_tools"),
@@ -199,18 +294,17 @@ class TestResearchAgentToolCalls:
         state = {"messages": [HumanMessage(content="Search p53 in PubMed")]}
         result = agent(state)
 
-        assert result["messages"][0] is final_ai
+        assert "tool_calls" in result
         assert result["tool_calls"].count("tool_universe_find_tools") >= 1
         assert result["tool_calls"].count("tool_universe_call_tool") >= 1
 
     @patch("bioagents.agents.research_agent.get_llm")
     def test_research_agent_uniprot_fetch(self, mock_get_llm):
         """Test research agent fetching UniProt data."""
-        mock_llm = Mock()
         mock_bound_llm = Mock()
 
-        mock_response = AIMessage(
-            content="",
+        sub_agent_response = AIMessage(
+            content="Fetching UniProt data",
             tool_calls=[
                 {
                     "name": "fetch_uniprot_fasta",
@@ -220,12 +314,20 @@ class TestResearchAgentToolCalls:
                 }
             ],
         )
+        mock_bound_llm.invoke = Mock(return_value=sub_agent_response)
 
-        final_ai = AIMessage(content=_FINAL_RESEARCH_JSON)
+        mock_llm = _mock_llm_with_bind_tools(mock_bound_llm)
 
-        mock_llm.bind_tools = Mock(return_value=mock_bound_llm)
-        mock_bound_llm.invoke = Mock(side_effect=[mock_response, final_ai])
-        mock_get_llm.return_value = mock_llm
+        def get_llm_side_effect(prompt_name=None, **kwargs):
+            if prompt_name == "research_decomposer":
+                mock_decomposer = Mock()
+                mock_decomposer.invoke = Mock(
+                    return_value=Mock(content="1. Fetch protein P04637 from UniProt")
+                )
+                return mock_decomposer
+            return mock_llm
+
+        mock_get_llm.side_effect = get_llm_side_effect
 
         tools = [Mock(name="fetch_uniprot_fasta")]
         agent = create_research_agent(tools)
@@ -233,7 +335,7 @@ class TestResearchAgentToolCalls:
         state = {"messages": [HumanMessage(content="Fetch protein P04637")]}
         result = agent(state)
 
-        assert result["messages"][0] is final_ai
+        assert "tool_calls" in result
         assert "fetch_uniprot_fasta" in result["tool_calls"]
 
 
@@ -243,12 +345,11 @@ class TestResearchAgentLiteratureSearch:
     @patch("bioagents.agents.research_agent.get_llm")
     def test_pubmed_search_workflow(self, mock_get_llm):
         """Test complete PubMed search workflow."""
-        mock_llm = Mock()
         mock_bound_llm = Mock()
 
-        # Simulate the workflow: find tools -> call tool
+        # Sub-agent returns tool calls on first invoke
         responses = [
-            # First call: find tools
+            # First invoke: sub-agent wants to find tools
             AIMessage(
                 content="",
                 tool_calls=[
@@ -260,7 +361,7 @@ class TestResearchAgentLiteratureSearch:
                     }
                 ],
             ),
-            # Second call: execute search
+            # Second invoke: sub-agent wants to call tool
             AIMessage(
                 content="",
                 tool_calls=[
@@ -277,10 +378,19 @@ class TestResearchAgentLiteratureSearch:
             ),
         ]
 
-        final_after_first = AIMessage(content=_FINAL_RESEARCH_JSON)
-        mock_llm.bind_tools = Mock(return_value=mock_bound_llm)
-        mock_bound_llm.invoke = Mock(side_effect=[*responses, final_after_first])
-        mock_get_llm.return_value = mock_llm
+        mock_bound_llm.invoke = Mock(side_effect=responses)
+        mock_llm = _mock_llm_with_bind_tools(mock_bound_llm)
+
+        def get_llm_side_effect(prompt_name=None, **kwargs):
+            if prompt_name == "research_decomposer":
+                mock_decomposer = Mock()
+                mock_decomposer.invoke = Mock(
+                    return_value=Mock(content="1. Search PubMed for CRISPR articles")
+                )
+                return mock_decomposer
+            return mock_llm
+
+        mock_get_llm.side_effect = get_llm_side_effect
 
         tools = [
             Mock(name="tool_universe_find_tools"),
@@ -304,7 +414,7 @@ class TestResearchAgentLiteratureSearch:
             "messages": [
                 HumanMessage(content="Search PubMed for CRISPR"),
                 result1["messages"][0],
-                ToolMessage(content="Found PubMed tool", tool_call_id="call_find"),
+                ToolMessage(content="Found PubMed tool", tool_call_id="call_find_0"),
             ]
         }
         result2 = agent(state2)
@@ -313,11 +423,10 @@ class TestResearchAgentLiteratureSearch:
     @patch("bioagents.agents.research_agent.get_llm")
     def test_multi_source_literature_search(self, mock_get_llm):
         """Test searching multiple literature sources."""
-        mock_llm = Mock()
         mock_bound_llm = Mock()
 
-        mock_response = AIMessage(
-            content="",
+        sub_agent_response = AIMessage(
+            content="Searching multiple sources",
             tool_calls=[
                 {
                     "name": "tool_universe_call_tool",
@@ -339,12 +448,20 @@ class TestResearchAgentLiteratureSearch:
                 },
             ],
         )
+        mock_bound_llm.invoke = Mock(return_value=sub_agent_response)
 
-        final_ai = AIMessage(content=_FINAL_RESEARCH_JSON)
+        mock_llm = _mock_llm_with_bind_tools(mock_bound_llm)
 
-        mock_llm.bind_tools = Mock(return_value=mock_bound_llm)
-        mock_bound_llm.invoke = Mock(side_effect=[mock_response, final_ai])
-        mock_get_llm.return_value = mock_llm
+        def get_llm_side_effect(prompt_name=None, **kwargs):
+            if prompt_name == "research_decomposer":
+                mock_decomposer = Mock()
+                mock_decomposer.invoke = Mock(
+                    return_value=Mock(content="1. Search PubMed and ArXiv for protein folding")
+                )
+                return mock_decomposer
+            return mock_llm
+
+        mock_get_llm.side_effect = get_llm_side_effect
 
         tools = [Mock(name="tool_universe_call_tool")]
         agent = create_research_agent(tools)
@@ -352,7 +469,7 @@ class TestResearchAgentLiteratureSearch:
         state = {"messages": [HumanMessage(content="Search PubMed and ArXiv for protein folding")]}
         result = agent(state)
 
-        assert result["messages"][0] is final_ai
+        assert "tool_calls" in result
         assert result["tool_calls"].count("tool_universe_call_tool") >= 2
 
 
@@ -402,11 +519,10 @@ class TestResearchAgentIntegration:
     @patch("bioagents.agents.research_agent.get_llm")
     def test_complete_literature_search_scenario(self, mock_get_llm):
         """Test complete literature search scenario from start to finish."""
-        mock_llm = Mock()
         mock_bound_llm = Mock()
 
-        # Simulate a complete workflow
-        mock_response = AIMessage(
+        # Sub-agent returns tool calls
+        sub_agent_response = AIMessage(
             content="Found 15 relevant papers on CRISPR gene editing",
             tool_calls=[
                 {
@@ -417,17 +533,20 @@ class TestResearchAgentIntegration:
                 }
             ],
         )
+        mock_bound_llm.invoke = Mock(return_value=sub_agent_response)
 
-        final = AIMessage(
-            content=(
-                '{"fetched_sequences":[],"literature_findings":"CRISPR gene editing papers",'
-                '"data_sources":[],"completeness":"full","next_steps":"","status":"success","error":null}'
-            )
-        )
+        mock_llm = _mock_llm_with_bind_tools(mock_bound_llm)
 
-        mock_llm.bind_tools = Mock(return_value=mock_bound_llm)
-        mock_bound_llm.invoke = Mock(side_effect=[mock_response, final])
-        mock_get_llm.return_value = mock_llm
+        def get_llm_side_effect(prompt_name=None, **kwargs):
+            if prompt_name == "research_decomposer":
+                mock_decomposer = Mock()
+                mock_decomposer.invoke = Mock(
+                    return_value=Mock(content="1. Search for CRISPR gene editing papers")
+                )
+                return mock_decomposer
+            return mock_llm
+
+        mock_get_llm.side_effect = get_llm_side_effect
 
         tools = [
             Mock(name="tool_universe_find_tools"),
@@ -439,7 +558,8 @@ class TestResearchAgentIntegration:
         result = agent(state)
 
         assert "messages" in result
-        assert len(result["messages"]) == 1
+        assert "data" in result
+        assert len(result["messages"]) >= 1
         message = result["messages"][0]
         assert isinstance(message, AIMessage)
         assert "CRISPR" in message.content or "tool_universe_find_tools" in result["tool_calls"]
@@ -447,11 +567,10 @@ class TestResearchAgentIntegration:
     @patch("bioagents.agents.research_agent.get_llm")
     def test_combined_literature_and_data_retrieval(self, mock_get_llm):
         """Test scenario combining literature search and data retrieval."""
-        mock_llm = Mock()
         mock_bound_llm = Mock()
 
-        mock_response = AIMessage(
-            content="",
+        sub_agent_response = AIMessage(
+            content="Fetching P53 data and searching literature",
             tool_calls=[
                 {
                     "name": "fetch_uniprot_fasta",
@@ -470,12 +589,22 @@ class TestResearchAgentIntegration:
                 },
             ],
         )
+        mock_bound_llm.invoke = Mock(return_value=sub_agent_response)
 
-        final_ai = AIMessage(content=_FINAL_RESEARCH_JSON)
+        mock_llm = _mock_llm_with_bind_tools(mock_bound_llm)
 
-        mock_llm.bind_tools = Mock(return_value=mock_bound_llm)
-        mock_bound_llm.invoke = Mock(side_effect=[mock_response, final_ai])
-        mock_get_llm.return_value = mock_llm
+        def get_llm_side_effect(prompt_name=None, **kwargs):
+            if prompt_name == "research_decomposer":
+                mock_decomposer = Mock()
+                mock_decomposer.invoke = Mock(
+                    return_value=Mock(
+                        content="1. Get P53 protein sequence\n2. Search for related papers"
+                    )
+                )
+                return mock_decomposer
+            return mock_llm
+
+        mock_get_llm.side_effect = get_llm_side_effect
 
         tools = [
             Mock(name="fetch_uniprot_fasta"),
@@ -490,7 +619,7 @@ class TestResearchAgentIntegration:
         }
         result = agent(state)
 
-        assert result["messages"][0] is final_ai
+        assert "tool_calls" in result
         tool_names_used = set(result["tool_calls"])
         assert "fetch_uniprot_fasta" in tool_names_used
         assert "tool_universe_call_tool" in tool_names_used

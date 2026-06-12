@@ -1,0 +1,14 @@
+{
+  "definition": {
+    "nodes": [
+      {"id": "a1", "type": "agent_research", "params": {}},
+      {"id": "out", "type": "export_text_json", "params": {}}
+    ],
+    "edges": [
+      {"source": "a1", "target": "out", "port_map": {"text": "text"}}
+    ]
+  },
+  "initial_inputs": {
+    "a1": {"query": "What is the primary function of the insulin producing cells in the pancreas?"}
+  }
+}

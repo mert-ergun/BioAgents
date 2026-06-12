@@ -1,0 +1,178 @@
+{
+  "run_id": "0bde4d5d4af94ee78402e13dd7cca86c",
+  "experiment_config": {
+    "id": "cfg_baseline",
+    "name": "Baseline",
+    "description": "Default configuration with no prompt overrides.",
+    "max_steps": 50,
+    "timeout": 180,
+    "system_prompt_overrides": {},
+    "model_override": {},
+    "temperature": 0.0,
+    "extra": {}
+  },
+  "use_cases": [
+    {
+      "id": "uc_amino_acid_composition",
+      "name": "Amino Acid Composition",
+      "prompt": "Analyze the amino acid composition of the following protein sequence and report the percentage of each amino acid type: MTEYKLVVVGAGGVGKSALTIQLIQNHFVDEYDPTIEDSY\n",
+      "description": "Analyze amino acid composition of a given FASTA sequence.",
+      "expected_agents": [
+        "analysis"
+      ],
+      "expected_tools": [
+        "analyze_amino_acid_composition"
+      ],
+      "expected_output_contains": [],
+      "reference_output": null,
+      "evaluation_criteria": "- Must report percentages or counts for each amino acid present in the sequence.\n- The analysis must cover the full 41-residue sequence.\n",
+      "tags": [
+        "protein",
+        "analysis",
+        "composition"
+      ],
+      "category": "protein_analysis"
+    }
+  ],
+  "started_at": "2026-04-01T09:27:55.979111+00:00",
+  "finished_at": "2026-04-01T09:28:26.382397+00:00",
+  "results": [
+    {
+      "use_case_id": "uc_amino_acid_composition",
+      "use_case_name": "Amino Acid Composition",
+      "prompt": "Analyze the amino acid composition of the following protein sequence and report the percentage of each amino acid type: MTEYKLVVVGAGGVGKSALTIQLIQNHFVDEYDPTIEDSY\n",
+      "execution_time": 9.671202182769775,
+      "total_steps": 6,
+      "workflow_completed": true,
+      "agent_flow": [
+        "supervisor",
+        "analysis",
+        "analysis_tools",
+        "analysis",
+        "supervisor",
+        "summary"
+      ],
+      "agent_steps": [
+        {
+          "step": 1,
+          "agent": "supervisor",
+          "elapsed_ms": 1494.283676147461,
+          "messages": [
+            {
+              "type": "HumanMessage",
+              "content": "[SUPERVISOR TASK] Calculate the amino acid composition and the percentage of each amino acid type for the protein sequence: MTEYKLVVVGAGGVGKSALTIQLIQNHFVDEYDPTIEDSY"
+            }
+          ],
+          "routing_decision": "analysis"
+        },
+        {
+          "step": 2,
+          "agent": "analysis",
+          "elapsed_ms": 2612.788677215576,
+          "messages": [
+            {
+              "type": "AIMessage",
+              "content": "",
+              "tool_calls": [
+                {
+                  "name": "analyze_amino_acid_composition",
+                  "args": {
+                    "fasta_sequence": "MTEYKLVVVGAGGVGKSALTIQLIQNHFVDEYDPTIEDSY"
+                  },
+                  "id": "9bda5e0b-f339-4f50-a314-d1e9d2bef9d4"
+                }
+              ]
+            }
+          ],
+          "routing_decision": null
+        },
+        {
+          "step": 3,
+          "agent": "analysis_tools",
+          "elapsed_ms": 2613.6727333068848,
+          "messages": [
+            {
+              "type": "ToolMessage",
+              "content": "Amino Acid Composition Analysis\n==================================================\nTotal amino acids: 40\n\nAA   Count    Percentage  \n--------------------------------------------------\nV    5         12.50%\nG    4         10.00%\nT    3          7.50%\nE    3          7.50%\nY    3          7.50%\nL    3          7.50%\nI    3          7.50%\nD    3          7.50%\nK    2          5.00%\nA    2          5.00%\nS    2          5.00%\nQ    2          5.00%\nM    1          2.50%\nN    1          2.50%\nH    1          2.50%\nF    1          2.50%\nP    1          2.50%\n\n==================================================\nBiochemical Properties:\n  Hydrophobic residues: 16 (40.0%)\n  Polar residues: 11 (27.5%)\n  Charged residues: 9 (22.5%)\n    - Positive: 3 (7.5%)\n    - Negative: 6 (15.0%)\n",
+              "tool_call_id": "9bda5e0b-f339-4f50-a314-d1e9d2bef9d4"
+            }
+          ],
+          "routing_decision": null
+        },
+        {
+          "step": 4,
+          "agent": "analysis",
+          "elapsed_ms": 6114.09592628479,
+          "messages": [
+            {
+              "type": "AIMessage",
+              "content": "[{'type': 'text', 'text': \"The amino acid composition analysis of the provided protein sequence reveals the following distribution:\\n\\n**Amino Acid Composition:**\\n*   **Valine (V):** 5 (12.50%)\\n*   **Glycine (G):** 4 (10.00%)\\n*   **Threonine (T):** 3 (7.50%)\\n*   **Glutamic Acid (E):** 3 (7.50%)\\n*   **Tyrosine (Y):** 3 (7.50%)\\n*   **Leucine (L):** 3 (7.50%)\\n*   **Isoleucine (I):** 3 (7.50%)\\n*   **Aspartic Acid (D):** 3 (7.50%)\\n*   **Lysine (K):** 2 (5.00%)\\n*   **Alanine (A):** 2 (5.00%)\\n*   **Serine (S):** 2 (5.00%)\\n*   **Glutamine (Q):** 2 (5.00%)\\n*   **Methionine (M):** 1 (2.50%)\\n*   **Asparagine (N):** 1 (2.50%)\\n*   **Histidine (H):** 1 (2.50%)\\n*   **Phenylalanine (F):** 1 (2.50%)\\n*   **Proline (P):** 1 (2.50%)\\n\\n**Biochemical Properties:**\\n*   **Hydrophobic residues:** 16 (40.0%)\\n*   **Polar residues:** 11 (27.5%)\\n*   **Charged residues:** 9 (22.5%)\\n    *   Positive: 3 (7.5%)\\n    *   Negative: 6 (15.0%)\\n\\n**Interpretation:**\\nThis protein sequence of 40 amino acids shows a relatively high proportion of hydrophobic residues (40%), particularly Valine (12.50%), Glycine (10.00%), Leucine (7.50%), and Isoleucine (7.50%). This suggests that the protein might have regions that prefer to interact with non-polar environments, potentially indicating involvement in membrane association or forming a hydrophobic core for structural stability.\\n\\nThe presence of charged residues, with a higher percentage of negatively charged amino acids (15.0% Aspartic Acid and Glutamic Acid) compared to positively charged ones (7.5% Lysine and Histidine), suggests that this protein might have an overall negative charge at physiological pH, which would influence its interactions with other molecules and its solubility. The balance of polar and charged residues will contribute to the protein's overall tertiary structure and its ability to interact with aqueous environments and other biomolecules.\", 'extras': {'signature': 'CpADAb4+9vtTvySZrdhe3XpDpm69nwn8F21JvTxNl25Ede"
+            }
+          ],
+          "routing_decision": null
+        },
+        {
+          "step": 5,
+          "agent": "supervisor",
+          "elapsed_ms": 7144.5112228393555,
+          "messages": [],
+          "routing_decision": "FINISH"
+        },
+        {
+          "step": 6,
+          "agent": "summary",
+          "elapsed_ms": 9671.181201934814,
+          "messages": [
+            {
+              "type": "AIMessage",
+              "content": "[Auto-generated summary due to Summary failure]\n\nThe following content was produced during this workflow:\n\nThe amino acid composition analysis of the provided protein sequence reveals the following distribution:\n\n**Amino Acid Composition:**\n*   **Valine (V):** 5 (12.50%)\n*   **Glycine (G):** 4 (10.00%)\n*   **Threonine (T):** 3 (7.50%)\n*   **Glutamic Acid (E):** 3 (7.50%)\n*   **Tyrosine (Y):** 3 (7.50%)\n*   **Leucine (L):** 3 (7.50%)\n*   **Isoleucine (I):** 3 (7.50%)\n*   **Aspartic Acid (D):** 3 (7.50%)\n*   **Lysine (K):** 2 (5.00%)\n*   **Alanine (A):** 2 (5.00%)\n*   **Serine (S):** 2 (5.00%)\n*   **Glutamine (Q):** 2 (5.00%)\n*   **Methionine (M):** 1 (2.50%)\n*   **Asparagine (N):** 1 (2.50%)\n*   **Histidine (H):** 1 (2.50%)\n*   **Phenylalanine (F):** 1 (2.50%)\n*   **Proline (P):** 1 (2.50%)\n\n**Biochemical Properties:**\n*   **Hydrophobic residues:** 16 (40.0%)\n*   **Polar residues:** 11 (27.5%)\n*   **Charged residues:** 9 (22.5%)\n    *   Positive: 3 (7.5%)\n    *   Negative: 6 (15.0%)\n\n**Interpretation:**\nThis protein sequence of 40 amino acids shows a relatively high proportion of hydrophobic residues (40%), particularly Valine (12.50%), Glycine (10.00%), Leucine (7.50%), and Isoleucine (7.50%). This suggests that the protein might have regions that prefer to interact with non-polar environments, potentially indicating involvement in membrane association or forming a hydrophobic core for structural stability.\n\nThe presence of charged residues, with a higher percentage of negatively charged amino acids (15.0% Aspartic Acid and Glutamic Acid) compared to positively charged ones (7.5% Lysine and Histidine), suggests that this protein might have an overall negative charge at physiological pH, which would influence its interactions with other molecules and its solubility. The balance of polar and charged residues will contribute to the protein's overall tertiary structure and its ability to interact with aqueous environments and other biomolecules."
+            }
+          ],
+          "routing_decision": null
+        }
+      ],
+      "tool_calls": [
+        {
+          "tool_name": "analyze_amino_acid_composition",
+          "args": {
+            "fasta_sequence": "MTEYKLVVVGAGGVGKSALTIQLIQNHFVDEYDPTIEDSY"
+          },
+          "result_preview": "Amino Acid Composition Analysis\n==================================================\nTotal amino acids: 40\n\nAA   Count    Percentage  \n--------------------------------------------------\nV    5         12.50%\nG    4         10.00%\nT    3          7.50%\nE    3          7.50%\nY    3          7.50%\nL    3          7.50%\nI    3          7.50%\nD    3          7.50%\nK    2          5.00%\nA    2          5.00%\nS    2          5.00%\nQ    2          5.00%\nM    1          2.50%\nN    1          2.50%\nH    1  ",
+          "tool_call_id": "9bda5e0b-f339-4f50-a314-d1e9d2bef9d4"
+        }
+      ],
+      "final_messages": [
+        "The amino acid composition analysis of the provided protein sequence reveals the following distribution:\n\n**Amino Acid Composition:**\n*   **Valine (V):** 5 (12.50%)\n*   **Glycine (G):** 4 (10.00%)\n*   **Threonine (T):** 3 (7.50%)\n*   **Glutamic Acid (E):** 3 (7.50%)\n*   **Tyrosine (Y):** 3 (7.50%)\n*   **Leucine (L):** 3 (7.50%)\n*   **Isoleucine (I):** 3 (7.50%)\n*   **Aspartic Acid (D):** 3 (7.50%)\n*   **Lysine (K):** 2 (5.00%)\n*   **Alanine (A):** 2 (5.00%)\n*   **Serine (S):** 2 (5.00%)\n*   **Glutamine (Q):** 2 (5.00%)\n*   **Methionine (M):** 1 (2.50%)\n*   **Asparagine (N):** 1 (2.50%)\n*   **Histidine (H):** 1 (2.50%)\n*   **Phenylalanine (F):** 1 (2.50%)\n*   **Proline (P):** 1 (2.50%)\n\n**Biochemical Properties:**\n*   **Hydrophobic residues:** 16 (40.0%)\n*   **Polar residues:** 11 (27.5%)\n*   **Charged residues:** 9 (22.5%)\n    *   Positive: 3 (7.5%)\n    *   Negative: 6 (15.0%)\n\n**Interpretation:**\nThis protein sequence of 40 amino acids shows a relatively high proportion of hydrophobic residues (40%), particularly Valine (12.50%), Glycine (10.00%), Leucine (7.50%), and Isoleucine (7.50%). This suggests that the protein might have regions that prefer to interact with non-polar environments, potentially indicating involvement in membrane association or forming a hydrophobic core for structural stability.\n\nThe presence of charged residues, with a higher percentage of negatively charged amino acids (15.0% Aspartic Acid and Glutamic Acid) compared to positively charged ones (7.5% Lysine and Histidine), suggests that this protein might have an overall negative charge at physiological pH, which would influence its interactions with other molecules and its solubility. The balance of polar and charged residues will contribute to the protein's overall tertiary structure and its ability to interact with aqueous environments and other biomolecules.",
+        "[Auto-generated summary due to Summary failure]\n\nThe following content was produced during this workflow:\n\nThe amino acid composition analysis of the provided protein sequence reveals the following distribution:\n\n**Amino Acid Composition:**\n*   **Valine (V):** 5 (12.50%)\n*   **Glycine (G):** 4 (10.00%)\n*   **Threonine (T):** 3 (7.50%)\n*   **Glutamic Acid (E):** 3 (7.50%)\n*   **Tyrosine (Y):** 3 (7.50%)\n*   **Leucine (L):** 3 (7.50%)\n*   **Isoleucine (I):** 3 (7.50%)\n*   **Aspartic Acid (D):** 3 (7.50%)\n*   **Lysine (K):** 2 (5.00%)\n*   **Alanine (A):** 2 (5.00%)\n*   **Serine (S):** 2 (5.00%)\n*   **Glutamine (Q):** 2 (5.00%)\n*   **Methionine (M):** 1 (2.50%)\n*   **Asparagine (N):** 1 (2.50%)\n*   **Histidine (H):** 1 (2.50%)\n*   **Phenylalanine (F):** 1 (2.50%)\n*   **Proline (P):** 1 (2.50%)\n\n**Biochemical Properties:**\n*   **Hydrophobic residues:** 16 (40.0%)\n*   **Polar residues:** 11 (27.5%)\n*   **Charged residues:** 9 (22.5%)\n    *   Positive: 3 (7.5%)\n    *   Negative: 6 (15.0%)\n\n**Interpretation:**\nThis protein sequence of 40 amino acids shows a relatively high proportion of hydrophobic residues (40%), particularly Valine (12.50%), Glycine (10.00%), Leucine (7.50%), and Isoleucine (7.50%). This suggests that the protein might have regions that prefer to interact with non-polar environments, potentially indicating involvement in membrane association or forming a hydrophobic core for structural stability.\n\nThe presence of charged residues, with a higher percentage of negatively charged amino acids (15.0% Aspartic Acid and Glutamic Acid) compared to positively charged ones (7.5% Lysine and Histidine), suggests that this protein might have an overall negative charge at physiological pH, which would influence its interactions with other molecules and its solubility. The balance of polar and charged residues will contribute to the protein's overall tertiary structure and its ability to interact with aqueous environments and other biomolecules."
+      ],
+      "raw_output": "[Auto-generated summary due to Summary failure]\n\nThe following content was produced during this workflow:\n\nThe amino acid composition analysis of the provided protein sequence reveals the following distribution:\n\n**Amino Acid Composition:**\n*   **Valine (V):** 5 (12.50%)\n*   **Glycine (G):** 4 (10.00%)\n*   **Threonine (T):** 3 (7.50%)\n*   **Glutamic Acid (E):** 3 (7.50%)\n*   **Tyrosine (Y):** 3 (7.50%)\n*   **Leucine (L):** 3 (7.50%)\n*   **Isoleucine (I):** 3 (7.50%)\n*   **Aspartic Acid (D):** 3 (7.50%)\n*   **Lysine (K):** 2 (5.00%)\n*   **Alanine (A):** 2 (5.00%)\n*   **Serine (S):** 2 (5.00%)\n*   **Glutamine (Q):** 2 (5.00%)\n*   **Methionine (M):** 1 (2.50%)\n*   **Asparagine (N):** 1 (2.50%)\n*   **Histidine (H):** 1 (2.50%)\n*   **Phenylalanine (F):** 1 (2.50%)\n*   **Proline (P):** 1 (2.50%)\n\n**Biochemical Properties:**\n*   **Hydrophobic residues:** 16 (40.0%)\n*   **Polar residues:** 11 (27.5%)\n*   **Charged residues:** 9 (22.5%)\n    *   Positive: 3 (7.5%)\n    *   Negative: 6 (15.0%)\n\n**Interpretation:**\nThis protein sequence of 40 amino acids shows a relatively high proportion of hydrophobic residues (40%), particularly Valine (12.50%), Glycine (10.00%), Leucine (7.50%), and Isoleucine (7.50%). This suggests that the protein might have regions that prefer to interact with non-polar environments, potentially indicating involvement in membrane association or forming a hydrophobic core for structural stability.\n\nThe presence of charged residues, with a higher percentage of negatively charged amino acids (15.0% Aspartic Acid and Glutamic Acid) compared to positively charged ones (7.5% Lysine and Histidine), suggests that this protein might have an overall negative charge at physiological pH, which would influence its interactions with other molecules and its solubility. The balance of polar and charged residues will contribute to the protein's overall tertiary structure and its ability to interact with aqueous environments and other biomolecules.",
+      "error_message": null,
+      "failure_mode": "completed",
+      "token_usage": null,
+      "judge_score": 3.5,
+      "judge_reasoning": "The agent successfully called the correct tool and presented a well-structured and clear response. It accurately reported the individual amino acid counts and percentages, and most biochemical properties. However, a significant factual error was identified in the calculation of hydrophobic residues, which subsequently impacted the interpretation. This error prevents a higher overall score.",
+      "judge_breakdown": {
+        "correctness": 3.0,
+        "tool_use": 4.0,
+        "clarity": 4.5,
+        "completeness": 4.5,
+        "dimensions": {
+          "correctness_reasoning": "While individual amino acid counts and percentages were correct, and polar/charged residue calculations were accurate, the agent incorrectly reported the number of hydrophobic residues as 16 (40.0%) instead of the correct 20 (50.0%). This is a significant factual error.",
+          "tool_use_reasoning": "The agent correctly identified and called the `analyze_amino_acid_composition` tool, which is appropriate for the task. The issue lies with the accuracy of the data provided by the tool or the agent's processing of it, specifically regarding hydrophobic residues, rather than the tool's selection or invocation.",
+          "clarity_reasoning": "The response is very well-structured, clear, and easy to understand. It uses appropriate headings, bullet points, and professional language. The interpretation section is also well-written and provides good context.",
+          "completeness_reasoning": "The agent fully addressed the prompt by reporting the amino acid composition and percentages for each type. It also provided valuable additional information on biochemical properties and an interpretation, exceeding the basic requirements. The analysis covered the full provided sequence."
+        }
+      }
+    }
+  ],
+  "aggregates": {
+    "mean_score": 3.5,
+    "success_rate": 1.0,
+    "total_execution_time": 9.671202182769775,
+    "total_tokens": null,
+    "failure_mode_counts": {
+      "completed": 1
+    },
+    "total_use_cases": 1
+  }
+}

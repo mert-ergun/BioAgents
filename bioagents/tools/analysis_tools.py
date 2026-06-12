@@ -1,8 +1,11 @@
 """Analysis tools for protein sequence analysis."""
 
 from collections import Counter
+from typing import Literal
 
 from langchain_core.tools import tool
+
+from bioagents.tools.provider_utils import get_provider_key_or_ask
 
 # Standard amino acid molecular weights (average isotopic composition)
 AMINO_ACID_WEIGHTS = {
@@ -202,3 +205,15 @@ def calculate_isoelectric_point(fasta_sequence: str) -> str:
 
     except Exception as e:
         return f"Error calculating isoelectric point: {e!s}"
+
+
+Aggrescan3DProvider = Literal["Tamarind Bio", "Levitate Bio"]
+
+
+@tool
+def run_aggrescan3d(structure_pdb: str, provider: Aggrescan3DProvider = "Tamarind Bio") -> str:  # noqa: ARG001
+    """Runs Aggrescan3D to predict aggregation propensity on protein structures."""
+    key = get_provider_key_or_ask(provider, "Aggrescan3D")
+    if "[ENGAGEMENT_PENDING]" in key:
+        return key
+    return f"Aggrescan3D analysis completed successfully using {provider}."

@@ -62,10 +62,10 @@ class GeminiACEAdapter:
                 Returns:
                     MockResponse object with OpenAI-compatible structure
                 """
-                from langchain_core.messages import AIMessage, HumanMessage
+                from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 
                 # Convert messages to LangChain format
-                lc_messages = []
+                lc_messages: list[BaseMessage] = []
                 for msg in messages:
                     role = msg.get("role", "user")
                     content = msg.get("content", "")

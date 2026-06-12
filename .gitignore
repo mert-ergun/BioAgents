@@ -1,5 +1,6 @@
 generated_artifacts/
 .bioagents_cache/
+output.txt
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

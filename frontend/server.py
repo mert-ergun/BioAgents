@@ -4,6 +4,7 @@ FastAPI backend for the BioAgents UI
 """
 
 import asyncio
+import contextlib
 import json
 import logging
 import re
@@ -18,16 +19,33 @@ from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 # Import BioAgents components
-from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from pydantic import BaseModel
 
-from bioagents.graph import create_graph
-from bioagents.llms.llm_provider import set_api_keys_override
+from bioagents.graph import ALL_MEMBERS, create_graph
+from bioagents.graph_streaming import aiter_graph_stream, iter_graph_stream
+from bioagents.limits import TOOL_APPROVAL_TIMEOUT_SEC
+from bioagents.llms.llm_provider import set_api_keys_override, set_llm_overrides
+from frontend.drug_discovery_routes import include_drug_discovery_routes
 from frontend.workflow_routes import include_workflow_routes
+
+# Graph agent nodes whose assistant output is streamed to the chat (excludes supervisor + *_tools).
+STREAM_UI_AGENTS = frozenset([*ALL_MEMBERS, "summary"])
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+
+class _PollFilter(logging.Filter):
+    """Suppress repetitive polling access-log entries."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        msg = record.getMessage()
+        return not ("GET /api/experiments/runs?limit=" in msg and "200" in msg)
+
+
+logging.getLogger("uvicorn.access").addFilter(_PollFilter())
 
 # =====================================================
 # APP CONFIGURATION
@@ -52,6 +70,17 @@ app.add_middleware(
 FRONTEND_DIR = Path(__file__).parent
 app.mount("/static", StaticFiles(directory=FRONTEND_DIR / "static"), name="static")
 include_workflow_routes(app)
+include_drug_discovery_routes(app)
+
+# Admin dashboard and logging
+from frontend.admin_database import AdminDatabase  # noqa: E402
+from frontend.admin_routes import include_admin_routes  # noqa: E402
+from frontend.client_tracker import generate_client_id as _gen_client_id  # noqa: E402
+from frontend.logging_middleware import ActivityLoggingMiddleware  # noqa: E402
+
+admin_db = AdminDatabase()
+include_admin_routes(app, admin_db=admin_db)
+app.add_middleware(ActivityLoggingMiddleware, db=admin_db)
 
 # =====================================================
 # MODELS
@@ -61,6 +90,8 @@ include_workflow_routes(app)
 class QueryRequest(BaseModel):
     query: str
     api_keys: dict[str, str] | None = None
+    provider: str | None = None
+    model: str | None = None
 
 
 class QueryResponse(BaseModel):
@@ -78,15 +109,22 @@ class QueryResponse(BaseModel):
 class ConnectionManager:
     def __init__(self):
         self.active_connections: list[WebSocket] = []
+        self._disconnected: set[WebSocket] = set()
 
     async def connect(self, websocket: WebSocket):
         await websocket.accept()
         self.active_connections.append(websocket)
+        self._disconnected.discard(websocket)
         logger.info(f"WebSocket connected. Total connections: {len(self.active_connections)}")
 
     def disconnect(self, websocket: WebSocket):
-        self.active_connections.remove(websocket)
+        self._disconnected.add(websocket)
+        if websocket in self.active_connections:
+            self.active_connections.remove(websocket)
         logger.info(f"WebSocket disconnected. Total connections: {len(self.active_connections)}")
+
+    def is_connected(self, websocket: WebSocket) -> bool:
+        return websocket not in self._disconnected
 
     async def send_json(self, websocket: WebSocket, data: dict):
         await websocket.send_json(data)
@@ -101,6 +139,139 @@ class ConnectionManager:
 
 manager = ConnectionManager()
 
+# Session-based reference storage: {session_id: ReferenceManager}
+_session_references: dict[str, Any] = {}
+
+# Compact session context: stores user queries, final summaries, file paths,
+# and node output index cards from previous turns. The index cards form a
+# "catalog" that is always injected, while full content is available on-demand
+# via the `retrieve_previous_context` tool. This keeps the context bounded
+# (a few KB per query) regardless of how many agents/tools ran.
+#
+# Structure: {session_id: list[dict]}
+#   Each dict: {"query": str, "summary": str, "files": list[str],
+#               "node_outputs": dict[str, {"index": str, "content": str, "agent": str}]}
+#
+# Thread-safety note: only mutated from the single-threaded uvicorn event loop.
+_session_contexts: dict[str, list[dict[str, Any]]] = {}
+
+# Maximum number of sessions to keep in memory (LRU eviction).
+_MAX_SESSION_CONTEXTS = 50
+
+# Character budgets for catalog sections.
+_CATALOG_OVERVIEW_BUDGET = 1500  # summaries + files per turn
+_CATALOG_INDEX_BUDGET = 2500  # node output index cards
+
+
+def _prune_session_contexts() -> None:
+    """Evict oldest session contexts when the store exceeds the cap."""
+    while len(_session_contexts) > _MAX_SESSION_CONTEXTS:
+        _session_contexts.popitem(last=False)
+
+
+def _build_context_system_message(session_id: str | None) -> SystemMessage | None:
+    """Build a catalog SystemMessage from previous queries in this session.
+
+    The message has two sections:
+    1. Turn overview: query, files, summary per turn (compact).
+    2. Node output index cards: one-line summaries of each agent's output.
+
+    Agents can call `retrieve_previous_context` to get the full content of any
+    entry in the catalog.
+
+    Returns None if there is no previous context for this session.
+    """
+    if not session_id or session_id not in _session_contexts:
+        return None
+
+    prev_turns = _session_contexts[session_id]
+    if not prev_turns:
+        return None
+
+    has_node_outputs = any(turn.get("node_outputs") for turn in prev_turns)
+
+    # --- Section 1: Turn overviews ---
+    overview_parts: list[str] = []
+    overview_budget = _CATALOG_OVERVIEW_BUDGET
+    for i, turn in enumerate(prev_turns, 1):
+        entry = f'\nTurn {i}: "{turn["query"][:200]}"'
+        if turn.get("files"):
+            entry += "\n  Files: " + ", ".join(turn["files"][:10])
+        if turn.get("summary"):
+            entry += f"\n  Summary: {turn['summary'][:400]}"
+        if len(entry) > overview_budget:
+            overview_parts.append("\n... [older turns omitted]")
+            break
+        overview_parts.append(entry)
+        overview_budget -= len(entry)
+
+    # --- Section 2: Node output index cards ---
+    index_parts: list[str] = []
+    index_budget = _CATALOG_INDEX_BUDGET
+    if has_node_outputs:
+        for _i, turn in enumerate(prev_turns, 1):
+            node_outputs = turn.get("node_outputs", {})
+            if not node_outputs:
+                continue
+            for _key, data in node_outputs.items():
+                agent = data.get("agent", "unknown")
+                index_text = data.get("index", "")
+                card = f"  [{agent}] {index_text}"
+                if len(card) > index_budget:
+                    index_parts.append("  ... [more entries omitted]")
+                    break
+                index_parts.append(card)
+                index_budget -= len(card)
+            if index_budget <= 0:
+                break
+
+    # --- Assemble full message ---
+    parts: list[str] = ["[PREVIOUS SESSION CATALOG]"]
+    parts.append(
+        "Previous work in this session. Use the `retrieve_previous_context` tool "
+        "to get full details on any catalog entry below.\n"
+    )
+    parts.extend(overview_parts)
+
+    if index_parts:
+        parts.append("\n\nAvailable details (index cards):")
+        parts.extend(index_parts)
+
+    parts.append(
+        "\n\n[END CATALOG]\n\n"
+        "The user is continuing a conversation. The above describes what was "
+        "previously discussed. Use `retrieve_previous_context` when you need "
+        "specific details (e.g. scores, analysis results, tool outputs) from "
+        "previous turns. Resolve references like 'this protein', 'the structure', "
+        "'that file' in the new query. Re-use previously downloaded files."
+    )
+
+    text = "\n".join(parts)
+    total_budget = _CATALOG_OVERVIEW_BUDGET + _CATALOG_INDEX_BUDGET + 500
+    if len(text) > total_budget:
+        text = text[:total_budget] + "\n... [context truncated]"
+
+    logger.debug(
+        "Injecting session catalog for %s (%d turns, has_node_outputs=%s)",
+        session_id,
+        len(prev_turns),
+        has_node_outputs,
+    )
+    return SystemMessage(content=text)
+
+
+def _build_contextual_initial_state(session_id: str | None, query: str) -> dict[str, Any]:
+    """Build initial state with previous session context injected as a SystemMessage."""
+    messages: list = []
+
+    ctx_msg = _build_context_system_message(session_id)
+    if ctx_msg is not None:
+        messages.append(ctx_msg)
+
+    messages.append(HumanMessage(content=query))
+    return {"messages": messages}
+
+
 # =====================================================
 # ARTIFACT GENERATION
 # =====================================================
@@ -112,26 +283,27 @@ UPLOADS_DIR = Path("uploads")
 UPLOADS_DIR.mkdir(exist_ok=True)
 
 
+MAX_UPLOAD_SIZE = 10 * 1024 * 1024  # 10MB
+
+
 @app.post("/api/upload")
 async def upload_file(file: UploadFile = File(...)):
     """Upload a file for processing by agents."""
+    contents = await file.read()
+    if len(contents) > MAX_UPLOAD_SIZE:
+        raise HTTPException(status_code=413, detail="File too large. Maximum size is 10MB.")
     try:
         file_path = UPLOADS_DIR / file.filename
         with file_path.open("wb") as buffer:
-            import shutil
+            buffer.write(contents)
 
-            shutil.copyfileobj(file.file, buffer)
-
-        # Return path relative to project root
-        try:
-            rel_path = file_path.relative_to(Path.cwd())
-        except ValueError:
-            rel_path = file_path
+        # Return absolute path for robust file resolution by agents
+        abs_path = file_path.resolve()
 
         return {
             "status": "success",
             "filename": file.filename,
-            "path": str(rel_path),
+            "path": str(abs_path),
             "size": file_path.stat().st_size,
         }
     except Exception as e:
@@ -298,236 +470,6 @@ def extract_metrics_from_content(content: str) -> dict | None:
     return None
 
 
-async def run_bioagents_query(query: str, websocket: WebSocket | None = None):
-    """
-    Execute a BioAgents query and stream results.
-    """
-    from bioagents.references.reference_manager import ReferenceManager
-
-    graph = create_graph()
-
-    # Initialize with reference manager
-    reference_manager = ReferenceManager()
-    initial_state = {
-        "messages": [HumanMessage(content=query)],
-        "references": reference_manager,
-    }
-
-    full_audit = []
-    generated_files = []
-
-    async def send_update(data: dict):
-        if websocket:
-            try:
-                await websocket.send_json(data)
-            except Exception as e:
-                logger.error(f"WebSocket send error: {e}")
-        yield data
-
-    try:
-        # Stream through the graph execution
-        for step in graph.stream(initial_state, {"recursion_limit": 100}):
-            node_name = next(iter(step))
-            node_output = step[node_name]
-
-            # Send agent update
-            await send_update({"type": "agent_update", "agent": node_name}).__anext__()
-
-            # Send a notification that the agent is starting if it's ML or DL
-            if node_name in ["ml", "dl"]:
-                msg = (
-                    "Initializing training environment and loading data..."
-                    if node_name == "ml"
-                    else "Designing neural network architecture and preparing data loaders..."
-                )
-                await send_update(
-                    {"type": "message", "agent": node_name, "content": f"_System: {msg}_"}
-                ).__anext__()
-
-            # Process messages
-            step_messages = []
-            if "messages" in node_output:
-                for m in node_output["messages"]:
-                    msg_info = {
-                        "type": m.__class__.__name__,
-                        "content": m.content if hasattr(m, "content") else str(m),
-                    }
-                    if getattr(m, "additional_kwargs", {}).get("show_ui", True) is False:
-                        continue
-
-                    if hasattr(m, "tool_calls") and m.tool_calls:
-                        msg_info["tool_calls"] = m.tool_calls
-                    step_messages.append(msg_info)
-
-                    # Check for artifacts in content
-                    content = msg_info["content"]
-                    if isinstance(content, str):
-                        # Find PDB files
-                        if ".pdb" in content.lower():
-                            matches = re.findall(
-                                r'(/[^\s\'"]+\.pdb|(?:\.\/)?[^\s\'"]+\.pdb)', content
-                            )
-                            for path_str in matches:
-                                path = Path(path_str)
-                                if path.exists():
-                                    generated_files.append(
-                                        {
-                                            "name": path.name,
-                                            "path": str(path),
-                                            "type": "pdb",
-                                            "size": path.stat().st_size,
-                                        }
-                                    )
-                                    # Send structure update
-                                    try:
-                                        with path.open() as f:
-                                            pdb_content = f.read()
-                                        await send_update(
-                                            {"type": "structure", "pdbContent": pdb_content}
-                                        ).__anext__()
-                                    except Exception as e:
-                                        logger.error(f"Failed to load PDB: {e}")
-
-                        # Find other file types
-                        for ext in [".csv", ".png", ".jpg", ".json", ".txt", ".pdf"]:
-                            if ext in content.lower():
-                                matches = re.findall(
-                                    rf'(/[^\s\'"]+{ext}|(?:\.\/)?[^\s\'"]+{ext}|(?:[a-zA-Z0-9_\-]+/)+[^\s\'"]+{ext})',
-                                    content,
-                                    re.IGNORECASE,
-                                )
-                                for path_str in matches:
-                                    path = Path(path_str)
-                                    if path.exists():
-                                        generated_files.append(
-                                            {
-                                                "name": path.name,
-                                                "path": str(path),
-                                                "type": ext[1:],
-                                                "size": path.stat().st_size,
-                                            }
-                                        )
-                                        await send_update(
-                                            {"type": "artifact", "artifact": generated_files[-1]}
-                                        ).__anext__()
-
-            # Build audit entry
-            audit_entry = {
-                "agent": node_name,
-                "decision": node_output.get("next", "Continue"),
-                "reasoning": node_output.get("reasoning", ""),
-                "messages": step_messages,
-            }
-            full_audit.append(audit_entry)
-
-            # Send audit update
-            await send_update({"type": "audit", "entries": full_audit}).__anext__()
-
-            # Send messages from user-facing agents
-            if (
-                node_name
-                in [
-                    "report",
-                    "critic",
-                    "analysis",
-                    "research",
-                    "protein_design",
-                    "coder",
-                    "tool_builder",
-                    "ml",
-                    "dl",
-                ]
-                and "messages" in node_output
-            ):
-                for m in node_output["messages"]:
-                    # Skip HumanMessages (usually handoffs) and ToolMessages
-                    if (
-                        hasattr(m, "content")
-                        and m.content
-                        and not isinstance(m, (HumanMessage, ToolMessage))
-                        and getattr(m, "additional_kwargs", {}).get("show_ui", True) is not False
-                    ):
-                        content = m.content
-                        if isinstance(content, list):
-                            text_parts = []
-                            for item in content:
-                                if isinstance(item, str):
-                                    text_parts.append(item)
-                                elif isinstance(item, dict) and item.get("type") == "text":
-                                    text_parts.append(item.get("text", ""))
-                            content = "\n\n".join(text_parts)
-                        if content:
-                            # Get references for this message if available
-                            message_refs = []
-                            if reference_manager:
-                                # Get ALL references accumulated so far
-                                all_refs = reference_manager.get_all_references()
-                                if len(all_refs) > 0:
-                                    message_refs = [ref.to_dict() for ref in all_refs]
-                                else:
-                                    # If no references but this looks like a research report, create a synthetic one
-                                    if node_name in ["report", "research"] and len(content) > 500:
-                                        # Extract year mentions to make it more relevant
-                                        import uuid
-
-                                        from bioagents.references.reference_types import (
-                                            PaperReference,
-                                        )
-
-                                        years = re.findall(r"\b(20\d{2})\b", content)
-                                        year_str = (
-                                            f" ({min(years)}-{max(years)})"
-                                            if len(years) > 1
-                                            else f" ({years[0]})"
-                                            if years
-                                            else ""
-                                        )
-
-                                        synth_ref = PaperReference(
-                                            id=f"ref_{uuid.uuid4().hex[:8]}",
-                                            title=f"Scientific Literature Review{year_str}",
-                                            abstract="This response synthesizes information from peer-reviewed literature and scientific databases.",
-                                            url=None,
-                                        )
-                                        reference_manager.add_reference(synth_ref)
-                                        message_refs = [synth_ref.to_dict()]
-
-                            await send_update(
-                                {
-                                    "type": "message",
-                                    "agent": node_name,
-                                    "content": content,
-                                    "references": message_refs,
-                                }
-                            ).__anext__()
-
-                            # Extract metrics
-                            metrics = extract_metrics_from_content(content)
-                            if metrics:
-                                await send_update(
-                                    {"type": "metrics", "metrics": metrics}
-                                ).__anext__()
-
-            # Small delay to prevent overwhelming the client
-            await asyncio.sleep(0.1)
-
-        # Send completion with all references
-        completion_data = {
-            "type": "complete",
-            "artifacts": generated_files,
-            "audit_log": full_audit,
-        }
-        if reference_manager:
-            completion_data["all_references"] = reference_manager.to_dict()
-
-        await send_update(completion_data).__anext__()
-
-    except Exception as e:
-        logger.error(f"BioAgents execution error: {e}")
-        await send_update({"type": "error", "message": str(e)}).__anext__()
-        raise
-
-
 # =====================================================
 # ROUTES
 # =====================================================
@@ -535,8 +477,31 @@ async def run_bioagents_query(query: str, websocket: WebSocket | None = None):
 
 @app.get("/")
 async def root():
-    """Serve the main UI."""
-    return FileResponse(FRONTEND_DIR / "index.html")
+    """Serve the main UI with cache-busted static asset URLs.
+
+    Each ``<script src="static/js/…">`` tag gets a ``?v=<mtime>`` suffix so
+    browsers re-download scripts whenever we ship a new build instead of
+    serving a stale cached copy.
+    """
+    from fastapi.responses import HTMLResponse
+
+    index_path = FRONTEND_DIR / "index.html"
+    html = index_path.read_text(encoding="utf-8")
+
+    import re
+
+    static_dir = FRONTEND_DIR / "static"
+
+    def _stamp(match: re.Match[str]) -> str:
+        rel = match.group(1)
+        try:
+            mtime = int((static_dir / rel.removeprefix("static/")).stat().st_mtime)
+        except OSError:
+            mtime = 0
+        return f'src="{rel}?v={mtime}"'
+
+    html = re.sub(r'src="(static/js/[^"?]+)"', _stamp, html)
+    return HTMLResponse(html)
 
 
 @app.get("/health")
@@ -553,10 +518,12 @@ async def query_bioagents(request: QueryRequest):
 
     async def generate():
         set_api_keys_override(request.api_keys)
+        set_llm_overrides(request.provider, request.model)
         from bioagents.references.reference_manager import ReferenceManager
 
         graph = create_graph()
         reference_manager = ReferenceManager()
+        # REST API does not currently carry session_id, so no cross-query context.
         initial_state = {
             "messages": [HumanMessage(content=request.query)],
             "references": reference_manager,
@@ -565,9 +532,12 @@ async def query_bioagents(request: QueryRequest):
         full_audit = []
 
         try:
-            for step in graph.stream(initial_state, {"recursion_limit": 100}):
+            for step in iter_graph_stream(graph, initial_state):
                 node_name = next(iter(step))
                 node_output = step[node_name]
+
+                if node_output is None:
+                    node_output = {}
 
                 # Send agent update
                 yield f"data: {json.dumps({'type': 'agent_update', 'agent': node_name})}\n\n"
@@ -623,26 +593,30 @@ async def query_bioagents(request: QueryRequest):
                 full_audit.append(audit_entry)
                 yield f"data: {json.dumps({'type': 'audit', 'entries': full_audit})}\n\n"
 
+                # Send tool calls and tool results (consumed by advanced mode UI)
+                if "messages" in node_output:
+                    for m in node_output["messages"]:
+                        if isinstance(m, AIMessage) and getattr(m, "tool_calls", None):
+                            for tc in m.tool_calls:
+                                yield f"data: {json.dumps({'type': 'tool_call', 'agent': node_name, 'tool_name': tc.get('name', 'unknown'), 'arguments': tc.get('args', {})})}\n\n"
+                        elif isinstance(m, ToolMessage) and m.content:
+                            tc_content = m.content
+                            if isinstance(tc_content, list):
+                                tc_content = str(tc_content)
+                            tool_name = getattr(m, "name", "") or "tool"
+                            tc_content = (
+                                tc_content[:3000]
+                                if isinstance(tc_content, str)
+                                else str(tc_content)[:3000]
+                            )
+                            yield f"data: {json.dumps({'type': 'tool_result', 'agent': node_name, 'tool_name': tool_name, 'content': tc_content})}\n\n"
+
                 # Send code steps if available
                 if "code_steps" in node_output:
                     yield f"data: {json.dumps({'type': 'code_execution', 'agent': node_name, 'steps': node_output['code_steps']})}\n\n"
 
                 # Send messages
-                if (
-                    node_name
-                    in [
-                        "report",
-                        "critic",
-                        "analysis",
-                        "research",
-                        "protein_design",
-                        "coder",
-                        "tool_builder",
-                        "ml",
-                        "dl",
-                    ]
-                    and "messages" in node_output
-                ):
+                if node_name in STREAM_UI_AGENTS and "messages" in node_output:
                     for m in node_output["messages"]:
                         if (
                             isinstance(m, AIMessage)
@@ -790,7 +764,7 @@ async def clear_artifacts():
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
-    """WebSocket endpoint for real-time communication."""
+    """WebSocket endpoint for real-time communication with steering support."""
     await manager.connect(websocket)
 
     try:
@@ -800,12 +774,103 @@ async def websocket_endpoint(websocket: WebSocket):
             if data.get("type") == "query":
                 query = data.get("content", "")
                 api_keys = data.get("api_keys")
+                session_id = data.get("session_id")
+                ws_provider = data.get("provider")
+                ws_model = data.get("model")
                 if query:
+                    # Log user query to admin database
+                    ws_client_id = data.get("client_id") or _gen_client_id(
+                        websocket.client.host if websocket.client else "unknown",
+                        websocket.headers.get("user-agent", "unknown"),
+                    )
                     try:
-                        await run_bioagents_streaming(query, websocket, api_keys=api_keys)
+                        admin_db.upsert_client(
+                            client_id=ws_client_id,
+                            ip_hash=_gen_client_id(
+                                websocket.client.host if websocket.client else "unknown", ""
+                            ),
+                            user_agent_hash=_gen_client_id(
+                                "", websocket.headers.get("user-agent", "unknown")
+                            ),
+                        )
+                        if session_id:
+                            admin_db.upsert_session(
+                                session_id=session_id,
+                                client_id=ws_client_id,
+                                provider=ws_provider,
+                                model=ws_model,
+                            )
+                            admin_db.increment_session_counter(session_id, "total_queries")
+                        admin_db.log_chat_message(
+                            client_id=ws_client_id,
+                            session_id=session_id or "unknown",
+                            role="user",
+                            content=query,
+                        )
+                        admin_db.log_activity(
+                            client_id=ws_client_id,
+                            session_id=session_id,
+                            action="query",
+                            details={"query_length": len(query)},
+                        )
+                    except Exception:
+                        logger.debug("Failed to log query to admin DB", exc_info=True)
+
+                    # Create a steering queue for this query execution
+                    steering_queue: asyncio.Queue[str] = asyncio.Queue()
+
+                    # Create an approval response queue for tool approval flow
+                    approval_queue: asyncio.Queue[dict] = asyncio.Queue()
+
+                    # Create an engagement response queue for user engagement flow
+                    engagement_queue: asyncio.Queue[dict] = asyncio.Queue()
+
+                    # Start a concurrent reader that puts steering/approval messages on their queues
+                    async def _steering_reader(
+                        _sq: asyncio.Queue[str] = steering_queue,
+                        _aq: asyncio.Queue[dict] = approval_queue,
+                        _eq: asyncio.Queue[dict] = engagement_queue,
+                    ) -> None:
+                        try:
+                            while True:
+                                msg = await websocket.receive_json()
+                                if msg.get("type") == "steer":
+                                    await _sq.put(msg.get("content", ""))
+                                elif msg.get("type") == "tool_approval_response":
+                                    await _aq.put(msg)
+                                elif msg.get("type") == "engagement_response":
+                                    await _eq.put(msg)
+                                elif msg.get("type") == "ping":
+                                    await websocket.send_json({"type": "pong"})
+                        except WebSocketDisconnect:
+                            raise
+                        except Exception:  # nosec B110
+                            pass  # Connection closed or other error
+
+                    reader_task = asyncio.create_task(_steering_reader())
+                    try:
+                        await run_bioagents_streaming(
+                            query,
+                            websocket,
+                            api_keys=api_keys,
+                            session_id=session_id,
+                            provider=ws_provider,
+                            model=ws_model,
+                            steering_queue=steering_queue,
+                            approval_queue=approval_queue,
+                            engagement_queue=engagement_queue,
+                            client_id=ws_client_id,
+                        )
+                    except WebSocketDisconnect:
+                        raise
                     except Exception as e:
                         logger.error(f"Query execution error: {e}")
-                        await websocket.send_json({"type": "error", "message": str(e)})
+                        with contextlib.suppress(Exception):
+                            await websocket.send_json({"type": "error", "message": str(e)})
+                    finally:
+                        reader_task.cancel()
+                        with contextlib.suppress(asyncio.CancelledError):
+                            await reader_task
 
             elif data.get("type") == "ping":
                 await websocket.send_json({"type": "pong"})
@@ -818,145 +883,472 @@ async def websocket_endpoint(websocket: WebSocket):
 
 
 async def run_bioagents_streaming(
-    query: str, websocket: WebSocket, api_keys: dict[str, str] | None = None
+    query: str,
+    websocket: WebSocket,
+    api_keys: dict[str, str] | None = None,
+    session_id: str | None = None,
+    steering_queue: asyncio.Queue[str] | None = None,
+    approval_queue: asyncio.Queue[dict] | None = None,
+    engagement_queue: asyncio.Queue[dict] | None = None,
+    provider: str | None = None,
+    model: str | None = None,
+    client_id: str | None = None,
 ):
-    """Execute BioAgents query with WebSocket streaming."""
+    """Execute BioAgents query with WebSocket streaming and optional steering/approval support."""
+    import uuid
+
+    from langgraph.checkpoint.memory import MemorySaver
+
+    from bioagents.references.reference_extractor import extract_references_from_messages
     from bioagents.references.reference_manager import ReferenceManager
+    from bioagents.tools.tool_policy import ToolPolicy
 
     set_api_keys_override(api_keys)
-    graph = create_graph()
+    set_llm_overrides(provider, model)
 
-    # Initialize with reference manager
-    reference_manager = ReferenceManager()
-    initial_state = {
-        "messages": [HumanMessage(content=query)],
-        "references": reference_manager,
+    # Build a session-specific tool policy with available API keys
+    available_keys: set[str] = set()
+    if api_keys:
+        available_keys = {k for k, v in api_keys.items() if v}
+    session_policy = ToolPolicy(available_api_keys=available_keys)
+
+    # Track whether the client is still connected
+    _client_disconnected = False
+
+    async def safe_send(data: dict) -> bool:
+        """Send JSON to the WebSocket. Returns False if client is gone."""
+        nonlocal _client_disconnected
+        if _client_disconnected or not manager.is_connected(websocket):
+            _client_disconnected = True
+            return False
+        try:
+            await websocket.send_json(data)
+            return True
+        except WebSocketDisconnect:
+            _client_disconnected = True
+            return False
+        except Exception:
+            _client_disconnected = True
+            return False
+
+    # Create graph with checkpointer to support mid-execution state updates (steering)
+    checkpointer = MemorySaver()
+
+    # Build session context retrieval tool bound to this session's previous turns.
+    # When there is prior context, agents get a catalog + a tool to pull details.
+    _session_context_tool = None
+    if session_id and session_id in _session_contexts:
+        from bioagents.tools.session_context_tools import (
+            create_retrieve_previous_context_tool,
+        )
+
+        prev_node_outputs = [turn.get("node_outputs", {}) for turn in _session_contexts[session_id]]
+        if any(prev_node_outputs):  # only create tool if there's data to retrieve
+            _session_context_tool = create_retrieve_previous_context_tool(prev_node_outputs)
+
+    await safe_send({"type": "log", "message": "Initializing agents..."})
+    graph = await asyncio.to_thread(
+        create_graph,
+        checkpointer=checkpointer,
+        policy=session_policy,
+        session_context_tool=_session_context_tool,
+    )
+
+    # Thread ID for checkpoint-based state updates
+    thread_id = f"session_{session_id or uuid.uuid4().hex[:8]}"
+    stream_config: dict[str, Any] = {
+        "configurable": {"thread_id": thread_id},
     }
 
-    full_audit = []
-    sent_artifacts = set()  # Track sent artifacts to prevent duplicates
-    sent_structures = set()  # Track sent PDB URLs/paths
-    sent_protein_ids = set()  # Track protein IDs to prevent duplicate structures
+    # Initialize with reference manager
+    # Note: ReferenceManager is NOT included in initial_state because MemorySaver
+    # uses msgpack serialization which can't handle arbitrary Python objects.
+    # References are extracted in the streaming loop instead.
+    reference_manager = ReferenceManager()
+    initial_state: dict[str, Any] = _build_contextual_initial_state(session_id, query)
+
+    full_audit: list[dict[str, Any]] = []
+    # Compact accumulator for session context — only stores the user query,
+    # the final summary output, file paths, and node output index cards.
+    _turn_summary: str = ""
+    _turn_files: set[str] = set()
+    _turn_node_outputs: dict[str, dict[str, Any]] = {}  # key → {index, content, agent}
+    _turn_node_idx: int = 0
+    sent_artifacts: set[str] = set()
+    sent_structures: set[str] = set()
+    sent_protein_ids: set[str] = set()
 
     def extract_protein_id(name_or_url: str) -> str | None:
         """Extract protein ID from filename or URL (e.g., AF-P01308-F1 -> P01308)"""
         match = re.search(r"([A-Z][A-Z0-9]{4,5})", name_or_url, re.IGNORECASE)
         return match.group(1).upper() if match else None
 
+    def _drain_steering_queue() -> list[str]:
+        """Non-blocking drain of all pending steering messages."""
+        messages: list[str] = []
+        if steering_queue is None:
+            return messages
+        while not steering_queue.empty():
+            try:
+                messages.append(steering_queue.get_nowait())
+            except asyncio.QueueEmpty:
+                break
+        return messages
+
+    def _extract_engagement_from_interrupt(
+        interrupt_value: Any,
+    ) -> dict[str, Any] | None:
+        """Convert an interrupt payload to a frontend-friendly engagement dict."""
+        if isinstance(interrupt_value, dict):
+            return {
+                "id": interrupt_value.get("id", "unknown"),
+                "engagement_type": interrupt_value.get("type", "clarification"),
+                "question": interrupt_value.get("question", ""),
+                "options": interrupt_value.get("options", []),
+                "context": interrupt_value.get("context", ""),
+                "agent": interrupt_value.get("agent", "Supervisor"),
+            }
+        return None
+
     try:
-        for step in graph.stream(initial_state, {"recursion_limit": 100}):
-            node_name = next(iter(step))
-            node_output = step[node_name]
+        from langgraph.types import Command
 
-            # Send agent update
-            await websocket.send_json({"type": "agent_update", "agent": node_name})
+        _stream_input = initial_state
 
-            # Process messages
-            step_messages = []
-            if "messages" in node_output:
-                for m in node_output["messages"]:
-                    msg_info = {
-                        "type": m.__class__.__name__,
-                        "content": m.content if hasattr(m, "content") else str(m),
-                    }
-                    step_messages.append(msg_info)
+        # Show supervisor as active immediately when execution starts
+        await safe_send({"type": "agent_update", "agent": "supervisor"})
 
-                    # Check for PDB files (local paths and URLs)
-                    content = msg_info["content"]
-                    if isinstance(content, str) and ".pdb" in content.lower():
-                        # Check for local file paths
-                        local_matches = re.findall(
-                            r'(/[^\s\'"]+\.pdb|(?:\.\/)?[^\s\'"]+\.pdb|(?:[a-zA-Z0-9_\-]+/)+[^\s\'"]+\.pdb)',
-                            content,
+        while True:
+            resume_after_engagement = False
+
+            async for step in aiter_graph_stream(graph, _stream_input, config=stream_config):
+                # Detect LangGraph interrupt steps
+                if "__interrupt__" in step:
+                    interrupts = step["__interrupt__"]
+                    if interrupts:
+                        interrupt_value = (
+                            interrupts[0].value
+                            if hasattr(interrupts[0], "value")
+                            else interrupts[0]
                         )
-                        for path_str in local_matches:
-                            path = Path(path_str)
-                            if path.exists() and str(path) not in sent_structures:
-                                sent_structures.add(str(path))
-                                try:
-                                    with path.open() as f:
-                                        pdb_content = f.read()
-                                    await websocket.send_json(
-                                        {"type": "structure", "pdbContent": pdb_content}
-                                    )
-                                    artifact_key = path.name
-                                    if artifact_key not in sent_artifacts:
-                                        sent_artifacts.add(artifact_key)
-                                        await websocket.send_json(
-                                            {
-                                                "type": "artifact",
-                                                "artifact": {
-                                                    "name": path.name,
-                                                    "path": str(path),
-                                                    "type": "pdb",
-                                                    "size": path.stat().st_size,
-                                                },
-                                            }
-                                        )
-                                except Exception as e:
-                                    logger.error(f"Failed to load PDB: {e}")
-
-                        # Check for PDB URLs (AlphaFold, RCSB, etc.)
-                        url_matches = re.findall(r'(https?://[^\s\'"<>]+\.pdb)', content)
-                        for url in url_matches:
-                            # Extract protein ID to prevent duplicates
-                            protein_id = extract_protein_id(url)
-
-                            # Skip if we already sent this URL or protein
-                            if url in sent_structures:
-                                continue
-                            if protein_id and protein_id in sent_protein_ids:
-                                continue
-
-                            sent_structures.add(url)
-                            if protein_id:
-                                sent_protein_ids.add(protein_id)
-
+                        engagement_data = _extract_engagement_from_interrupt(interrupt_value)
+                        if engagement_data:
+                            await safe_send({"type": "agent_update", "agent": "user_input"})
+                            if not await safe_send(
+                                {"type": "engagement_request", **engagement_data}
+                            ):
+                                break
+                            logger.info(
+                                f"Engagement request sent: type={engagement_data.get('engagement_type')}, "
+                                f"question={engagement_data.get('question', '')[:80]}"
+                            )
+                            # Log engagement request to admin DB
                             try:
-                                logger.info(f"Fetching PDB from URL: {url}")
-                                resp = requests.get(url, timeout=30)
-                                if resp.status_code == 200:
-                                    pdb_content = resp.text
-                                    # Extract filename from URL
-                                    filename = url.split("/")[-1]
-                                    await websocket.send_json(
-                                        {"type": "structure", "pdbContent": pdb_content}
+                                admin_db.log_engagement_event(
+                                    client_id=client_id,
+                                    session_id=session_id or "unknown",
+                                    engagement_id=engagement_data.get("id", "unknown"),
+                                    engagement_type=engagement_data.get("engagement_type"),
+                                    question=engagement_data.get("question"),
+                                    options=json.dumps(engagement_data.get("options", [])),
+                                    context=engagement_data.get("context"),
+                                    agent=engagement_data.get("agent"),
+                                )
+                            except Exception:
+                                logger.debug(
+                                    "Failed to log engagement request to admin DB", exc_info=True
+                                )
+                            try:
+                                response = await asyncio.wait_for(
+                                    engagement_queue.get()
+                                    if engagement_queue
+                                    else asyncio.Future(),
+                                    timeout=TOOL_APPROVAL_TIMEOUT_SEC,
+                                )
+                                resume_payload = {
+                                    "content": response.get("content", ""),
+                                    "selected_option": response.get("selected_option"),
+                                }
+                                if not await safe_send(
+                                    {
+                                        "type": "engagement_response_received",
+                                        "id": engagement_data.get("id"),
+                                    }
+                                ):
+                                    break
+                                logger.info(
+                                    f"Engagement response received: {resume_payload['content'][:80]}"
+                                )
+                                # Log engagement response to admin DB
+                                try:
+                                    admin_db.update_engagement_event(
+                                        engagement_id=engagement_data.get("id"),
+                                        response_content=response.get("content", ""),
+                                        selected_option=response.get("selected_option"),
                                     )
-                                    if filename not in sent_artifacts:
-                                        sent_artifacts.add(filename)
-                                        await websocket.send_json(
-                                            {
-                                                "type": "artifact",
-                                                "artifact": {
-                                                    "name": filename,
-                                                    "path": url,
-                                                    "type": "pdb",
-                                                    "size": len(pdb_content),
-                                                },
-                                            }
-                                        )
-                                        await websocket.send_json(
-                                            {
-                                                "type": "log",
-                                                "message": f"Loaded 3D structure: {filename}",
-                                            }
-                                        )
-                            except Exception as e:
-                                logger.error(f"Failed to fetch PDB from URL {url}: {e}")
+                                except Exception:
+                                    logger.debug(
+                                        "Failed to log engagement response to admin DB",
+                                        exc_info=True,
+                                    )
+                            except TimeoutError:
+                                resume_payload = {"content": ""}
+                                if not await safe_send(
+                                    {
+                                        "type": "engagement_timeout",
+                                        "id": engagement_data.get("id"),
+                                    }
+                                ):
+                                    break
+                                logger.info("Engagement timed out, proceeding with best judgment")
+                                # Log engagement timeout to admin DB
+                                try:
+                                    admin_db.update_engagement_event(
+                                        engagement_id=engagement_data.get("id"),
+                                        timed_out=True,
+                                    )
+                                except Exception:
+                                    logger.debug(
+                                        "Failed to log engagement timeout to admin DB",
+                                        exc_info=True,
+                                    )
 
-                    # Check for other artifacts
-                    if isinstance(content, str):
-                        for ext in [".csv", ".png", ".jpg", ".json", ".pdf"]:
-                            if ext in content.lower():
-                                matches = re.findall(
-                                    rf'(/[^\s\'"]+{ext}|(?:\.\/)?[^\s\'"]+{ext}|(?:[a-zA-Z0-9_\-]+/)+[^\s\'"]+{ext})',
-                                    content,
+                            _stream_input = Command(resume=resume_payload)
+                            resume_after_engagement = True
+                    break  # Exit inner for-loop; outer while-loop will resume
+
+                node_name = next(iter(step))
+                node_output = step[node_name]
+
+                if node_output is None:
+                    node_output = {}
+
+                # Determine which agent should be displayed as active.
+                # LangGraph yields steps for COMPLETED nodes. To show the
+                # agent that is *currently* running, we look ahead at what
+                # the graph will execute next based on routing logic.
+                _next_display_agent: str | None = None
+
+                if node_name == "supervisor":
+                    # Supervisor finished routing → show the target agent
+                    routed = node_output.get("next", "FINISH")
+                    _next_display_agent = "summary" if routed == "FINISH" else routed
+                elif node_name.endswith("_tools"):
+                    # Tool node → returns to calling agent; keep current display
+                    pass
+                elif node_name == "summary":
+                    _next_display_agent = "summary"
+                else:
+                    # Regular agent completed → check for pending tool calls
+                    step_msgs = node_output.get("messages", [])
+                    last_msg = step_msgs[-1] if step_msgs else None
+                    if last_msg and getattr(last_msg, "tool_calls", None):
+                        # Agent called tools → tool execution is part of its work
+                        pass
+                    else:
+                        # Agent done → routes back to supervisor
+                        _next_display_agent = "supervisor"
+
+                if _next_display_agent is not None and not await safe_send(
+                    {"type": "agent_update", "agent": _next_display_agent}
+                ):
+                    break
+
+                # Process messages
+                step_messages = []
+                if "messages" in node_output:
+                    for m in node_output["messages"]:
+                        if _client_disconnected:
+                            break
+
+                        # --- Compact session context extraction ---
+                        # Capture Summary/Report outputs, file paths, and node output
+                        # index cards for the catalog + on-demand retrieval system.
+                        if isinstance(m, AIMessage):
+                            name = getattr(m, "name", "")
+                            # Handle both string and list-format content
+                            raw_content = m.content
+                            if isinstance(raw_content, str):
+                                ai_content = raw_content
+                            elif isinstance(raw_content, list):
+                                ai_content = " ".join(
+                                    b.get("text", "") if isinstance(b, dict) else str(b)
+                                    for b in raw_content
+                                )
+                            else:
+                                ai_content = str(raw_content) if raw_content else ""
+
+                            if ai_content:
+                                # Capture final summary/report output
+                                if name in ("Summary", "Report") and len(ai_content) > 50:
+                                    _turn_summary = ai_content[:800]
+                                # Extract file paths
+                                _file_matches = re.findall(
+                                    r"(/?\w+[\w/-]+\.(?:pdb|fasta|cif|csv|json))",
+                                    ai_content,
+                                )
+                                _turn_files.update(_file_matches)
+                                # Store node output index card for all non-supervisor,
+                                # non-summary agents. Include both final responses
+                                # and tool-calling messages (which often contain
+                                # intermediate reasoning the next agent may need).
+                                has_tool_calls = hasattr(m, "tool_calls") and m.tool_calls
+                                if (
+                                    name
+                                    and name not in ("Supervisor", "Summary", "Report")
+                                    and not has_tool_calls
+                                    and len(ai_content) > 30
+                                ):
+                                    _key = f"{name}_{_turn_node_idx}"
+                                    _turn_node_outputs[_key] = {
+                                        "index": ai_content[:120].replace("\n", " "),
+                                        "content": ai_content[:2000],
+                                        "agent": name,
+                                    }
+                                    _turn_node_idx += 1
+                        elif isinstance(m, ToolMessage):
+                            raw_tc = m.content
+                            if isinstance(raw_tc, str):
+                                tc = raw_tc
+                            elif isinstance(raw_tc, list):
+                                tc = " ".join(
+                                    b.get("text", "") if isinstance(b, dict) else str(b)
+                                    for b in raw_tc
+                                )
+                            else:
+                                tc = str(raw_tc) if raw_tc else ""
+
+                            if tc:
+                                # Extract file paths
+                                _file_matches = re.findall(
+                                    r"(?:to|at)[:\s]+([^\s'\"]+\.(?:pdb|fasta|cif|csv|json))",
+                                    tc,
                                     re.IGNORECASE,
                                 )
-                                for path_str in matches:
-                                    path = Path(path_str)
-                                    if path.exists():
-                                        await websocket.send_json(
+                                _turn_files.update(_file_matches)
+
+                                # Also store tool results as node outputs — these
+                                # contain the actual data (scores, structures, etc.)
+                                # that agents often need to retrieve.
+                                tool_name = getattr(m, "name", "")
+                                if tool_name and len(tc) > 30:
+                                    _key = f"tool_{tool_name}_{_turn_node_idx}"
+                                    _turn_node_outputs[_key] = {
+                                        "index": f"[{tool_name}] {tc[:100].replace(chr(10), ' ')}",
+                                        "content": tc[:2000],
+                                        "agent": tool_name,
+                                    }
+                                    _turn_node_idx += 1
+                        # --- End compact extraction ---
+
+                        msg_info = {
+                            "type": m.__class__.__name__,
+                            "content": m.content if hasattr(m, "content") else str(m),
+                        }
+                        step_messages.append(msg_info)
+
+                        # Check for PDB files (local paths and URLs)
+                        content = msg_info["content"]
+                        if isinstance(content, str) and ".pdb" in content.lower():
+                            # Check for local file paths
+                            local_matches = re.findall(
+                                r'(/[^\s\'"]+\.pdb|(?:\.\/)?[^\s\'"]+\.pdb|(?:[a-zA-Z0-9_\-]+/)+[^\s\'"]+\.pdb)',
+                                content,
+                            )
+                            for path_str in local_matches:
+                                path = Path(path_str)
+                                if path.exists() and str(path) not in sent_structures:
+                                    sent_structures.add(str(path))
+                                    try:
+                                        with path.open() as f:
+                                            pdb_content = f.read()
+                                        if not await safe_send(
+                                            {"type": "structure", "pdbContent": pdb_content}
+                                        ):
+                                            break
+                                        artifact_key = path.name
+                                        if artifact_key not in sent_artifacts:
+                                            sent_artifacts.add(artifact_key)
+                                            if not await safe_send(
+                                                {
+                                                    "type": "artifact",
+                                                    "artifact": {
+                                                        "name": path.name,
+                                                        "path": str(path),
+                                                        "type": "pdb",
+                                                        "size": path.stat().st_size,
+                                                    },
+                                                }
+                                            ):
+                                                break
+                                    except Exception as e:
+                                        logger.error(f"Failed to load PDB: {e}")
+
+                            # Check for PDB URLs (AlphaFold, RCSB, etc.)
+                            url_matches = re.findall(r'(https?://[^\s\'"<>]+\.pdb)', content)
+                            for url in url_matches:
+                                if _client_disconnected:
+                                    break
+                                # Extract protein ID to prevent duplicates
+                                protein_id = extract_protein_id(url)
+
+                                # Skip if we already sent this URL or protein
+                                if url in sent_structures:
+                                    continue
+                                if protein_id and protein_id in sent_protein_ids:
+                                    continue
+
+                                sent_structures.add(url)
+                                if protein_id:
+                                    sent_protein_ids.add(protein_id)
+
+                                try:
+                                    logger.info(f"Fetching PDB from URL: {url}")
+                                    resp = requests.get(url, timeout=30)
+                                    if resp.status_code == 200:
+                                        pdb_content = resp.text
+                                        # Extract filename from URL
+                                        filename = url.split("/")[-1]
+                                        if not await safe_send(
+                                            {"type": "structure", "pdbContent": pdb_content}
+                                        ):
+                                            break
+                                        if filename not in sent_artifacts:
+                                            sent_artifacts.add(filename)
+                                            if not await safe_send(
+                                                {
+                                                    "type": "artifact",
+                                                    "artifact": {
+                                                        "name": filename,
+                                                        "path": url,
+                                                        "type": "pdb",
+                                                        "size": len(pdb_content),
+                                                    },
+                                                }
+                                            ):
+                                                break
+                                            if not await safe_send(
+                                                {
+                                                    "type": "log",
+                                                    "message": f"Loaded 3D structure: {filename}",
+                                                }
+                                            ):
+                                                break
+                                except Exception as e:
+                                    logger.error(f"Failed to fetch PDB from URL {url}: {e}")
+
+                        # Check for other artifacts
+                        if isinstance(content, str):
+                            for ext in [".csv", ".png", ".jpg", ".json", ".pdf"]:
+                                if ext in content.lower():
+                                    matches = re.findall(
+                                        rf'(/[^\s\'"]+{ext}|(?:\.\/)?[^\s\'"]+{ext}|(?:[a-zA-Z0-9_\-]+/)+[^\s\'"]+{ext})',
+                                        content,
+                                        re.IGNORECASE,
+                                    )
+                                    for path_str in matches:
+                                        path = Path(path_str)
+                                        if path.exists() and not await safe_send(
                                             {
                                                 "type": "artifact",
                                                 "artifact": {
@@ -966,133 +1358,446 @@ async def run_bioagents_streaming(
                                                     "size": path.stat().st_size,
                                                 },
                                             }
+                                        ):
+                                            break
+
+                if _client_disconnected:
+                    break
+
+                # Build audit entry
+                audit_entry = {
+                    "agent": node_name,
+                    "decision": node_output.get("next", "Continue"),
+                    "reasoning": node_output.get("reasoning", ""),
+                    "messages": step_messages,
+                }
+                full_audit.append(audit_entry)
+
+                # Log agent response to admin database
+                if node_name in STREAM_UI_AGENTS and step_messages:
+                    try:
+                        for msg_info in step_messages:
+                            if msg_info["type"] == "AIMessage":
+                                tc_data = None
+                                if isinstance(m, AIMessage) and getattr(m, "tool_calls", None):
+                                    tc_data = [
+                                        {"name": tc.get("name"), "args": tc.get("args")}
+                                        for tc in m.tool_calls
+                                    ]
+                                admin_db.log_chat_message(
+                                    client_id=client_id,
+                                    session_id=session_id or "unknown",
+                                    role="assistant",
+                                    agent=node_name,
+                                    content=str(msg_info["content"]),
+                                    tool_calls=tc_data,
+                                )
+                    except Exception:
+                        logger.debug("Failed to log agent response to admin DB", exc_info=True)
+
+                # Log agent decision/reasoning to admin database
+                try:
+                    admin_db.log_agent_decision(
+                        client_id=client_id,
+                        session_id=session_id or "unknown",
+                        agent=node_name,
+                        decision=node_output.get("next", "Continue"),
+                        reasoning=node_output.get("reasoning", ""),
+                        step_messages=json.dumps(step_messages, default=str),
+                        step_index=len(full_audit),
+                    )
+                except Exception:
+                    logger.debug("Failed to log agent decision to admin DB", exc_info=True)
+
+                if not await safe_send({"type": "audit", "entries": full_audit}):
+                    break
+
+                # Extract references from step messages (ReferenceManager is kept
+                # outside the graph state to avoid msgpack serialization errors).
+                if "messages" in node_output:
+                    refs = extract_references_from_messages(node_output["messages"])
+                    if refs:
+                        reference_manager.add_references(refs)
+
+                # Send tool calls and tool results (consumed by advanced mode UI)
+                if "messages" in node_output:
+                    for m in node_output["messages"]:
+                        if _client_disconnected:
+                            break
+                        if isinstance(m, AIMessage) and getattr(m, "tool_calls", None):
+                            for tc in m.tool_calls:
+                                if not await safe_send(
+                                    {
+                                        "type": "tool_call",
+                                        "agent": node_name,
+                                        "tool_name": tc.get("name", "unknown"),
+                                        "arguments": tc.get("args", {}),
+                                    }
+                                ):
+                                    break
+                                # Log tool call to admin database
+                                try:
+                                    admin_db.log_tool_event(
+                                        client_id=client_id,
+                                        session_id=session_id or "unknown",
+                                        agent=node_name,
+                                        tool_name=tc.get("name", "unknown"),
+                                        event_type="call",
+                                        arguments=json.dumps(tc.get("args", {}), default=str),
+                                    )
+                                except Exception:
+                                    logger.debug(
+                                        "Failed to log tool call to admin DB", exc_info=True
+                                    )
+                        elif isinstance(m, ToolMessage) and m.content:
+                            tc_content = m.content
+                            if isinstance(tc_content, list):
+                                tc_content = str(tc_content)
+                            tool_name = getattr(m, "name", "") or "tool"
+
+                            # Check for approval-required or policy-blocked messages
+                            if isinstance(tc_content, str):
+                                if "[APPROVAL_REQUIRED]" in tc_content:
+                                    # Extract request_id from message
+                                    import re as _re
+
+                                    req_match = _re.search(
+                                        r"approval_request_id=([a-f0-9-]+)", tc_content
+                                    )
+                                    request_id = (
+                                        req_match.group(1) if req_match else str(uuid.uuid4())
+                                    )
+                                    reason_match = _re.search(r"Reason: (.+?)\. Risk", tc_content)
+                                    reason = (
+                                        reason_match.group(1)
+                                        if reason_match
+                                        else "External API tool"
+                                    )
+                                    risk_match = _re.search(r"Risk level: (\w+)", tc_content)
+                                    risk_level = risk_match.group(1) if risk_match else "medium"
+
+                                    if not await safe_send(
+                                        {
+                                            "type": "tool_approval_request",
+                                            "request_id": request_id,
+                                            "tool_name": tool_name,
+                                            "agent": node_name,
+                                            "reason": reason,
+                                            "risk_level": risk_level,
+                                            "content": tc_content[:3000],
+                                        }
+                                    ):
+                                        break
+                                    # Log tool approval request to admin DB
+                                    try:
+                                        admin_db.log_tool_approval_event(
+                                            client_id=client_id,
+                                            session_id=session_id or "unknown",
+                                            request_id=request_id,
+                                            tool_name=tool_name,
+                                            agent=node_name,
+                                            reason=reason,
+                                            risk_level=risk_level,
+                                            outcome="pending",
+                                        )
+                                    except Exception:
+                                        logger.debug(
+                                            "Failed to log approval request to admin DB",
+                                            exc_info=True,
                                         )
 
-            # Build audit entry
-            audit_entry = {
-                "agent": node_name,
-                "decision": node_output.get("next", "Continue"),
-                "reasoning": node_output.get("reasoning", ""),
-                "messages": step_messages,
-            }
-            full_audit.append(audit_entry)
-            await websocket.send_json({"type": "audit", "entries": full_audit})
+                                    # Drain any approval responses that arrived
+                                    if approval_queue is not None:
+                                        while not approval_queue.empty():
+                                            try:
+                                                resp = approval_queue.get_nowait()
+                                                if resp.get("tool_name") == tool_name and resp.get(
+                                                    "approved"
+                                                ):
+                                                    session_policy.mark_approved(tool_name)
+                                                    await safe_send(
+                                                        {
+                                                            "type": "log",
+                                                            "message": f"Tool '{tool_name}' approved for this session",
+                                                        }
+                                                    )
+                                                    # Log approval to admin DB
+                                                    try:
+                                                        admin_db.update_tool_approval_event(
+                                                            request_id=request_id,
+                                                            outcome="approved",
+                                                        )
+                                                    except Exception:
+                                                        logger.debug(
+                                                            "Failed to log approval to admin DB",
+                                                            exc_info=True,
+                                                        )
+                                            except asyncio.QueueEmpty:
+                                                break
+                                    continue
 
-            # Send code steps if available (from coder, ml, or dl agents)
-            if "code_steps" in node_output:
-                await websocket.send_json(
+                                if "[POLICY_BLOCKED]" in tc_content:
+                                    if not await safe_send(
+                                        {
+                                            "type": "tool_policy_blocked",
+                                            "agent": node_name,
+                                            "tool_name": tool_name,
+                                            "content": tc_content[:3000],
+                                        }
+                                    ):
+                                        break
+                                    # Log policy block to admin DB
+                                    try:
+                                        admin_db.log_tool_approval_event(
+                                            client_id=client_id,
+                                            session_id=session_id or "unknown",
+                                            request_id=str(uuid.uuid4()),
+                                            tool_name=tool_name,
+                                            agent=node_name,
+                                            outcome="blocked",
+                                            reason=tc_content[:500],
+                                        )
+                                    except Exception:
+                                        logger.debug(
+                                            "Failed to log policy block to admin DB", exc_info=True
+                                        )
+                                    continue
+
+                            if not await safe_send(
+                                {
+                                    "type": "tool_result",
+                                    "agent": node_name,
+                                    "tool_name": tool_name,
+                                    "content": tc_content[:3000]
+                                    if isinstance(tc_content, str)
+                                    else str(tc_content)[:3000],
+                                }
+                            ):
+                                break
+                            # Log tool result to admin DB
+                            try:
+                                result_str = (
+                                    tc_content if isinstance(tc_content, str) else str(tc_content)
+                                )
+                                truncated = len(result_str) > 100000
+                                admin_db.log_tool_event(
+                                    client_id=client_id,
+                                    session_id=session_id or "unknown",
+                                    agent=node_name,
+                                    tool_name=tool_name,
+                                    event_type="result",
+                                    result=result_str[:100000] if truncated else result_str,
+                                    result_truncated=1 if truncated else 0,
+                                )
+                            except Exception:
+                                logger.debug("Failed to log tool result to admin DB", exc_info=True)
+
+                if _client_disconnected:
+                    break
+
+                # Send code steps if available (from coder, ml, or dl agents)
+                if "code_steps" in node_output and not await safe_send(
                     {
                         "type": "code_execution",
                         "agent": node_name,
                         "steps": node_output["code_steps"],
                     }
+                ):
+                    break
+
+                # Send tool policy stats periodically
+                stats = session_policy.stats
+                if not await safe_send(
+                    {
+                        "type": "tool_policy_stats",
+                        "auto_approved": stats.auto_approved,
+                        "user_approved": stats.user_approved,
+                        "blocked": stats.blocked,
+                        "filtered_at_discovery": stats.filtered_at_discovery,
+                    }
+                ):
+                    break
+
+                # Send messages from user-facing agents
+                if node_name in STREAM_UI_AGENTS and "messages" in node_output:
+                    for m in node_output["messages"]:
+                        if _client_disconnected:
+                            break
+                        # Skip HumanMessages (usually handoffs) and ToolMessages
+                        if (
+                            hasattr(m, "content")
+                            and m.content
+                            and not isinstance(m, (HumanMessage, ToolMessage))
+                            and getattr(m, "additional_kwargs", {}).get("show_ui", True)
+                            is not False
+                        ):
+                            content = m.content
+                            if isinstance(content, list):
+                                text_parts = [
+                                    item if isinstance(item, str) else item.get("text", "")
+                                    for item in content
+                                    if isinstance(item, (str, dict))
+                                ]
+                                content = "\n\n".join(text_parts)
+                            if content:
+                                # Get references for this message if available
+                                message_refs = []
+                                if reference_manager:
+                                    all_refs = reference_manager.get_all_references()
+                                    if len(all_refs) > 0:
+                                        message_refs = [ref.to_dict() for ref in all_refs]
+                                    else:
+                                        # If no references but this looks like a research report, create a synthetic one
+                                        if (
+                                            node_name in ["report", "research"]
+                                            and len(content) > 500
+                                        ):
+                                            # Extract year mentions
+                                            import uuid
+
+                                            from bioagents.references.reference_types import (
+                                                PaperReference,
+                                            )
+
+                                            years = re.findall(r"\b(20\d{2})\b", content)
+                                            year_str = (
+                                                f" ({min(years)}-{max(years)})"
+                                                if len(years) > 1
+                                                else f" ({years[0]})"
+                                                if years
+                                                else ""
+                                            )
+
+                                            synth_ref = PaperReference(
+                                                id=f"ref_{uuid.uuid4().hex[:8]}",
+                                                title=f"Scientific Literature Review{year_str}",
+                                                abstract="This response synthesizes information from peer-reviewed literature and scientific databases.",
+                                                url=None,
+                                            )
+                                            reference_manager.add_reference(synth_ref)
+                                            message_refs = [synth_ref.to_dict()]
+
+                                if not await safe_send(
+                                    {
+                                        "type": "message",
+                                        "agent": node_name,
+                                        "content": content,
+                                        "references": message_refs,
+                                    }
+                                ):
+                                    break
+
+                                # Extract metrics
+                                metrics = extract_metrics_from_content(content)
+                                if metrics and not await safe_send(
+                                    {"type": "metrics", "metrics": metrics}
+                                ):
+                                    break
+
+                                # Extract and send artifacts from content (with deduplication)
+                                extracted_artifacts = extract_artifacts_from_content(
+                                    content, node_name
+                                )
+                                for artifact in extracted_artifacts:
+                                    if _client_disconnected:
+                                        break
+                                    if artifact["name"] not in sent_artifacts:
+                                        sent_artifacts.add(artifact["name"])
+                                        if not await safe_send(
+                                            {"type": "artifact", "artifact": artifact}
+                                        ):
+                                            break
+                                        # Log artifact to admin DB
+                                        try:
+                                            admin_db.log_artifact_event(
+                                                client_id=client_id,
+                                                session_id=session_id or "unknown",
+                                                artifact_name=artifact["name"],
+                                                artifact_path=artifact.get("path"),
+                                                artifact_type=artifact.get("type"),
+                                                artifact_size=artifact.get("size"),
+                                                source_agent=node_name,
+                                            )
+                                        except Exception:
+                                            logger.debug(
+                                                "Failed to log artifact to admin DB", exc_info=True
+                                            )
+                                        if not await safe_send(
+                                            {
+                                                "type": "log",
+                                                "message": f"Generated: {artifact['name']}",
+                                            }
+                                        ):
+                                            break
+
+            if _client_disconnected:
+                break
+
+            # --- Steering injection: drain queue and inject into graph state ---
+            steering_texts = _drain_steering_queue()
+            for steering_text in steering_texts:
+                steering_msg = HumanMessage(content=f"[USER STEERING] {steering_text}")
+                graph.update_state(
+                    stream_config,
+                    {"messages": [steering_msg]},
                 )
-
-            # Send messages from user-facing agents
-            if (
-                node_name
-                in [
-                    "report",
-                    "critic",
-                    "analysis",
-                    "research",
-                    "protein_design",
-                    "coder",
-                    "tool_builder",
-                    "ml",
-                    "dl",
-                ]
-                and "messages" in node_output
-            ):
-                for m in node_output["messages"]:
-                    # Skip HumanMessages (usually handoffs) and ToolMessages
-                    if (
-                        hasattr(m, "content")
-                        and m.content
-                        and not isinstance(m, (HumanMessage, ToolMessage))
-                        and getattr(m, "additional_kwargs", {}).get("show_ui", True) is not False
-                    ):
-                        content = m.content
-                        if isinstance(content, list):
-                            text_parts = [
-                                item if isinstance(item, str) else item.get("text", "")
-                                for item in content
-                                if isinstance(item, (str, dict))
-                            ]
-                            content = "\n\n".join(text_parts)
-                        if content:
-                            # Get references for this message if available
-                            message_refs = []
-                            if reference_manager:
-                                all_refs = reference_manager.get_all_references()
-                                if len(all_refs) > 0:
-                                    message_refs = [ref.to_dict() for ref in all_refs]
-                                else:
-                                    # If no references but this looks like a research report, create a synthetic one
-                                    if node_name in ["report", "research"] and len(content) > 500:
-                                        # Extract year mentions
-                                        import uuid
-
-                                        from bioagents.references.reference_types import (
-                                            PaperReference,
-                                        )
-
-                                        years = re.findall(r"\b(20\d{2})\b", content)
-                                        year_str = (
-                                            f" ({min(years)}-{max(years)})"
-                                            if len(years) > 1
-                                            else f" ({years[0]})"
-                                            if years
-                                            else ""
-                                        )
-
-                                        synth_ref = PaperReference(
-                                            id=f"ref_{uuid.uuid4().hex[:8]}",
-                                            title=f"Scientific Literature Review{year_str}",
-                                            abstract="This response synthesizes information from peer-reviewed literature and scientific databases.",
-                                            url=None,
-                                        )
-                                        reference_manager.add_reference(synth_ref)
-                                        message_refs = [synth_ref.to_dict()]
-
-                            await websocket.send_json(
-                                {
-                                    "type": "message",
-                                    "agent": node_name,
-                                    "content": content,
-                                    "references": message_refs,
-                                }
-                            )
-
-                            # Extract metrics
-                            metrics = extract_metrics_from_content(content)
-                            if metrics:
-                                await websocket.send_json({"type": "metrics", "metrics": metrics})
-
-                            # Extract and send artifacts from content (with deduplication)
-                            extracted_artifacts = extract_artifacts_from_content(content, node_name)
-                            for artifact in extracted_artifacts:
-                                if artifact["name"] not in sent_artifacts:
-                                    sent_artifacts.add(artifact["name"])
-                                    await websocket.send_json(
-                                        {"type": "artifact", "artifact": artifact}
-                                    )
-                                    await websocket.send_json(
-                                        {"type": "log", "message": f"Generated: {artifact['name']}"}
-                                    )
+                if not await safe_send({"type": "steering_received", "content": steering_text}):
+                    break
+                logger.info(f"Steering message injected: {steering_text[:80]}")
 
             await asyncio.sleep(0.05)
 
-        # Send completion with all references
-        completion_data = {"type": "complete", "artifacts": [], "audit_log": full_audit}
-        if reference_manager:
-            completion_data["all_references"] = reference_manager.to_dict()
+            # If we broke out of the inner loop, stop the outer loop too
+            if _client_disconnected:
+                break
 
-        await websocket.send_json(completion_data)
+            # Persist references for this session
+            if session_id and reference_manager:
+                _session_references[session_id] = reference_manager
 
+            # Save compact session context for follow-up queries.
+            # Stores the user query, final summary, file paths, and node output
+            # index cards (for the catalog + on-demand retrieval system).
+            if session_id:
+                turn_ctx: dict[str, Any] = {
+                    "query": query,
+                    "summary": _turn_summary,
+                    "files": sorted(_turn_files),
+                    "node_outputs": dict(_turn_node_outputs),
+                }
+                if session_id not in _session_contexts:
+                    _session_contexts[session_id] = []
+                _session_contexts[session_id].append(turn_ctx)
+                _prune_session_contexts()
+                logger.debug(
+                    "Saved session context for %s (turn %d, %d files, %d node outputs)",
+                    session_id,
+                    len(_session_contexts[session_id]),
+                    len(_turn_files),
+                    len(_turn_node_outputs),
+                )
+
+            # Send completion with all references (only if still connected)
+            if not _client_disconnected:
+                completion_data = {"type": "complete", "artifacts": [], "audit_log": full_audit}
+                if reference_manager:
+                    completion_data["all_references"] = reference_manager.to_dict()
+
+                await safe_send(completion_data)
+
+            # Continue outer while-loop if we broke out to resume after an interrupt
+            if resume_after_engagement and not _client_disconnected:
+                continue
+            break  # Normal stream completion — exit outer while-loop
+
+    except WebSocketDisconnect:
+        # Client disconnected cleanly during streaming — nothing to send back.
+        raise
     except Exception as e:
         logger.error(f"Streaming error: {e}")
-        await websocket.send_json({"type": "error", "message": str(e)})
+        if not _client_disconnected:
+            with contextlib.suppress(Exception):
+                await websocket.send_json({"type": "error", "message": str(e)})
 
 
 # =====================================================
@@ -1207,6 +1912,7 @@ async def start_experiment_run(request: ExperimentRunRequest):
                 judge_llm=judge_llm,
                 show_trace=False,
                 save_results=True,
+                run_id=pending_run_id,
             ),
         )
 
@@ -1214,6 +1920,19 @@ async def start_experiment_run(request: ExperimentRunRequest):
     background_task.add_done_callback(
         lambda t: t.exception() if not t.cancelled() else None
     )  # consume result so exceptions don't go unobserved
+
+    # Log experiment start to admin database
+    try:
+        admin_db.log_experiment(
+            client_id=_gen_client_id("experiment_runner", "system"),
+            run_id=pending_run_id,
+            use_case_ids=request.use_case_ids,
+            config=request.config,
+            status="started",
+        )
+    except Exception:
+        logger.debug("Failed to log experiment to admin DB", exc_info=True)
+
     return {"status": "started", "run_id": pending_run_id, "use_case_count": len(use_cases)}
 
 
@@ -1258,12 +1977,11 @@ async def demo_structure(identifier: str):
 
     try:
         if is_uniprot:
-            # AlphaFold structure
-            url = f"https://alphafold.ebi.ac.uk/files/AF-{identifier}-F1-model_v4.pdb"
+            # AlphaFold structure - try v6 first (current), then v4 as fallback
+            url = f"https://alphafold.ebi.ac.uk/files/AF-{identifier}-F1-model_v6.pdb"
             response = requests.get(url, timeout=30)
             if response.status_code == 404:
-                # Try v3
-                url = f"https://alphafold.ebi.ac.uk/files/AF-{identifier}-F1-model_v3.pdb"
+                url = f"https://alphafold.ebi.ac.uk/files/AF-{identifier}-F1-model_v4.pdb"
                 response = requests.get(url, timeout=30)
         else:
             # PDB structure
@@ -1335,12 +2053,11 @@ async def get_pdb_content(filename: str):
 
 # References endpoint
 @app.get("/api/references")
-async def get_references():
-    """
-    Get all references (placeholder - in production, this would be session-specific).
-    """
-    # In a real implementation, this would be stored per session
-    # For now, return empty structure
+async def get_references(session_id: str | None = None):
+    """Return references accumulated during a session."""
+    if session_id and session_id in _session_references:
+        ref_mgr = _session_references[session_id]
+        return ref_mgr.to_dict()
     return {
         "references": [],
         "by_type": {
@@ -1353,6 +2070,399 @@ async def get_references():
         "display_numbers": {},
         "count": 0,
     }
+
+
+# =====================================================
+# AGENT & TOOL REGISTRY API
+# =====================================================
+
+AGENT_REGISTRY = {
+    "research": {
+        "name": "Research Agent",
+        "category": "Research & Knowledge",
+        "description": "Fetches biological data from databases (UniProt, PDB, ToolUniverse)",
+        "tools": [
+            "fetch_uniprot_fasta",
+            "tool_universe_find_tools",
+            "tool_universe_call_tool",
+            "fetch_webpage_as_pdf_text",
+            "extract_pdf_text_spacy_layout",
+            "fetch_alphafold_structure",
+            "fetch_pdb_structure",
+            "download_structure_file",
+        ],
+        "status": "active",
+    },
+    "analysis": {
+        "name": "Analysis Agent",
+        "category": "Computation",
+        "description": "Analyzes protein sequences and calculates biochemical properties",
+        "tools": [
+            "calculate_molecular_weight",
+            "analyze_amino_acid_composition",
+            "calculate_isoelectric_point",
+        ],
+        "status": "active",
+    },
+    "coder": {
+        "name": "Coder Agent",
+        "category": "Computation",
+        "description": "Writes and executes Python code, creates visualizations",
+        "tools": ["python_executor"],
+        "status": "active",
+    },
+    "ml": {
+        "name": "ML Agent",
+        "category": "Computation",
+        "description": "Traditional machine learning on tabular data",
+        "tools": ["python_executor"],
+        "status": "active",
+    },
+    "dl": {
+        "name": "Deep Learning Agent",
+        "category": "Computation",
+        "description": "Neural networks, transformers, GNNs for biological data",
+        "tools": ["python_executor"],
+        "status": "active",
+    },
+    "report": {
+        "name": "Report Agent",
+        "category": "Quality",
+        "description": "Synthesizes findings into comprehensive reports",
+        "tools": [],
+        "status": "active",
+    },
+    "critic": {
+        "name": "Critic Agent",
+        "category": "Quality",
+        "description": "Validates scientific accuracy and biological plausibility",
+        "tools": [],
+        "status": "active",
+    },
+    "summary": {
+        "name": "Summary Agent",
+        "category": "Quality",
+        "description": "Final user-facing output with workflow summaries",
+        "tools": [],
+        "status": "active",
+    },
+    "tool_builder": {
+        "name": "Tool Builder Agent",
+        "category": "Meta",
+        "description": "Creates custom tools when existing tools are insufficient",
+        "tools": [
+            "create_tool",
+            "search_custom_tools",
+            "execute_custom_tool",
+            "research_tool_documentation",
+        ],
+        "status": "active",
+    },
+    "protein_design": {
+        "name": "Protein Design Agent",
+        "category": "Domain",
+        "description": "Computational protein design and structure analysis",
+        "tools": [
+            "fetch_target_structure",
+            "analyze_interface",
+            "run_rfdiffusion",
+            "run_proteinmpnn",
+            "predict_structure",
+            "evaluate_binders",
+        ],
+        "status": "active",
+    },
+    "literature": {
+        "name": "Literature Agent",
+        "category": "Research & Knowledge",
+        "description": "Searches and summarizes scientific literature",
+        "tools": ["search_pubmed", "search_arxiv", "search_biorxiv", "fetch_paper_metadata"],
+        "status": "active",
+    },
+    "web_browser": {
+        "name": "Web Browser Agent",
+        "category": "Research & Knowledge",
+        "description": "Navigates web, fetches documentation, extracts data",
+        "tools": ["fetch_url_content", "search_google_scholar", "download_file_from_url"],
+        "status": "active",
+    },
+    "paper_replication": {
+        "name": "Paper Replication Agent",
+        "category": "Research & Knowledge",
+        "description": "Orchestrates full paper replication workflows",
+        "tools": [
+            "fetch_url_content",
+            "search_google_scholar",
+            "download_file_from_url",
+            "git_clone_repo",
+            "list_repo_files",
+            "read_repo_file",
+        ],
+        "status": "active",
+    },
+    "data_acquisition": {
+        "name": "Data Acquisition Agent",
+        "category": "Research & Knowledge",
+        "description": "Downloads and manages datasets from biological databases",
+        "tools": [
+            "fetch_url_content",
+            "download_file_from_url",
+            "read_local_file",
+            "write_local_file",
+            "list_local_directory",
+        ],
+        "status": "active",
+    },
+    "genomics": {
+        "name": "Genomics Agent",
+        "category": "Domain",
+        "description": "Sequence alignment, variant calling, genome annotation",
+        "tools": [
+            "run_blast_search",
+            "parse_fasta_file",
+            "reverse_complement",
+            "translate_dna",
+            "calculate_gc_content",
+        ],
+        "status": "active",
+    },
+    "transcriptomics": {
+        "name": "Transcriptomics Agent",
+        "category": "Domain",
+        "description": "RNA-seq, differential expression, gene set enrichment",
+        "tools": [
+            "run_differential_expression",
+            "run_gene_set_enrichment",
+            "normalize_expression_data",
+        ],
+        "status": "active",
+    },
+    "structural_biology": {
+        "name": "Structural Biology Agent",
+        "category": "Domain",
+        "description": "Protein structure prediction and structural analysis",
+        "tools": ["fetch_pdb_structure", "fetch_alphafold_structure", "download_structure_file"],
+        "status": "active",
+    },
+    "phylogenetics": {
+        "name": "Phylogenetics Agent",
+        "category": "Domain",
+        "description": "Phylogenetic tree construction and evolutionary analysis",
+        "tools": ["run_blast_search", "parse_fasta_file", "reverse_complement", "translate_dna"],
+        "status": "active",
+    },
+    "docking": {
+        "name": "Docking Agent",
+        "category": "Domain",
+        "description": "Molecular docking and virtual screening guidance",
+        "tools": [],
+        "status": "active",
+    },
+    "planner": {
+        "name": "Planner Agent",
+        "category": "Meta",
+        "description": "Breaks complex tasks into step-by-step execution plans",
+        "tools": [],
+        "status": "active",
+    },
+    "tool_validator": {
+        "name": "Tool Validator Agent",
+        "category": "Meta",
+        "description": "Validates tool calls and detects wrong tool usage",
+        "tools": [],
+        "status": "active",
+    },
+    "tool_discovery": {
+        "name": "Tool Discovery Agent",
+        "category": "Meta",
+        "description": "Searches for available tools and assigns them to agents",
+        "tools": ["create_tool", "search_custom_tools", "execute_custom_tool"],
+        "status": "active",
+    },
+    "prompt_optimizer": {
+        "name": "Prompt Optimizer Agent",
+        "category": "Meta",
+        "description": "Analyzes agent failures and suggests prompt improvements",
+        "tools": [],
+        "status": "active",
+    },
+    "result_checker": {
+        "name": "Result Checker Agent",
+        "category": "Meta",
+        "description": "Validates outputs for scientific accuracy and reproducibility",
+        "tools": [],
+        "status": "active",
+    },
+    "shell": {
+        "name": "Shell Agent",
+        "category": "Infrastructure",
+        "description": "Executes shell commands in the sandbox",
+        "tools": ["run_shell_command", "install_python_package", "check_installed_packages"],
+        "status": "active",
+    },
+    "git": {
+        "name": "Git Agent",
+        "category": "Infrastructure",
+        "description": "Manages git repositories",
+        "tools": ["git_clone_repo", "list_repo_files", "read_repo_file", "git_checkout_branch"],
+        "status": "active",
+    },
+    "environment": {
+        "name": "Environment Agent",
+        "category": "Infrastructure",
+        "description": "Sets up execution environments",
+        "tools": [
+            "create_virtual_environment",
+            "install_requirements",
+            "check_gpu_available",
+            "get_system_info",
+        ],
+        "status": "active",
+    },
+    "visualization": {
+        "name": "Visualization Agent",
+        "category": "Infrastructure",
+        "description": "Creates publication-quality plots and visualizations",
+        "tools": [
+            "create_bar_chart",
+            "create_heatmap",
+            "create_scatter_plot",
+            "create_volcano_plot",
+        ],
+        "status": "active",
+    },
+}
+
+
+@app.get("/api/agents")
+async def list_agents():
+    """List all agents with their capabilities."""
+    return {"agents": AGENT_REGISTRY, "total": len(AGENT_REGISTRY)}
+
+
+@app.get("/api/agents/{agent_name}")
+async def get_agent(agent_name: str):
+    """Get details for a specific agent."""
+    if agent_name not in AGENT_REGISTRY:
+        raise HTTPException(status_code=404, detail=f"Agent '{agent_name}' not found")
+    return AGENT_REGISTRY[agent_name]
+
+
+@app.get("/api/agents/{agent_name}/tools")
+async def get_agent_tools(agent_name: str):
+    """Get tools available to a specific agent."""
+    if agent_name not in AGENT_REGISTRY:
+        raise HTTPException(status_code=404, detail=f"Agent '{agent_name}' not found")
+    return {"agent": agent_name, "tools": AGENT_REGISTRY[agent_name]["tools"]}
+
+
+# =====================================================
+# SESSION MANAGEMENT
+# =====================================================
+
+_sessions: dict[str, dict] = {}
+
+
+@app.get("/api/sessions")
+async def list_sessions():
+    """List all sessions."""
+    return {"sessions": list(_sessions.values()), "total": len(_sessions)}
+
+
+class CreateSessionRequest(BaseModel):
+    name: str = ""
+
+
+@app.post("/api/sessions")
+async def create_session(req: CreateSessionRequest):
+    """Create a new session."""
+    import uuid
+
+    session_id = str(uuid.uuid4())
+    session = {
+        "id": session_id,
+        "name": req.name or f"Session {len(_sessions) + 1}",
+        "created_at": datetime.now().isoformat(),
+        "messages": [],
+    }
+    _sessions[session_id] = session
+    return session
+
+
+@app.get("/api/sessions/{session_id}")
+async def get_session(session_id: str):
+    """Get a specific session."""
+    if session_id not in _sessions:
+        raise HTTPException(status_code=404, detail="Session not found")
+    return _sessions[session_id]
+
+
+@app.get("/api/sessions/{session_id}/history")
+async def get_session_history(session_id: str):
+    """Get full execution history for a session."""
+    if session_id not in _sessions:
+        raise HTTPException(status_code=404, detail="Session not found")
+    return {"session_id": session_id, "messages": _sessions[session_id].get("messages", [])}
+
+
+# =====================================================
+# TOOL REGISTRY API
+# =====================================================
+
+
+@app.get("/api/tools/registry")
+async def browse_tool_registry():
+    """Browse the custom tool registry."""
+    try:
+        from bioagents.tools.tool_registry import ToolRegistry
+
+        registry = ToolRegistry()
+        tools = registry.list_tools() if hasattr(registry, "list_tools") else []
+        return {"tools": tools, "total": len(tools)}
+    except Exception as e:
+        return {"tools": [], "total": 0, "error": str(e)}
+
+
+class ValidateToolRequest(BaseModel):
+    tool_name: str
+    arguments: dict = {}
+
+
+@app.post("/api/tools/validate")
+async def validate_tool(req: ValidateToolRequest):
+    """Validate a tool call."""
+    try:
+        from bioagents.tools.tool_registry import ToolRegistry
+
+        registry = ToolRegistry()
+        tool = registry.get_tool(req.tool_name) if hasattr(registry, "get_tool") else None
+        if tool is None:
+            return {"valid": False, "error": f"Tool '{req.tool_name}' not found"}
+        return {"valid": True, "tool_name": req.tool_name}
+    except Exception as e:
+        return {"valid": False, "error": str(e)}
+
+
+# =====================================================
+# SANDBOX STATUS API
+# =====================================================
+
+
+@app.get("/api/sandbox/status")
+async def sandbox_status():
+    """Get sandbox health and resource usage."""
+    try:
+        from bioagents.sandbox.sandbox_manager import get_sandbox
+
+        sandbox = get_sandbox()
+        return {
+            "status": "running",
+            "workspace_dir": str(sandbox.workdir),
+            "workspace_exists": sandbox.workdir.exists(),
+            "command_history_count": len(sandbox.get_command_history()),
+        }
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
 
 
 # =====================================================
@@ -1371,7 +2481,7 @@ def main():
     print("   http://localhost:8000")
     print("\n" + "=" * 60 + "\n")
 
-    uvicorn.run("frontend.server:app", host="127.0.0.1", port=8000, reload=True, log_level="info")
+    uvicorn.run("frontend.server:app", host="127.0.0.1", port=8000, reload=False, log_level="info")
 
 
 if __name__ == "__main__":

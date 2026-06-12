@@ -1,0 +1,78 @@
+# BioAgents — docker-compose stack
+#
+#   docker compose up --build        # build + start the web UI on :8000
+#   docker compose run --rm tests    # run the pytest suite
+#   docker compose run --rm shell    # interactive shell in the container
+#
+# The primary service ships with a self-contained code sandbox
+# (USE_LOCAL_EXECUTOR=true). Uncomment the `/var/run/docker.sock` mount
+# on the `bioagents` service to enable the nested DockerExecutor instead.
+
+services:
+  bioagents:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: bioagents:latest
+    container_name: bioagents
+    restart: unless-stopped
+    ports:
+      - "${BIOAGENTS_PORT:-8000}:8000"
+    env_file:
+      - .env
+    environment:
+      LLM_PROVIDER: ${LLM_PROVIDER:-gemini}
+      USE_LOCAL_EXECUTOR: ${USE_LOCAL_EXECUTOR:-true}
+      HOST: 0.0.0.0
+      PORT: "8000"
+      WEB_CONCURRENCY: ${WEB_CONCURRENCY:-1}
+      BIOAGENTS_SANDBOX_DIR: /app/sandbox_workdir
+      PYTHONPATH: /app
+    volumes:
+      - artifacts:/app/generated_artifacts
+      - uploads:/app/uploads
+      - experiments:/app/experiment_runs
+      - sandbox:/app/sandbox_workdir
+      - logs:/app/logs
+      - cache:/app/.bioagents_cache
+      # Uncomment to enable nested DockerExecutor (USE_LOCAL_EXECUTOR=false):
+      # - /var/run/docker.sock:/var/run/docker.sock
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  # One-shot runners share the same image — compose `run --rm` them on demand.
+  tests:
+    extends:
+      service: bioagents
+    container_name: bioagents-tests
+    restart: "no"
+    ports: []
+    command: ["test", "-v"]
+    healthcheck:
+      disable: true
+    profiles: ["tools"]
+
+  shell:
+    extends:
+      service: bioagents
+    container_name: bioagents-shell
+    restart: "no"
+    ports: []
+    command: ["shell"]
+    stdin_open: true
+    tty: true
+    healthcheck:
+      disable: true
+    profiles: ["tools"]
+
+volumes:
+  artifacts:
+  uploads:
+  experiments:
+  sandbox:
+  logs:
+  cache:
