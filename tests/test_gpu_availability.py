@@ -78,9 +78,7 @@ class TestExecuteModelInferenceGpuFallback:
     @patch("gpu_manager.requests.post")
     @patch("gpu_manager.torch.cuda.mem_get_info")
     @patch("gpu_manager.torch.cuda.is_available", return_value=True)
-    def test_low_vram_with_key_routes_to_api(
-        self, _mock_available, mock_mem_get_info, mock_post
-    ):
+    def test_low_vram_with_key_routes_to_api(self, _mock_available, mock_mem_get_info, mock_post):
         """Test API execution when VRAM is insufficient but API key is present."""
         mock_mem_get_info.return_value = (0.5 * 1024**3, 16 * 1024**3)
         mock_response = Mock()

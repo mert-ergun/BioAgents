@@ -473,11 +473,12 @@ def create_research_agent(tools: list):
                             f"{context_note}"
                         )
                     ),
-                    
                     AIMessage(
-                        content="", 
+                        content="",
                         tool_calls=my_tool_calls,
-                        additional_kwargs=initiator.additional_kwargs if hasattr(initiator, "additional_kwargs") else {}
+                        additional_kwargs=initiator.additional_kwargs
+                        if hasattr(initiator, "additional_kwargs")
+                        else {},
                     ),
                     *tool_results_per_sub_agent[i],
                 ]
@@ -615,7 +616,7 @@ def create_research_agent(tools: list):
                 AIMessage(
                     content=combined_content,
                     tool_calls=all_tool_calls,
-                    additional_kwargs=merged_kwargs 
+                    additional_kwargs=merged_kwargs,
                 )
             ]
         }

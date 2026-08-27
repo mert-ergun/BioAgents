@@ -29,8 +29,10 @@ def search_local_papers_with_paperqa(pdf_folder_path: str, query: str) -> str:
     )
 
     # --- NEW: Ask user before proceeding ---
-    user_approval = input("\n>>> The Research Agent wants to run PaperQA to read local PDFs. Allow? (y/n): ")
-    if user_approval.lower() not in ['y', 'yes']:
+    user_approval = input(
+        "\n>>> The Research Agent wants to run PaperQA to read local PDFs. Allow? (y/n): "
+    )
+    if user_approval.lower() not in ["y", "yes"]:
         return "Action aborted. The user denied permission to run the PaperQA tool. Please proceed using only your other available tools."
     # ---------------------------------------
 

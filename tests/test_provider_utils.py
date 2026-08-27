@@ -37,9 +37,7 @@ class TestGetProviderKeyOrAskKnownProviders:
         """Test that both Hugging Face provider names use HUGGINGFACE_API_KEY."""
         with patch.dict(os.environ, {"HUGGINGFACE_API_KEY": "shared-hf-key"}, clear=True):
             assert get_provider_key_or_ask("Hugging Face", "ESM2") == "shared-hf-key"
-            assert (
-                get_provider_key_or_ask("Hugging Face (Weights)", "ESM2") == "shared-hf-key"
-            )
+            assert get_provider_key_or_ask("Hugging Face (Weights)", "ESM2") == "shared-hf-key"
 
 
 class TestGetProviderKeyOrAskMissingKeys:

@@ -67,8 +67,7 @@ class TestSearchLitsenseSuccess:
         mock_get.assert_called_once()
         call_args = mock_get.call_args
         assert (
-            call_args[0][0]
-            == "https://www.ncbi.nlm.nih.gov/research/litsense2-api/api/sentences/"
+            call_args[0][0] == "https://www.ncbi.nlm.nih.gov/research/litsense2-api/api/sentences/"
         )
         assert call_args[1]["params"] == {"query": "CRISPR gene editing", "rerank": "true"}
         assert call_args[1]["timeout"] == HTTP_TIMEOUT

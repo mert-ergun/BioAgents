@@ -299,26 +299,25 @@ def search_litsense(query: str, max_results: int = 5) -> str:
         max_results = min(max(max_results, 1), 30)
         # Using the LitSense 2.0 API endpoint for sentence-level retrieval
         url = "https://www.ncbi.nlm.nih.gov/research/litsense2-api/api/sentences/"
-        params: dict[str, str] = {
-            "query": query, 
-            "rerank": "true"
-        }
-        
+        params: dict[str, str] = {"query": query, "rerank": "true"}
+
         response = requests.get(url, params=params, timeout=HTTP_TIMEOUT)
         response.raise_for_status()
         data = response.json()
 
         results = []
         for item in data[:max_results]:
-            results.append({
-                "pmid": item.get("pmid", ""),
-                "sentence": item.get("text", ""),
-                "score": item.get("score", "")
-            })
+            results.append(
+                {
+                    "pmid": item.get("pmid", ""),
+                    "sentence": item.get("text", ""),
+                    "score": item.get("score", ""),
+                }
+            )
 
         if not results:
             return f"No LitSense results found for: '{query}'"
-        
+
         return json.dumps(results, indent=2)
     except Exception as e:
         return f"Error searching LitSense: {e}"

@@ -351,9 +351,9 @@ def prepare_messages_for_agent(
             if len(text) > max_ai_content_len and not has_tool_calls:
                 truncated = text[:max_ai_content_len] + "\n... [truncated]"
                 new_msg = AIMessage(
-                    content=truncated, 
+                    content=truncated,
                     name=getattr(msg, "name", ""),
-                    additional_kwargs=getattr(msg, "additional_kwargs", {}) # BURASI EKLENDİ
+                    additional_kwargs=getattr(msg, "additional_kwargs", {}),  # BURASI EKLENDİ
                 )
                 if has_tool_calls:
                     new_msg.tool_calls = msg.tool_calls
@@ -362,7 +362,7 @@ def prepare_messages_for_agent(
                 new_msg = AIMessage(
                     content=cleaned if isinstance(cleaned, str) else text,
                     name=getattr(msg, "name", ""),
-                    additional_kwargs=getattr(msg, "additional_kwargs", {}) # BURASI EKLENDİ
+                    additional_kwargs=getattr(msg, "additional_kwargs", {}),  # BURASI EKLENDİ
                 )
                 if has_tool_calls:
                     new_msg.tool_calls = msg.tool_calls
