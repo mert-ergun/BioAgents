@@ -45,6 +45,7 @@ dependencies = [
     "meeko>=0.7.1",
     "gemmi>=0.7.5",
     "pymupdf>=1.25.0",
+    "torch>=2.12.0",
 ]
 # Note: rdkit-agent (Node.js CLI) must be installed separately:
 #   npm install -g rdkit-agent
