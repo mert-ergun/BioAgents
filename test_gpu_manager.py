@@ -3,31 +3,31 @@ import sys
 from unittest.mock import patch
 import torch
 
-# Geliştirdiğimiz gpu_manager modülünü import ediyoruz
+# Importing the gpu_manager module we developed
 import gpu_manager
 
 def reset_env():
-    """Her test öncesi ortam değişkenlerini temizler."""
+    """Clears environment variables before each test."""
     for key in ["HUGGINGFACE_API_KEY", "GOOGLE_API_KEY", "OPENAI_API_KEY"]:
         if key in os.environ:
             del os.environ[key]
 
 def run_comprehensive_tests():
     print("==========================================================")
-    print("   BIOAGENTS COMPUTE & RESOURCE MANAGER VERIFICATION     ")
+    print("    BIOAGENTS COMPUTE & RESOURCE MANAGER VERIFICATION     ")
     print("==========================================================\n")
 
     # -------------------------------------------------------------------------
     # SCENARIO 1: GPU Available & Has Ample VRAM
     # -------------------------------------------------------------------------
-    print("--- SCENARIO 1: GPU Available & Yeterli VRAM Var ---")
+    print("--- SCENARIO 1: GPU Available & Has Ample VRAM ---")
     reset_env()
     
-    # torch.cuda fonksiyonlarını taklit ediyoruz: GPU var ve 8GB boş yer var
+    # Mocking torch.cuda functions: GPU is available and has 8GB of free space
     with patch('torch.cuda.is_available', return_value=True), \
          patch('torch.cuda.mem_get_info', return_value=(8 * 1024**3, 16 * 1024**3)):
         
-        # 2GB VRAM isteyen bir esm2 modeli lokalde çalışmalı, key istememeli
+        # An esm2 model requiring 2GB VRAM should run locally, should not ask for a key
         result = gpu_manager.execute_model_inference(
             sequence="MKTVRQERLK", 
             model_name="esm2_t6_8M_UR50D", 
@@ -37,41 +37,41 @@ def run_comprehensive_tests():
 
 
     # -------------------------------------------------------------------------
-    # SCENARIO 2: GPU Available BUT Out of VRAM (Hocanın Özel İsteği)
+    # SCENARIO 2: GPU Available BUT Out of VRAM (Professor's Special Request)
     # -------------------------------------------------------------------------
-    print("--- SCENARIO 2: GPU Var Ama VRAM Yetersiz (Lokal Yer Yok) ---")
+    print("--- SCENARIO 2: GPU Available BUT Out of VRAM (No Local Space) ---")
     reset_env()
     
-    # GPU var ama sadece 0.5 GB boş yer kalmış, model ise 2GB istüyor
+    # GPU is available but there is only 0.5 GB of free space left, while the model requires 2GB
     with patch('torch.cuda.is_available', return_value=True), \
          patch('torch.cuda.mem_get_info', return_value=(0.5 * 1024**3, 16 * 1024**3)):
         
-        # Ortamda key yoksa, VRAM yetmediği için API'ye düşmeli ve LangGraph sinyali fırlatmalı
+        # If there's no key in the environment, it should fallback to API due to insufficient VRAM and throw a LangGraph signal
         result = gpu_manager.execute_model_inference(
             sequence="MKTVRQERLK", 
             model_name="esm2_t6_8M_UR50D", 
             required_vram_gb=2.0
         )
-        print(f"Result (Key Yokken Kesinti): {result}")
+        print(f"Result (Interruption Without Key): {result}")
         
-        # Şimdi ortama geçerli bir key simüle edelim (Kullanıcı arayüzden key'i girmiş gibi)
+        # Now let's simulate a valid key in the environment (as if the user entered the key from the UI)
         os.environ["HUGGINGFACE_API_KEY"] = "mock_hf_token_xyz123"
         result_with_key = gpu_manager.execute_model_inference(
             sequence="MKTVRQERLK", 
             model_name="esm2_t6_8M_UR50D", 
             required_vram_gb=2.0
         )
-        print(f"Result (Key Varken API'ye Yönlendirme): {result_with_key}\n")
+        print(f"Result (Routing to API With Key): {result_with_key}\n")
 
 
     # -------------------------------------------------------------------------
     # SCENARIO 3: No GPU & Missing API Key (LangGraph Interruption)
     # -------------------------------------------------------------------------
-    print("--- SCENARIO 3: GPU Yok & API Key Eksik (LangGraph Akış Durdurma) ---")
+    print("--- SCENARIO 3: No GPU & Missing API Key (LangGraph Flow Interruption) ---")
     reset_env()
     
     with patch('torch.cuda.is_available', return_value=False):
-        # Sistem direkt buluta yönelecek, HF key'i bulamadığı için ENGAGEMENT_PENDING dönecek
+        # The system will route directly to the cloud, it will return ENGAGEMENT_PENDING since it cannot find the HF key
         result = gpu_manager.execute_model_inference(
             sequence="MKTVRQERLK", 
             model_name="esm2_t6_8M_UR50D"
@@ -80,19 +80,19 @@ def run_comprehensive_tests():
 
 
     # -------------------------------------------------------------------------
-    # SCENARIO 4: Separate Tools Asking for Separate Keys (Ayrı Ayrı Sorma)
+    # SCENARIO 4: Separate Tools Asking for Separate Keys (Asking Separately)
     # -------------------------------------------------------------------------
-    print("--- SCENARIO 4: Farklı Sağlayıcılar İçin Ayrı Ayrı Key İstenmesi ---")
+    print("--- SCENARIO 4: Asking for Separate Keys for Different Providers ---")
     reset_env()
     
     with patch('torch.cuda.is_available', return_value=False):
-        # 4a. Hugging Face için esm2 testi
-        print("[Test 4a - Hugging Face Modeli]")
+        # 4a. esm2 test for Hugging Face
+        print("[Test 4a - Hugging Face Model]")
         result_hf = gpu_manager.execute_model_inference("MKTVRQERLK", model_name="esm2_t6_8M_UR50D")
         print(f"HF Result: {result_hf}")
         
-        # 4b. Google (Official) için gemini testi - Ayrı bir env_var istemeli
-        print("\n[Test 4b - Gemini Modeli]")
+        # 4b. gemini test for Google (Official) - Should ask for a separate env_var
+        print("\n[Test 4b - Gemini Model]")
         result_gemini = gpu_manager.execute_model_inference("Say Hello", model_name="gemini-1.5-flash")
         print(f"Gemini Result: {result_gemini}\n")
 
@@ -100,7 +100,7 @@ def run_comprehensive_tests():
     # -------------------------------------------------------------------------
     # SCENARIO 5: Safe Failure for Unregistered Models
     # -------------------------------------------------------------------------
-    print("--- SCENARIO 5: Kayıtlı Olmayan Model Durumunda Güvenli Hata ---")
+    print("--- SCENARIO 5: Safe Error for Unregistered Models ---")
     result_unknown = gpu_manager.execute_model_inference("SEQUENCE", model_name="unknown-dna-model")
     print(f"Result: {result_unknown}\n")
 

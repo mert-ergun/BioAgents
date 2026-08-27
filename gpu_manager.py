@@ -4,10 +4,10 @@ import requests
 
 from bioagents.tools.provider_utils import get_provider_key_or_ask
 
-# 1. DICTIONARY (REGISTRY) - PROVIDER İSİMLERİ provider_utils.py İLE BİREBİR AYNI OLMALIDIR
+# 1. DICTIONARY (REGISTRY) - PROVIDER NAMES MUST BE EXACTLY THE SAME AS IN provider_utils.py
 MODEL_REGISTRY = {
     "esm2_t6_8M_UR50D": {
-        "provider": "Hugging Face", # provider_utils.py içindeki key ile aynı yapıldı
+        "provider": "Hugging Face", # Made the same as the key in provider_utils.py
         "api_url": "https://api-inference.huggingface.co/models/facebook/esm2_t6_8M_UR50D"
     },
     "gpt-4-science": {
@@ -15,56 +15,56 @@ MODEL_REGISTRY = {
         "api_url": "https://api.openai.com/v1/chat/completions"
     },
     "gemini-1.5-flash": {
-        "provider": "Google (Official)", # provider_utils.py içindeki key ile aynı yapıldı
+        "provider": "Google (Official)", # Made the same as the key in provider_utils.py
         "api_url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent"
     }
 }
 
 def is_gpu_available_and_has_memory(required_vram_gb=4.0) -> bool:
     """
-    Hem GPU'nun varlığını hem de yeterli boş VRAM (bellek) olup olmadığını kontrol eder.
-    Hocanın istediği 'yer yoksa API'ye düşsün' mantığını sağlar.
+    Checks both the availability of the GPU and whether there is enough free VRAM (memory).
+    Provides the 'fallback to API if no space' logic requested by the professor.
     """
     if not torch.cuda.is_available():
         return False
         
     try:
-        # free_memory ve total_memory byte cinsinden döner
-        free_memory, total_memory = torch.cuda.mem_get_info()
+        # free_memory and total_memory return in bytes
+        free_memory, _total_memory = torch.cuda.mem_get_info()
         free_gb = free_memory / (1024 ** 3)
         
         if free_gb < required_vram_gb:
-            print(f"⚠️ GPU bulundu ancak yeterli VRAM yok (Boş: {free_gb:.1f}GB, İstenen: {required_vram_gb}GB). İşlem API'ye taşınıyor...")
+            print(f"⚠️ GPU found but not enough VRAM (Free: {free_gb:.1f}GB, Required: {required_vram_gb}GB). Moving process to API...")
             return False
             
         return True
     except Exception:
-        # Eğer mem_get_info desteklenmeyen bir CUDA versiyonuysa en azından is_available true dönsün
+        # If mem_get_info is an unsupported CUDA version, at least let is_available return true
         return True 
 
 def execute_model_inference(sequence, model_name="esm2_t6_8M_UR50D", required_vram_gb=2.0):
     if model_name not in MODEL_REGISTRY:
         return {"status": "error", "message": f"Model '{model_name}' is not registered!"}
 
-    # Artık sadece GPU var mı diye değil, yer var mı diye de bakıyoruz
+    # Now we are checking not only if there is a GPU, but also if there is space
     if is_gpu_available_and_has_memory(required_vram_gb):
         return _run_locally(sequence, model_name)
     else:
         model_info = MODEL_REGISTRY[model_name]
         provider = model_info["provider"]
         
-        # LangGraph uyumlu, akışı kesen fonksiyonunuz devrede
+        # Your LangGraph compatible, flow-interrupting function is activated
         api_key_or_signal = get_provider_key_or_ask(provider, model_name)
         
-        # DÜZELTME: provider_utils.py çıktısı "Error:" ile başladığı için kontrolü esnetiyoruz
+        # FIX: We are loosening the check because the output of provider_utils.py starts with "Error:"
         if isinstance(api_key_or_signal, str) and (api_key_or_signal.startswith("Error:") or "[ENGAGEMENT_PENDING]" in api_key_or_signal):
-             # Bu bir key değil, kesinti sinyalidir; aynen LangGraph ajanına fırlatıyoruz
+             # This is not a key, it's an interruption signal; throwing it exactly to the LangGraph agent
              return {"status": "pending", "signal": api_key_or_signal} 
              
-        # Eğer yukarıdaki if'e girmediyse, elimizde gerçek bir key var demektir
+        # If it didn't enter the if statement above, it means we have a real key
         return _run_via_api(sequence, model_info, api_key_or_signal)
 
-def _run_locally(sequence, model_name):
+def _run_locally(_sequence, model_name):
     """Your local execution code (e.g., fair-esm) goes here."""
     return {"status": "success", "source": "local_gpu", "result": f"{model_name} successfully ran locally."}
 
@@ -76,7 +76,7 @@ def _run_via_api(sequence, model_info, api_key):
     headers = {}
     
     if provider == "Google (Official)":
-        url = f"{url}?key={api_key}" # Google key'i genelde url query parametresinde ister
+        url = f"{url}?key={api_key}" # Google usually asks for the key in the url query parameter
         headers = {"Content-Type": "application/json"}
         payload = {"contents": [{"parts": [{"text": sequence}]}]}
     elif provider == "Hugging Face":
@@ -90,7 +90,7 @@ def _run_via_api(sequence, model_info, api_key):
         payload = {"data": sequence}
         
     try:
-        response = requests.post(url, headers=headers, json=payload)
+        response = requests.post(url, headers=headers, json=payload, timeout=10)
         response.raise_for_status()
         
         result_data = response.json()
@@ -101,5 +101,3 @@ def _run_via_api(sequence, model_info, api_key):
         return {"status": "success", "source": f"api_{provider}", "result": result_data}
     except Exception as e:
         return {"status": "error", "message": str(e), "details": response.text if 'response' in locals() else ""}
-
-        
