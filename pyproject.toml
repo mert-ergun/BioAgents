@@ -45,15 +45,30 @@ dependencies = [
     "meeko>=0.7.1",
     "gemmi>=0.7.5",
     "pymupdf>=1.25.0",
+    # Used by generated analysis scripts: create_heatmap imports seaborn and
+    # run_differential_expression imports statsmodels. Undeclared, both tools returned
+    # an ImportError traceback instead of a result.
+    "seaborn>=0.13.2",
+    "statsmodels>=0.14.2",
+    # Required by the real ESM tools (bioagents/tools/esm_tools.py) and by the local
+    # ProteinMPNN runner. These were previously only in the optional "esm" extra, so a
+    # plain `uv sync` removed them and those tools failed at import.
+    "torch>=2.2.0",
+    "transformers>=4.40.0",
+    # Imported directly by docking_tools (ligand preparation, SMILES->3D) and the drug
+    # discovery workflow nodes. It was never declared, so it only worked where someone
+    # had installed it by hand and a clean sync silently broke docking.
+    "rdkit>=2024.3.1",
 ]
 # Note: rdkit-agent (Node.js CLI) must be installed separately:
 #   npm install -g rdkit-agent
 # Requires Node.js >= 16. See DEVELOPMENT.md for setup instructions.
 
 [project.optional-dependencies]
+# torch/transformers are core dependencies now; this extra only adds the standalone
+# fair-esm package for code that prefers it over the HuggingFace implementations.
 esm = [
     "fair-esm>=2.0.0",
-    "torch>=2.2.0",
 ]
 
 [project.scripts]

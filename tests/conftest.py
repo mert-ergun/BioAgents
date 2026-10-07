@@ -211,10 +211,39 @@ def sample_tool_calls():
     }
 
 
+@pytest.fixture(scope="session")
+def live_context(tmp_path_factory):
+    """Scratch workspace for live tool-callability smoke tests.
+
+    Redirects the BioAgents sandbox at the module level so live invocations of
+    sandbox-backed tools (visualization, transcriptomics) never write into the
+    repository working tree.
+    """
+    from bioagents.sandbox import sandbox_manager
+    from tests.tool_live_cases import LiveContext
+
+    workspace = tmp_path_factory.mktemp("tool_live")
+    sandbox_dir = tmp_path_factory.mktemp("tool_live_sandbox")
+
+    original_base = sandbox_manager.SANDBOX_BASE_DIR
+    original_default = sandbox_manager._default_sandbox
+    sandbox_manager.SANDBOX_BASE_DIR = sandbox_dir
+    sandbox_manager._default_sandbox = None
+    try:
+        yield LiveContext(workspace=workspace, sandbox_dir=sandbox_dir)
+    finally:
+        sandbox_manager.SANDBOX_BASE_DIR = original_base
+        sandbox_manager._default_sandbox = original_default
+
+
 # Pytest configuration markers
 def pytest_configure(config):
     """Configure custom pytest markers."""
     config.addinivalue_line("markers", "integration: mark test as integration test")
+    config.addinivalue_line(
+        "markers",
+        "live: mark test as a live tool invocation (network/external deps)",
+    )
     config.addinivalue_line("markers", "slow: mark test as slow running")
     config.addinivalue_line("markers", "unit: mark test as unit test")
     config.addinivalue_line("markers", "requires_api: mark test as requiring external API access")
@@ -231,6 +260,12 @@ def pytest_addoption(parser):
         default=False,
         help="run integration tests",
     )
+    parser.addoption(
+        "--runlive",
+        action="store_true",
+        default=False,
+        help="run live tool-callability tests (network and external tools)",
+    )
 
 
 def pytest_collection_modifyitems(config, items):
@@ -246,3 +281,9 @@ def pytest_collection_modifyitems(config, items):
         for item in items:
             if "integration" in item.keywords:
                 item.add_marker(skip_integration)
+
+    if not config.getoption("--runlive"):
+        skip_live = pytest.mark.skip(reason="need --runlive option to run")
+        for item in items:
+            if "live" in item.keywords:
+                item.add_marker(skip_live)

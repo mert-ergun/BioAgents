@@ -217,13 +217,12 @@ def check_smiles(smiles: str) -> dict[str, Any]:
                 "canonical_smiles": smiles,
                 "summary": result.get("message", "Failed to validate SMILES"),
             }
-    except Exception as e:
-        return {
-            "overall_pass": False,
-            "valid": False,
-            "canonical_smiles": smiles,
-            "summary": str(e),
-        }
+    except Exception:
+        # Do NOT convert an infrastructure failure into "valid: False". A missing CLI or
+        # a timeout means the molecule was never checked; reporting it as chemically
+        # invalid makes callers discard perfectly good structures. Let the caller's error
+        # handler surface this as a failure instead.
+        raise
 
 
 def check_smirks(smirks: str) -> dict[str, Any]:

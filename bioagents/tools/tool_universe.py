@@ -583,6 +583,15 @@ def tool_universe_find_tools(description: str, limit: int = 5, strategy: str = "
         limit: Maximum number of tools to return (default 5).
         strategy: Search method — must be one of ``keyword``, ``llm``, or ``embedding``.
             Defaults to ``keyword``. Any other value is silently replaced with ``keyword``.
+
+    Returns:
+        A JSON string listing the matching tools. Each entry carries ``name``,
+        ``description`` and a ``parameter`` JSON-schema block describing the arguments
+        that tool expects. Pass the exact ``name`` and matching arguments to
+        ``tool_universe_call_tool`` to run it. An empty result list means no tool
+        matched — it does NOT mean the task is impossible, so try a different
+        description or use a specialist agent. On failure returns a string starting
+        with "Error".
     """
     try:
         return DEFAULT_WRAPPER.find_tools(description, limit=int(limit), finder=strategy)
@@ -593,12 +602,21 @@ def tool_universe_find_tools(description: str, limit: int = 5, strategy: str = "
 
 @tool
 def tool_universe_call_tool(tool_name: str, arguments_json: str = "") -> str:
-    """
-    Execute a specific ToolUniverse tool.
+    """Execute a specific ToolUniverse tool and return its result.
+
+    Call ``tool_universe_find_tools`` first to get the exact tool name and its parameter
+    schema; names are long and case-sensitive and a guessed name will not resolve.
 
     Args:
-        tool_name: Exact tool identifier, e.g., ``OpenTargets_get_associated_targets_by_disease_efoId``.
-        arguments_json: JSON string describing the tool arguments.
+        tool_name: Exact tool identifier as returned by ``tool_universe_find_tools``,
+            e.g. ``OpenTargets_get_associated_targets_by_disease_efoId``.
+        arguments_json: JSON object string with the tool's arguments, matching the
+            ``parameter`` schema that discovery returned, e.g. ``{"efoId": "EFO_0000249"}``.
+
+    Returns:
+        The tool's result as a string, usually JSON. On failure returns a string
+        starting with "Error executing ToolUniverse tool" naming the tool and cause.
+        An error here means NO data was retrieved — do not substitute your own values.
     """
     try:
         return DEFAULT_WRAPPER.execute_tool(tool_name, arguments_json or None)

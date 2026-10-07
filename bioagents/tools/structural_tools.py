@@ -11,12 +11,11 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from typing import Literal
 
 import requests
 from langchain_core.tools import tool
-
-from bioagents.tools.provider_utils import get_provider_key_or_ask
 
 logger = logging.getLogger(__name__)
 
@@ -622,6 +621,9 @@ def compute_interface_metrics(pae_json_path: str, chain1_range: str, chain2_rang
         return json.dumps({"status": "error", "message": str(e)})
 
 
+#: Pinned ESMFold Hub revision (see BIOAGENTS_ESMFOLD_REVISION to override).
+ESMFOLD_REVISION = "75a3841ee059df2bf4d56688166c8fb459ddd97a"
+
 AlphaFoldProvider = Literal["Tamarind Bio", "NVIDIA BioNeMo", "Vertex AI"]
 BoltzProvider = Literal["Tamarind Bio", "Neurosnap", "Levitate Bio"]
 ESMFoldProvider = Literal["Hugging Face", "Tamarind Bio"]
@@ -630,49 +632,202 @@ UniMolProvider = Literal["Hugging Face (Weights)", "Tamarind Bio"]
 
 
 @tool
-def run_alphafold2(sequence: str, provider: AlphaFoldProvider = "Tamarind Bio") -> str:  # noqa: ARG001
-    """Predicts protein structure using AlphaFold 2."""
-    key = get_provider_key_or_ask(provider, "AlphaFold 2")
-    if "[ENGAGEMENT_PENDING]" in key:
-        return key
-    # REAL API CALL LOGIC GOES HERE USING `key`
-    return f"AlphaFold 2 structure predicted successfully using {provider}."
+def run_esmfold(sequence: str, output_dir: str = "esmfold_output") -> str:
+    """Predict a protein's 3D structure from sequence with ESMFold (runs locally).
+
+    Runs the real ESMFold model via HuggingFace transformers and writes an actual PDB
+    file. ESMFold is single-sequence (no MSA), so it is fast but less accurate than
+    AlphaFold2 for sequences with deep homolog coverage.
+
+    Note: the model is ~2.6 GB on first use and is very slow on CPU for sequences
+    longer than ~300 residues. Prefer fetch_alphafold_structure when the protein
+    already has an AlphaFold DB entry.
+
+    Args:
+        sequence: Protein sequence in single-letter amino acid code.
+        output_dir: Directory to write the predicted structure into.
+
+    Returns:
+        JSON with status, the path to the written PDB file, mean pLDDT confidence and
+        per-residue pLDDT. Returns status='error' naming exactly what failed — it never
+        claims a structure was predicted when none was.
+    """
+    from bioagents.tools.capability_reporting import (
+        capability_unavailable,
+        check_modules,
+        cuda_is_usable,
+    )
+
+    seq = "".join(sequence.split()).upper()
+    if not seq:
+        return capability_unavailable("ESMFold", reason="Empty sequence supplied.")
+
+    missing = check_modules(["torch", "transformers", "accelerate"])
+    if missing:
+        return capability_unavailable(
+            "ESMFold",
+            reason=f"Missing Python module(s): {', '.join(missing)}.",
+            how_to_enable="uv pip install torch transformers accelerate",
+            use_instead="fetch_alphafold_structure (AlphaFold DB lookup, no compute needed)",
+        )
+
+    try:
+        import torch
+        from transformers import AutoTokenizer, EsmForProteinFolding
+
+        device = "cuda" if cuda_is_usable() else "cpu"
+        # Pinned so predictions stay reproducible; an unpinned ref lets the Hub serve
+        # different weights later. Override only to deliberately move the pin.
+        revision = os.getenv("BIOAGENTS_ESMFOLD_REVISION", ESMFOLD_REVISION)
+        tokenizer = AutoTokenizer.from_pretrained(  # nosec B615
+            "facebook/esmfold_v1", revision=revision
+        )
+        model = EsmForProteinFolding.from_pretrained(  # nosec B615
+            "facebook/esmfold_v1", revision=revision
+        )
+        model.eval()
+        model.to(device)
+
+        inputs = tokenizer([seq], return_tensors="pt", add_special_tokens=False).to(device)
+        with torch.no_grad():
+            outputs = model(**inputs)
+
+        pdb_text = model.output_to_pdb(outputs)[0]
+        plddt = outputs["plddt"][0, :, 1]
+        mean_plddt = float(plddt.mean())
+
+        from pathlib import Path
+
+        out_path = Path(output_dir).expanduser()
+        out_path.mkdir(parents=True, exist_ok=True)
+        pdb_file = out_path / "esmfold_prediction.pdb"
+        pdb_file.write_text(pdb_text)
+
+        return json.dumps(
+            {
+                "status": "success",
+                "tool": "ESMFold",
+                "model": "facebook/esmfold_v1",
+                "device": device,
+                "sequence_length": len(seq),
+                "pdb_path": str(pdb_file),
+                "mean_plddt": round(mean_plddt, 2),
+                "plddt_interpretation": "pLDDT > 90 very high, 70-90 confident, 50-70 low, < 50 very low",
+                "per_residue_plddt": [round(float(x), 2) for x in plddt.tolist()],
+            },
+            indent=2,
+        )
+    except Exception as exc:
+        logger.exception("ESMFold prediction failed")
+        return capability_unavailable(
+            "ESMFold",
+            reason=f"ESMFold execution failed: {exc}",
+            use_instead="fetch_alphafold_structure (AlphaFold DB lookup)",
+            sequence_length=len(seq),
+        )
 
 
 @tool
-def run_boltz(sequence: str, provider: BoltzProvider = "Tamarind Bio") -> str:  # noqa: ARG001
-    """Predicts biomolecular structures using Boltz-2 / BoltzGen."""
-    key = get_provider_key_or_ask(provider, "Boltz-2 / BoltzGen")
-    if "[ENGAGEMENT_PENDING]" in key:
-        return key
-    return f"Boltz structure predicted successfully using {provider}."
+def run_alphafold2(sequence: str, provider: AlphaFoldProvider = "Tamarind Bio") -> str:
+    """Predict protein structure with AlphaFold 2 via a hosted provider.
+
+    AlphaFold2 needs an MSA pipeline and large genetic databases; it is not run locally
+    in this deployment and no hosted client is wired up. This reports that honestly
+    rather than returning a structure that was never computed.
+
+    Args:
+        sequence: Protein sequence in single-letter amino acid code.
+        provider: Hosted provider that would run the prediction.
+
+    Returns:
+        status='error' explaining what is missing and which real tool to use instead.
+    """
+    from bioagents.tools.capability_reporting import hosted_model_unavailable
+
+    return hosted_model_unavailable(
+        "AlphaFold 2",
+        provider,
+        use_instead=(
+            "fetch_alphafold_structure for an existing AlphaFold DB entry, run_esmfold "
+            "for a local de-novo prediction, or predict_complex_structure for ColabFold"
+        ),
+        sequence_length=len(sequence.strip()) if sequence else 0,
+    )
 
 
 @tool
-def run_esmfold(sequence: str, provider: ESMFoldProvider = "Hugging Face") -> str:  # noqa: ARG001
-    """Predicts protein structure using ESMFold."""
-    key = get_provider_key_or_ask(provider, "ESMFold")
-    if "[ENGAGEMENT_PENDING]" in key:
-        return key
-    return f"ESMFold structure predicted successfully using {provider}."
+def run_boltz(sequence: str, provider: BoltzProvider = "Tamarind Bio") -> str:
+    """Predict biomolecular structures with Boltz-2 / BoltzGen via a hosted provider.
+
+    Boltz is not installed locally and no hosted client is wired up in this deployment.
+
+    Args:
+        sequence: Protein (or complex) sequence input.
+        provider: Hosted provider that would run the prediction.
+
+    Returns:
+        status='error' explaining what is missing and which real tool to use instead.
+    """
+    from bioagents.tools.capability_reporting import capability_unavailable, check_modules
+
+    missing = check_modules(["boltz"])
+    return capability_unavailable(
+        "Boltz-2 / BoltzGen",
+        reason=(
+            f"Boltz is not installed locally (missing: {', '.join(missing)}) and no client "
+            f"for provider '{provider}' is wired up."
+        ),
+        how_to_enable="uv pip install boltz  (requires a working CUDA GPU)",
+        use_instead="run_esmfold for local structure prediction, or predict_complex_structure for complexes",
+        provider=provider,
+        sequence_length=len(sequence.strip()) if sequence else 0,
+    )
 
 
 @tool
-def run_abodybuilder3(sequence: str, provider: ABodyBuilder3Provider = "Tamarind Bio") -> str:  # noqa: ARG001
-    """Predicts antibody structures using ABodyBuilder3."""
-    key = get_provider_key_or_ask(provider, "ABodyBuilder3")
-    if "[ENGAGEMENT_PENDING]" in key:
-        return key
-    return f"Antibody structure predicted successfully using {provider}."
+def run_abodybuilder3(sequence: str, provider: ABodyBuilder3Provider = "Tamarind Bio") -> str:
+    """Predict an antibody structure with ABodyBuilder3 via a hosted provider.
+
+    ABodyBuilder3 is not installed locally and no hosted client is wired up here.
+
+    Args:
+        sequence: Antibody sequence(s) in single-letter amino acid code.
+        provider: Hosted provider that would run the prediction.
+
+    Returns:
+        status='error' explaining what is missing and which real tool to use instead.
+    """
+    from bioagents.tools.capability_reporting import hosted_model_unavailable
+
+    return hosted_model_unavailable(
+        "ABodyBuilder3",
+        provider,
+        use_instead="run_esmfold for a general local structure prediction",
+        sequence_length=len(sequence.strip()) if sequence else 0,
+    )
 
 
 @tool
-def run_unimol(input_data: str, provider: UniMolProvider = "Hugging Face (Weights)") -> str:  # noqa: ARG001
-    """Runs Uni-Mol for molecular representation/docking."""
-    key = get_provider_key_or_ask(provider, "Uni-Mol")
-    if "[ENGAGEMENT_PENDING]" in key:
-        return key
-    return f"Uni-Mol prediction completed using {provider}."
+def run_unimol(input_data: str, provider: UniMolProvider = "Hugging Face (Weights)") -> str:
+    """Run Uni-Mol for molecular representation or docking via a hosted provider.
+
+    Uni-Mol is not installed locally and no hosted client is wired up here.
+
+    Args:
+        input_data: SMILES string or molecular input.
+        provider: Hosted provider that would run the model.
+
+    Returns:
+        status='error' explaining what is missing and which real tool to use instead.
+    """
+    from bioagents.tools.capability_reporting import hosted_model_unavailable
+
+    return hosted_model_unavailable(
+        "Uni-Mol",
+        provider,
+        use_instead="the docking tools (prepare_ligand / run_docking) for real AutoDock Vina docking",
+        input_length=len(input_data.strip()) if input_data else 0,
+    )
 
 
 def get_structural_tools():

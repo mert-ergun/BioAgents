@@ -2334,26 +2334,57 @@ AGENT_REGISTRY = {
 }
 
 
+def _agent_registry_with_live_tools() -> dict:
+    """Return the agent registry with the tool lists filled in from the real wiring.
+
+    The hardcoded "tools" entries above drifted from what agents actually hold — several
+    named tools that no longer exist. Descriptions and categories stay curated here; the
+    tool names come from the manifest the graph is built from, so the API cannot
+    advertise a capability an agent does not have.
+    """
+    from bioagents.tools.agent_manifest import NON_TOOL_AGENTS, agent_tool_names
+
+    try:
+        live = agent_tool_names()
+    except Exception:
+        logger.warning("Could not load the agent tool manifest; serving curated tool lists.")
+        return AGENT_REGISTRY
+
+    registry = {}
+    for name, entry in AGENT_REGISTRY.items():
+        merged = dict(entry)
+        if name in live:
+            merged["tools"] = live[name]
+        elif name in NON_TOOL_AGENTS:
+            merged["tools"] = []
+            merged["execution"] = "writes and runs Python in a sandbox"
+        registry[name] = merged
+    return registry
+
+
 @app.get("/api/agents")
 async def list_agents():
     """List all agents with their capabilities."""
-    return {"agents": AGENT_REGISTRY, "total": len(AGENT_REGISTRY)}
+    registry = _agent_registry_with_live_tools()
+    return {"agents": registry, "total": len(registry)}
 
 
 @app.get("/api/agents/{agent_name}")
 async def get_agent(agent_name: str):
     """Get details for a specific agent."""
-    if agent_name not in AGENT_REGISTRY:
+    registry = _agent_registry_with_live_tools()
+    if agent_name not in registry:
         raise HTTPException(status_code=404, detail=f"Agent '{agent_name}' not found")
-    return AGENT_REGISTRY[agent_name]
+    return registry[agent_name]
 
 
 @app.get("/api/agents/{agent_name}/tools")
 async def get_agent_tools(agent_name: str):
     """Get tools available to a specific agent."""
-    if agent_name not in AGENT_REGISTRY:
+    registry = _agent_registry_with_live_tools()
+    if agent_name not in registry:
         raise HTTPException(status_code=404, detail=f"Agent '{agent_name}' not found")
-    return {"agent": agent_name, "tools": AGENT_REGISTRY[agent_name]["tools"]}
+    return {"agent": agent_name, "tools": registry[agent_name]["tools"]}
 
 
 # =====================================================

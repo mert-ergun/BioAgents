@@ -177,8 +177,8 @@ def extract_tools_from_text(text: str, _section_type: str = "methods") -> str:
     Returns:
         JSON string with extracted tool information
     """
-    llm = get_llm()
-
+    # Constructed inside the guarded block below: get_llm() raises when no API key is
+    # configured, and a tool must hand the agent an error result, not an exception.
     prompt = f"""Analyze this scientific text and extract all bioinformatics tools, software, and databases mentioned.
 
 For each tool, identify:
@@ -196,6 +196,7 @@ Focus on domain-specific tools like: samtools, BLAST, DESeq2, Scanpy, CellTypist
 """
 
     try:
+        llm = get_llm()
         response = llm.invoke(prompt)
         content = response.content if hasattr(response, "content") else str(response)
 

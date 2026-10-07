@@ -6,6 +6,7 @@ from pathlib import Path
 from langchain_core.tools import tool
 
 from bioagents.sandbox.sandbox_manager import get_sandbox
+from bioagents.sandbox.workspace import to_host_path, to_portable_path
 
 
 @tool
@@ -20,7 +21,15 @@ def read_local_file(file_path: str) -> str:
     """
     try:
         sandbox = get_sandbox()
-        content = sandbox.read_file(file_path)
+        try:
+            content = sandbox.read_file(file_path)
+        except FileNotFoundError:
+            # The path may have been reported by an agent with a different filesystem
+            # view (container /app path, or an absolute host path).
+            resolved = to_host_path(file_path)
+            if not resolved.exists():
+                raise
+            content = resolved.read_text(errors="replace")
         if len(content) > 100000:
             return content[:100000] + "\n\n... [truncated — file exceeds 100KB] ..."
         return content
@@ -46,7 +55,12 @@ def write_local_file(file_path: str, content: str) -> str:
     try:
         sandbox = get_sandbox()
         full_path = sandbox.write_file(file_path, content)
-        return f"Successfully wrote {len(content)} characters to: {full_path}"
+        portable = to_portable_path(full_path)
+        return (
+            f"Successfully wrote {len(content)} characters to: {portable}\n"
+            f"Other agents (including the Coder agent, which runs in a container) can "
+            f"open this file at exactly this path."
+        )
     except Exception as e:
         return f"Error writing file: {e}"
 
@@ -64,9 +78,13 @@ def list_local_directory(path: str = ".") -> str:
     try:
         sandbox = get_sandbox()
         entries = sandbox.list_directory(path)
+        searched = to_portable_path(sandbox.workdir / path if path != "." else sandbox.workdir)
         if not entries:
-            return f"Directory '{path}' is empty or does not exist."
-        return json.dumps(entries, indent=2)
+            return json.dumps(
+                {"directory": searched, "entries": [], "note": "Empty or does not exist."},
+                indent=2,
+            )
+        return json.dumps({"directory": searched, "entries": entries}, indent=2)
     except Exception as e:
         return f"Error listing directory: {e}"
 
@@ -86,6 +104,8 @@ def get_file_info(file_path: str) -> str:
         fp = Path(file_path)
         if not fp.is_absolute():
             fp = sandbox.workdir / fp
+        if not fp.exists():
+            fp = to_host_path(file_path)
 
         if not fp.exists():
             return f"Error: '{file_path}' does not exist."
@@ -94,7 +114,7 @@ def get_file_info(file_path: str) -> str:
         import datetime
 
         info = {
-            "path": str(fp),
+            "path": to_portable_path(fp),
             "name": fp.name,
             "type": "directory" if fp.is_dir() else "file",
             "size_bytes": stat.st_size,
@@ -106,8 +126,8 @@ def get_file_info(file_path: str) -> str:
 
         if fp.is_file() and fp.suffix in {".csv", ".tsv", ".txt", ".fasta", ".fa", ".fastq", ".fq"}:
             try:
-                line_count = sum(1 for _ in fp.open())
-                info["line_count"] = line_count
+                with fp.open(errors="replace") as handle:
+                    info["line_count"] = sum(1 for _ in handle)
             except Exception:  # nosec B110
                 pass
 

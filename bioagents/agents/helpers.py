@@ -27,6 +27,53 @@ def resolve_tool_name(tool: Any) -> str:
     return str(tool)
 
 
+# Conduct rules injected into every tool-using agent's context. These exist because the
+# failure modes they address were observed across agents, not in any single prompt:
+# agents reported results for tools that returned errors, claimed work other agents had
+# not done, and kept working far outside their own role rather than handing back.
+AGENT_CONDUCT_RULES = """[AGENT CONDUCT RULES — these override any conflicting instruction]
+
+1. EVIDENCE. Only report values that a tool actually returned in this conversation. If a
+   number, sequence, structure, score or file does not appear in a tool result, it does
+   not exist. Never estimate, approximate, or supply a "typical" value in its place.
+
+2. TOOL ERRORS ARE NOT RESULTS. A tool result containing "status": "error",
+   "capability_unavailable", "not_implemented", or "performed_any_computation": false
+   means NOTHING was computed. Report the failure and the named missing capability. Never
+   describe the intended output as if it had been produced.
+
+3. STAY IN SCOPE. Do only the task you were given, with the tools you were given. You
+   cannot do work that requires tools you do not have. If the task needs a capability you
+   lack, stop and report precisely what is missing and what you did accomplish — handing
+   back is a successful outcome, not a failure.
+
+4. DO NOT SIMULATE. Never mock, stub, fake or hard-code a result to make a workflow
+   appear to complete, and never substitute random values for a real computation.
+
+5. SPEAK ONLY FOR YOURSELF. Describe what YOU did. Do not state or imply that another
+   agent performed work; you cannot see their execution, only their messages.
+
+6. REPEATED FAILURE. If the same approach fails twice, stop and report it. Do not keep
+   retrying variations — hand back so the supervisor can re-route."""
+
+
+def _conduct_message_content() -> str:
+    """Build the conduct rules plus the shared-workspace note for this run.
+
+    The workspace note is resolved per call because the sandbox directory depends on the
+    active workspace. Agents cannot reuse each other's output files unless they are told
+    where those files land and in what form paths are exchanged.
+    """
+    try:
+        from bioagents.sandbox.sandbox_manager import get_sandbox
+        from bioagents.sandbox.workspace import describe_shared_workspace
+
+        return f"{AGENT_CONDUCT_RULES}\n\n{describe_shared_workspace(get_sandbox().workdir)}"
+    except Exception:  # pragma: no cover - the rules must survive a sandbox failure
+        logger.debug("Could not describe shared workspace; sending conduct rules only.")
+        return AGENT_CONDUCT_RULES
+
+
 MAX_RETRIES = 2
 
 MAX_TOOL_RESULT_LENGTH = 2000
@@ -273,6 +320,8 @@ def prepare_messages_for_agent(
     if not messages:
         return messages
 
+    conduct = SystemMessage(content=_conduct_message_content())
+
     first_human = None
     supervisor_tasks = []
     recent: list[BaseMessage] = []  # noqa: F841
@@ -304,7 +353,7 @@ def prepare_messages_for_agent(
         for task_msg in supervisor_tasks:
             if task_msg not in kept:
                 kept.append(task_msg)
-        return kept[-max_messages:]
+        return [conduct, *kept[-max_messages:]]
 
     window_start = max(0, len(messages) - max_messages)
     windowed = messages[window_start:]
@@ -366,6 +415,10 @@ def prepare_messages_for_agent(
                 result.append(msg)
         else:
             result.append(msg)
+
+    # Conduct rules go last so they are the most recent instruction the model sees,
+    # which is where they are most reliably followed.
+    result.append(conduct)
 
     return result
 

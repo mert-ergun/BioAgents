@@ -303,9 +303,21 @@ class TestCreateGraph:
             "tool_universe_call_tool",
         }.issubset(research_tool_names)
 
-        # Check analysis agent was created with correct tools
+        # Check analysis agent was created with correct tools. Assert on names rather
+        # than a count so adding a tool does not fail the test for the wrong reason.
         analysis_call_args = mock_analysis.call_args[0][0]
-        assert len(analysis_call_args) == 4  # molecular_weight, composition, pI, aggrescan3d
+        analysis_tool_names = {tool.name for tool in analysis_call_args}
+        assert {
+            "calculate_molecular_weight",
+            "analyze_amino_acid_composition",
+            "calculate_isoelectric_point",
+            "run_aggrescan3d",
+            # Real ESM tools: the analysis agent must be able to score mutations
+            # itself instead of reporting a model result it never computed.
+            "score_mutations_esm",
+            "saturation_scan_esm",
+            "run_esm_embedding",
+        }.issubset(analysis_tool_names)
 
         # Check supervisor was created with correct members
         supervisor_call_args = mock_supervisor.call_args[0][0]

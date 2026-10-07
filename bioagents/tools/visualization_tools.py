@@ -92,14 +92,18 @@ def create_heatmap(
     """Create a heatmap from a 2D data matrix.
 
     Args:
-        data_json: JSON string representing a 2D matrix. Accepts:
-                   - {"data": [[...], ...], "row_labels": [...], "col_labels": [...]}
-                   - [[1,2,3], [4,5,6], ...] (unlabeled matrix)
+        data_json: JSON string representing a 2D matrix. Accepts either a bare matrix
+                   ``[[1,2,3], [4,5,6]]`` or an object holding one. For the object form
+                   the matrix key may be any of "data", "values", "matrix" or "z", the
+                   row-label key any of "row_labels", "rows" or "index", and the
+                   column-label key any of "col_labels", "columns" or "cols". Example:
+                   ``{"values": [[1,2],[3,4]], "rows": ["r1","r2"], "columns": ["c1","c2"]}``
         title: Chart title (optional).
         output_path: Output file path in sandbox (default 'heatmap.png').
 
     Returns:
-        Path to the saved heatmap image, or an error message.
+        Path to the saved heatmap image. On bad input returns an error message naming the
+        keys that were found and the keys that are accepted, rather than a traceback.
     """
     try:
         script = textwrap.dedent(f"""\
@@ -112,14 +116,34 @@ def create_heatmap(
 
             raw = json.loads('''{data_json}''')
 
+            def _first(mapping, keys):
+                for key in keys:
+                    if key in mapping:
+                        return mapping[key]
+                return None
+
             if isinstance(raw, dict):
-                matrix = np.array(raw['data'], dtype=float)
-                row_labels = raw.get('row_labels')
-                col_labels = raw.get('col_labels')
+                # Accept the shapes an agent naturally produces, not one exact spelling.
+                values = _first(raw, ('data', 'values', 'matrix', 'z'))
+                if values is None:
+                    raise SystemExit(
+                        "create_heatmap: no matrix found in the input object. Got keys "
+                        f"{{sorted(raw)}}; expected one of 'data', 'values', 'matrix', 'z' "
+                        "to hold a 2D array."
+                    )
+                matrix = np.array(values, dtype=float)
+                row_labels = _first(raw, ('row_labels', 'rows', 'index'))
+                col_labels = _first(raw, ('col_labels', 'columns', 'cols'))
             else:
                 matrix = np.array(raw, dtype=float)
                 row_labels = None
                 col_labels = None
+
+            if matrix.ndim != 2:
+                raise SystemExit(
+                    f"create_heatmap: expected a 2D matrix, got {{matrix.ndim}}D with "
+                    f"shape {{matrix.shape}}."
+                )
 
             fig, ax = plt.subplots(figsize=(max(8, matrix.shape[1]*0.8), max(6, matrix.shape[0]*0.5)))
             sns.heatmap(matrix, annot=matrix.size <= 100, fmt='.2f' if matrix.size <= 100 else '',

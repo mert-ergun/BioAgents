@@ -17,12 +17,11 @@ import json
 import logging
 import os
 import subprocess  # nosec B404
+import sys
 from pathlib import Path
 from typing import Any, Literal
 
 from langchain_core.tools import tool
-
-from bioagents.tools.provider_utils import get_provider_key_or_ask
 
 logger = logging.getLogger(__name__)
 
@@ -832,21 +831,369 @@ RFdiffusionProvider = Literal["Tamarind Bio", "Levitate Bio", "NVIDIA BioNeMo"]
 
 
 @tool
-def run_proteinmpnn(structure_pdb: str, provider: ProteinMPNNProvider = "Tamarind Bio") -> str:  # noqa: ARG001
-    """Designs protein sequences for a given backbone using ProteinMPNN."""
-    key = get_provider_key_or_ask(provider, "ProteinMPNN")
-    if "[ENGAGEMENT_PENDING]" in key:
-        return key
-    return f"Sequences designed successfully with ProteinMPNN using {provider}."
+def run_proteinmpnn(
+    structure_pdb: str,
+    chains_to_design: str = "",
+    num_sequences: int = 8,
+    sampling_temp: float = 0.1,
+    output_dir: str = "proteinmpnn_output",
+) -> str:
+    """Design amino-acid sequences for a protein backbone with ProteinMPNN (runs locally).
+
+    This actually executes ProteinMPNN against the local checkpoint and returns the
+    real designed sequences together with their model scores and sequence recovery
+    versus the input structure.
+
+    Args:
+        structure_pdb: Path to the input PDB file containing the backbone to redesign.
+        chains_to_design: Comma-separated chain IDs to redesign, e.g. 'A' or 'A,B'.
+            Leave empty to redesign every chain in the structure.
+        num_sequences: Number of sequences to sample per target (default 8).
+        sampling_temp: Sampling temperature; lower is more conservative (default 0.1).
+        output_dir: Directory for ProteinMPNN outputs.
+
+    Returns:
+        JSON with status, the designed sequences (header, sequence, score,
+        global_score, seq_recovery), the model checkpoint used, and output paths.
+        If ProteinMPNN or its weights are missing, returns status='error' describing
+        exactly what is absent — it never returns a fabricated sequence.
+    """
+    return _run_proteinmpnn_local(
+        structure_pdb=structure_pdb,
+        chains_to_design=chains_to_design,
+        num_sequences=num_sequences,
+        sampling_temp=sampling_temp,
+        output_dir=output_dir,
+    )
 
 
 @tool
-def run_rfdiffusion(target_pdb: str, provider: RFdiffusionProvider = "Tamarind Bio") -> str:  # noqa: ARG001
-    """Generates protein backbones using RFdiffusion."""
-    key = get_provider_key_or_ask(provider, "RFdiffusion")
-    if "[ENGAGEMENT_PENDING]" in key:
-        return key
-    return f"Backbone generated successfully with RFdiffusion using {provider}."
+def run_rfdiffusion(
+    target_pdb: str,
+    contigs: str = "",
+    num_designs: int = 1,
+    output_dir: str = "rfdiffusion_output",
+) -> str:
+    """Generate protein backbones with RFdiffusion (requires a local RFdiffusion install).
+
+    Attempts a real RFdiffusion run against the local checkpoint. RFdiffusion needs
+    heavy GPU-side dependencies (dgl, SE3Transformer, hydra, e3nn); when they are not
+    installed this reports precisely what is missing instead of inventing a backbone.
+
+    Args:
+        target_pdb: Path to the target PDB file to design a binder against.
+        contigs: RFdiffusion contig specification, e.g. 'A1-150/0 70-100'. Leave empty
+            for unconditional monomer generation.
+        num_designs: Number of backbones to generate.
+        output_dir: Directory for generated backbone PDBs.
+
+    Returns:
+        JSON with status and the generated backbone paths on success, or status='error'
+        naming the missing dependency / checkpoint. Never returns a fabricated result.
+    """
+    return _run_rfdiffusion_local(
+        target_pdb=target_pdb,
+        contigs=contigs,
+        num_designs=num_designs,
+        output_dir=output_dir,
+    )
+
+
+# ============================================================================
+# Local execution backends
+# ============================================================================
+
+# ProteinMPNN ships several checkpoint families; the vanilla 0.20A-noise model is
+# the published default for general backbone redesign.
+PROTEINMPNN_DEFAULT_MODEL = "v_48_020"
+
+
+def _resolve_local_dir(env_var: str, candidates: list[str]) -> Path | None:
+    """Locate a vendored tool directory from an env var or known relative paths."""
+    configured = os.environ.get(env_var)
+    if configured and Path(configured).expanduser().exists():
+        return Path(configured).expanduser()
+    for candidate in candidates:
+        path = Path(candidate).expanduser()
+        if path.exists():
+            return path.resolve()
+    return None
+
+
+def _parse_proteinmpnn_fasta(fasta_text: str) -> list[dict[str, Any]]:
+    """Parse ProteinMPNN FASTA output into structured records.
+
+    ProteinMPNN encodes metrics in the FASTA header as ``key=value`` pairs, e.g.
+    ``>T=0.1, sample=1, score=0.7443, global_score=0.7443, seq_recovery=0.5350``.
+    """
+    records: list[dict[str, Any]] = []
+    for block in fasta_text.strip().split(">"):
+        if not block.strip():
+            continue
+        lines = block.strip().splitlines()
+        header = lines[0].strip()
+        sequence = "".join(line.strip() for line in lines[1:])
+        record: dict[str, Any] = {"header": header, "sequence": sequence}
+        for field in header.split(","):
+            if "=" not in field:
+                continue
+            key, _, value = field.partition("=")
+            key = key.strip()
+            value = value.strip()
+            if key in {"score", "global_score", "seq_recovery", "T"}:
+                try:
+                    record[key] = float(value)
+                except ValueError:
+                    record[key] = value
+            elif key == "sample":
+                try:
+                    record[key] = int(value)
+                except ValueError:
+                    record[key] = value
+        records.append(record)
+    return records
+
+
+def _run_proteinmpnn_local(
+    structure_pdb: str,
+    chains_to_design: str,
+    num_sequences: int,
+    sampling_temp: float,
+    output_dir: str,
+) -> str:
+    """Execute ProteinMPNN locally and return its real designed sequences."""
+    from bioagents.tools.capability_reporting import (
+        capability_unavailable,
+        subprocess_env_for_torch,
+    )
+
+    pdb_path = Path(structure_pdb).expanduser()
+    if not pdb_path.exists():
+        return json.dumps(
+            {
+                "status": "error",
+                "error_type": "input_not_found",
+                "message": f"Input PDB not found: {structure_pdb}",
+                "performed_any_computation": False,
+            },
+            indent=2,
+        )
+
+    mpnn_dir = _resolve_local_dir(
+        "PROTEINMPNN_DIR", ["ProteinMPNN", "~/ProteinMPNN", "/opt/ProteinMPNN"]
+    )
+    if mpnn_dir is None:
+        return capability_unavailable(
+            "ProteinMPNN",
+            reason="ProteinMPNN source directory not found.",
+            how_to_enable=(
+                "git clone https://github.com/dauparas/ProteinMPNN.git into the project "
+                "root, or set PROTEINMPNN_DIR to an existing checkout."
+            ),
+        )
+
+    runner = mpnn_dir / "protein_mpnn_run.py"
+    weights = mpnn_dir / "vanilla_model_weights" / f"{PROTEINMPNN_DEFAULT_MODEL}.pt"
+    if not runner.exists() or not weights.exists():
+        return capability_unavailable(
+            "ProteinMPNN",
+            reason=(
+                f"ProteinMPNN checkout at {mpnn_dir} is incomplete "
+                f"(runner present: {runner.exists()}, weights present: {weights.exists()})."
+            ),
+            how_to_enable="Re-clone ProteinMPNN including its vanilla_model_weights directory.",
+        )
+
+    out_path = Path(output_dir).expanduser()
+    out_path.mkdir(parents=True, exist_ok=True)
+
+    cmd = [
+        sys.executable,
+        str(runner),
+        "--pdb_path",
+        str(pdb_path.resolve()),
+        "--out_folder",
+        str(out_path.resolve()),
+        "--num_seq_per_target",
+        str(num_sequences),
+        "--sampling_temp",
+        str(sampling_temp),
+        "--batch_size",
+        "1",
+        "--model_name",
+        PROTEINMPNN_DEFAULT_MODEL,
+    ]
+    if chains_to_design.strip():
+        cmd += ["--pdb_path_chains", " ".join(c.strip() for c in chains_to_design.split(","))]
+
+    try:
+        result = subprocess.run(  # nosec B603
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=1800,
+            cwd=str(mpnn_dir),
+            env=subprocess_env_for_torch(),
+        )
+    except subprocess.TimeoutExpired:
+        return capability_unavailable(
+            "ProteinMPNN", reason="ProteinMPNN timed out after 1800s.", input_pdb=str(pdb_path)
+        )
+
+    if result.returncode != 0:
+        return json.dumps(
+            {
+                "status": "error",
+                "error_type": "execution_failed",
+                "message": f"ProteinMPNN exited with code {result.returncode}.",
+                "stderr": result.stderr[-2000:],
+                "performed_any_computation": False,
+            },
+            indent=2,
+        )
+
+    fasta_files = sorted((out_path / "seqs").glob("*.fa")) + sorted(out_path.glob("**/*.fa"))
+    sequences: list[dict[str, Any]] = []
+    for fasta in dict.fromkeys(fasta_files):
+        sequences.extend(_parse_proteinmpnn_fasta(fasta.read_text()))
+
+    if not sequences:
+        return json.dumps(
+            {
+                "status": "error",
+                "error_type": "no_output",
+                "message": "ProteinMPNN reported success but produced no FASTA output.",
+                "output_dir": str(out_path),
+                "stdout": result.stdout[-1000:],
+                "performed_any_computation": False,
+            },
+            indent=2,
+        )
+
+    # The first record is the input sequence echoed back by ProteinMPNN.
+    designed = [s for s in sequences if "sample" in s]
+    return json.dumps(
+        {
+            "status": "success",
+            "tool": "ProteinMPNN",
+            "model_checkpoint": PROTEINMPNN_DEFAULT_MODEL,
+            "input_pdb": str(pdb_path),
+            "chains_designed": chains_to_design or "all",
+            "sampling_temp": sampling_temp,
+            "num_designed": len(designed),
+            "sequences": designed[:20],
+            "input_sequence_record": sequences[0] if sequences else None,
+            "output_dir": str(out_path),
+        },
+        indent=2,
+    )
+
+
+def _run_rfdiffusion_local(
+    target_pdb: str,
+    contigs: str,
+    num_designs: int,
+    output_dir: str,
+) -> str:
+    """Execute RFdiffusion locally, or report precisely why it cannot run."""
+    from bioagents.tools.capability_reporting import (
+        capability_unavailable,
+        check_modules,
+        subprocess_env_for_torch,
+    )
+
+    rf_dir = _resolve_local_dir(
+        "RFDIFFUSION_DIR", ["RFdiffusion", "~/RFdiffusion", "/opt/RFdiffusion"]
+    )
+    if rf_dir is None:
+        return capability_unavailable(
+            "RFdiffusion",
+            reason="RFdiffusion source directory not found.",
+            how_to_enable=(
+                "git clone https://github.com/RosettaCommons/RFdiffusion.git into the "
+                "project root, or set RFDIFFUSION_DIR."
+            ),
+            use_instead="generate_binder_backbones (same engine, richer binder-design interface)",
+        )
+
+    missing = check_modules(["dgl", "se3_transformer", "hydra", "e3nn", "omegaconf", "icecream"])
+    if missing:
+        return capability_unavailable(
+            "RFdiffusion",
+            reason=(
+                f"RFdiffusion is present at {rf_dir} but its runtime dependencies are not "
+                f"installed in this environment: {', '.join(missing)}."
+            ),
+            how_to_enable=(
+                "Install the RFdiffusion environment (SE3nv): see RFdiffusion/env/SE3nv.yml. "
+                "Note this also needs a CUDA build of torch matching the local GPU."
+            ),
+            use_instead="design_binders_bindcraft or generate_binder_backbones once the environment is installed",
+            missing_modules=missing,
+            rfdiffusion_dir=str(rf_dir),
+        )
+
+    out_path = Path(output_dir).expanduser()
+    out_path.mkdir(parents=True, exist_ok=True)
+
+    target = Path(target_pdb).expanduser()
+    if target_pdb and not target.exists():
+        return json.dumps(
+            {
+                "status": "error",
+                "error_type": "input_not_found",
+                "message": f"Target PDB not found: {target_pdb}",
+                "performed_any_computation": False,
+            },
+            indent=2,
+        )
+
+    cmd = [
+        sys.executable,
+        str(rf_dir / "scripts" / "run_inference.py"),
+        f"inference.output_prefix={out_path / 'design'}",
+        f"inference.num_designs={num_designs}",
+    ]
+    if target_pdb:
+        cmd.append(f"inference.input_pdb={target.resolve()}")
+    if contigs:
+        cmd.append(f"contigmap.contigs=[{contigs}]")
+
+    try:
+        result = subprocess.run(  # nosec B603
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=3600,
+            cwd=str(rf_dir),
+            env=subprocess_env_for_torch(),
+        )
+    except subprocess.TimeoutExpired:
+        return capability_unavailable("RFdiffusion", reason="RFdiffusion timed out after 3600s.")
+
+    if result.returncode != 0:
+        return json.dumps(
+            {
+                "status": "error",
+                "error_type": "execution_failed",
+                "message": f"RFdiffusion exited with code {result.returncode}.",
+                "stderr": result.stderr[-2000:],
+                "performed_any_computation": False,
+            },
+            indent=2,
+        )
+
+    backbones = sorted(str(p) for p in out_path.glob("*.pdb"))
+    return json.dumps(
+        {
+            "status": "success",
+            "tool": "RFdiffusion",
+            "num_backbones": len(backbones),
+            "backbone_paths": backbones,
+            "output_dir": str(out_path),
+        },
+        indent=2,
+    )
 
 
 # ============================================================================
