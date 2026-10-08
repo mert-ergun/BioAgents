@@ -43,41 +43,13 @@ from bioagents.learning.ace_integration import (
 )
 from bioagents.references.reference_extractor import extract_references_from_messages
 from bioagents.references.reference_manager import ReferenceManager
-from bioagents.tools.analysis_tools import (
-    analyze_amino_acid_composition,
-    calculate_isoelectric_point,
-    calculate_molecular_weight,
-    run_aggrescan3d,
+from bioagents.tools.agent_manifest import build_agent_tool_map
+from bioagents.tools.smol_tool_wrappers import (
+    ToolUniverseExecuteTool,
+    ToolUniverseSearchTool,
+    get_esm_smol_tools,
 )
-from bioagents.tools.docking_tools import get_docking_tools
-from bioagents.tools.environment_tools import get_environment_tools
-from bioagents.tools.file_tools import get_file_tools
-from bioagents.tools.genomics_tools import get_genomics_tools
-from bioagents.tools.git_tools import get_git_tools
-from bioagents.tools.literature_tools import get_literature_tools
-from bioagents.tools.paperqa_wrapper import search_local_papers_with_paperqa
-from bioagents.tools.pdf_tools import (
-    extract_pdf_text_spacy_layout,
-    fetch_webpage_as_pdf_text,
-)
-from bioagents.tools.protein_design_tools import get_all_protein_design_tools
-from bioagents.tools.proteomics_tools import (
-    download_uniprot_flat_file,
-    fetch_uniprot_fasta,
-)
-from bioagents.tools.shell_tools import get_shell_tools
-from bioagents.tools.structural_tools import (
-    download_structure_file,
-    fetch_alphafold_structure,
-    fetch_pdb_structure,
-    get_structural_tools,
-)
-from bioagents.tools.tool_builder_tools import get_tool_builder_tools
 from bioagents.tools.tool_policy import ToolPolicy, get_default_policy
-from bioagents.tools.tool_universe import tool_universe_call_tool, tool_universe_find_tools
-from bioagents.tools.transcriptomics_tools import get_transcriptomics_tools
-from bioagents.tools.visualization_tools import get_visualization_tools
-from bioagents.tools.web_tools import get_web_tools
 from bioagents.truncating_tool_node import make_approval_tool_node
 
 logger = logging.getLogger(__name__)
@@ -219,7 +191,7 @@ def agent_node(state, agent, name):
     """Wrapper for agent nodes that adds agent identification and ACE tracking."""
     from langchain_core.messages import AIMessage
 
-    from bioagents.limits import MAX_TU_TOOL_CALLS_PER_AGENT
+    from bioagents.limits import MAX_AGENT_TOOL_ROUNDS, MAX_TU_TOOL_CALLS_PER_AGENT
 
     # Check for consecutive duplicate tool calls (loop detection)
     is_loop, loop_desc = _detect_consecutive_duplicate_calls(state.get("messages", []), name)
@@ -227,6 +199,34 @@ def agent_node(state, agent, name):
         logger.warning("Loop detected for agent '%s': %s", name, loop_desc)
         error_msg = AIMessage(
             content=f"[LOOP_DETECTED] {loop_desc} The supervisor should try a different approach.",
+            name=name,
+        )
+        return {"messages": [error_msg]}
+
+    # Enforce the per-agent tool-round budget. The agent -> tools -> agent cycle is
+    # otherwise unbounded: an agent can keep calling tools forever without ever handing
+    # control back, so the supervisor's loop detection and re-routing never get to run
+    # and one specialist consumes the entire workflow step budget. Checked here rather
+    # than on the conditional edge so the agent stops with a clean message instead of
+    # leaving pending tool_calls that have no matching tool results.
+    tool_rounds = count_agent_tool_rounds(state.get("messages", []), name)
+    if tool_rounds >= MAX_AGENT_TOOL_ROUNDS:
+        logger.warning(
+            "Agent '%s' hit its tool-round budget (%d) for this task — "
+            "forcing return to supervisor.",
+            name,
+            MAX_AGENT_TOOL_ROUNDS,
+        )
+        error_msg = AIMessage(
+            content=(
+                f"[MAX_TOOL_ROUNDS] Agent '{name}' used its full budget of "
+                f"{MAX_AGENT_TOOL_ROUNDS} tool-calling rounds for this task without "
+                f"finishing it. Control is returning to the supervisor. The supervisor "
+                f"should either delegate the remaining work to a better-suited agent "
+                f"(for example, the Coder agent for computation rather than an agent "
+                f"that can only read and write files), or finish with the results "
+                f"already obtained. Do not re-delegate the same task to '{name}'."
+            ),
             name=name,
         )
         return {"messages": [error_msg]}
@@ -281,8 +281,72 @@ def agent_node(state, agent, name):
     return result
 
 
+# Node name -> the display name stamped onto that agent's messages. Message-history
+# checks (loop detection, tool-round budgets) match on the display name, so this is the
+# single source of truth linking the two.
+AGENT_DISPLAY_NAMES: dict[str, str] = {
+    "supervisor": "Supervisor",
+    "research": "Research",
+    "analysis": "Analysis",
+    "coder": "Coder",
+    "ml": "ML",
+    "dl": "DL",
+    "report": "Report",
+    "tool_builder": "ToolBuilder",
+    "protein_design": "ProteinDesign",
+    "critic": "Critic",
+    "summary": "Summary",
+    "literature": "Literature",
+    "web_browser": "WebBrowser",
+    "paper_replication": "PaperReplication",
+    "data_acquisition": "DataAcquisition",
+    "genomics": "Genomics",
+    "transcriptomics": "Transcriptomics",
+    "structural_biology": "StructuralBiology",
+    "phylogenetics": "Phylogenetics",
+    "docking": "Docking",
+    "planner": "Planner",
+    "tool_validator": "ToolValidator",
+    "tool_discovery": "ToolDiscovery",
+    "prompt_optimizer": "PromptOptimizer",
+    "result_checker": "ResultChecker",
+    "shell": "Shell",
+    "git": "Git",
+    "environment": "Environment",
+    "visualization": "Visualization",
+}
+
+
+def count_agent_tool_rounds(messages: list, agent_display_name: str) -> int:
+    """Count how many tool-calling rounds ``agent_display_name`` has run for this task.
+
+    A "task" begins at the most recent supervisor handoff ([SUPERVISOR TASK] message),
+    so the budget resets every time the supervisor delegates again.
+    """
+    from langchain_core.messages import AIMessage, HumanMessage
+
+    from bioagents.agents.helpers import get_message_content
+
+    rounds = 0
+    for msg in reversed(messages):
+        if isinstance(msg, HumanMessage) and "[SUPERVISOR TASK]" in get_message_content(msg):
+            break
+        if (
+            isinstance(msg, AIMessage)
+            and getattr(msg, "name", "") == agent_display_name
+            and getattr(msg, "tool_calls", None)
+        ):
+            rounds += 1
+    return rounds
+
+
 def should_continue_to_tools(state: AgentState) -> Literal["tools", "supervisor"]:
-    """Conditional edge: route to tools if last message has tool calls."""
+    """Conditional edge: route to tools if the last message has tool calls.
+
+    The per-agent tool-round budget is enforced in ``agent_node`` rather than here:
+    cutting an agent off at this edge would leave its pending ``tool_calls`` without
+    matching tool results, which several LLM APIs reject on the next request.
+    """
     from bioagents.llms.timeout_llm import _workflow_deadline
 
     if _workflow_deadline is not None:
@@ -297,10 +361,10 @@ def should_continue_to_tools(state: AgentState) -> Literal["tools", "supervisor"
     messages = state["messages"]
     last_message = messages[-1]
 
-    if hasattr(last_message, "tool_calls") and last_message.tool_calls:
-        return "tools"
+    if not (hasattr(last_message, "tool_calls") and last_message.tool_calls):
+        return "supervisor"
 
-    return "supervisor"
+    return "tools"
 
 
 def route_supervisor(state: AgentState) -> AGENT_NAMES:
@@ -365,70 +429,32 @@ def create_graph(
             context. When provided, it is appended to every tool-using agent's tool
             list and corresponding tool node so agents can pull prior-turn details.
     """
-    # ---- existing tool lists ----
-    research_tools = [
-        fetch_uniprot_fasta,
-        tool_universe_find_tools,
-        tool_universe_call_tool,
-        fetch_webpage_as_pdf_text,
-        extract_pdf_text_spacy_layout,
-        search_local_papers_with_paperqa,
-        fetch_alphafold_structure,
-        fetch_pdb_structure,
-        download_structure_file,
-    ]
-    analysis_tools_list = [
-        calculate_molecular_weight,
-        analyze_amino_acid_composition,
-        calculate_isoelectric_point,
-        run_aggrescan3d,
-    ]
-    tb_tools = get_tool_builder_tools()
-    pd_tools = get_all_protein_design_tools()
+    # ---- tool lists ----
+    # Built from the single agent→tool manifest so the wiring, the supervisor's view of
+    # each agent's capabilities, and the UI catalogue can never drift apart.
+    agent_tools = build_agent_tool_map(session_context_tool)
 
-    # ---- new tool lists ----
+    research_tools = agent_tools["research"]
+    analysis_tools_list = agent_tools["analysis"]
+    tb_tools = agent_tools["tool_builder"]
+    pd_tools = agent_tools["protein_design"]
+    lit_tools = agent_tools["literature"]
+    web_tools = agent_tools["web_browser"]
+    paper_rep_tools = agent_tools["paper_replication"]
+    data_acq_tools = agent_tools["data_acquisition"]
+    gen_tools = agent_tools["genomics"]
+    trans_tools = agent_tools["transcriptomics"]
+    struct_tools = agent_tools["structural_biology"]
+    phylo_tools = agent_tools["phylogenetics"]
+    td_tools = agent_tools["tool_discovery"]
+    sh_tools = agent_tools["shell"]
+    git_tools_list = agent_tools["git"]
+    env_tools = agent_tools["environment"]
+    viz_tools = agent_tools["visualization"]
+    docking_tools = agent_tools["docking"]
+    from bioagents.tools.tool_universe import tool_universe_call_tool, tool_universe_find_tools
+
     _tu_tools = [tool_universe_find_tools, tool_universe_call_tool]
-    lit_tools = get_literature_tools() + _tu_tools
-    web_tools = get_web_tools()
-    paper_rep_tools = get_web_tools() + get_git_tools() + [extract_pdf_text_spacy_layout]
-    data_acq_tools = get_web_tools() + get_file_tools() + [download_uniprot_flat_file]
-    gen_tools = get_genomics_tools() + _tu_tools
-    trans_tools = get_transcriptomics_tools() + _tu_tools
-    struct_tools = get_structural_tools()
-    phylo_tools = get_genomics_tools()
-    td_tools = get_tool_builder_tools()
-    sh_tools = get_shell_tools()
-    git_tools_list = get_git_tools()
-    env_tools = get_environment_tools()
-    viz_tools = get_visualization_tools()
-    docking_tools = get_docking_tools()
-
-    # ---- inject session context retrieval tool ----
-    # If a session_context_tool is provided (created per-request with session data),
-    # append it to every tool list that feeds a tool-using agent + its tool node.
-    if session_context_tool is not None:
-        _sct = session_context_tool
-        for tl in (
-            research_tools,
-            analysis_tools_list,
-            tb_tools,
-            pd_tools,
-            lit_tools,
-            web_tools,
-            paper_rep_tools,
-            data_acq_tools,
-            gen_tools,
-            trans_tools,
-            struct_tools,
-            phylo_tools,
-            td_tools,
-            sh_tools,
-            git_tools_list,
-            env_tools,
-            viz_tools,
-            docking_tools,
-        ):
-            tl.append(_sct)
 
     # ---- create agents ----
     research_agent = create_research_agent(research_tools)
@@ -436,9 +462,12 @@ def create_graph(
     report_agent = create_report_agent()
     coder_agent = create_coder_agent()
     coder_node_func = create_coder_node(coder_agent)
-    ml_agent = create_ml_agent()
+    # Code-writing agents get the ESM tools as smolagents Tools so they can score
+    # mutations with a real model instead of hand-rolling (or faking) the computation.
+    _code_agent_tools = [ToolUniverseSearchTool(), ToolUniverseExecuteTool(), *get_esm_smol_tools()]
+    ml_agent = create_ml_agent(tools=list(_code_agent_tools))
     ml_node_func = create_ml_node(ml_agent)
-    dl_agent = create_dl_agent()
+    dl_agent = create_dl_agent(tools=list(_code_agent_tools))
     dl_node_func = create_dl_node(dl_agent)
     tool_builder_agent = create_tool_builder_agent()
     protein_design_agent = create_protein_design_agent(pd_tools)

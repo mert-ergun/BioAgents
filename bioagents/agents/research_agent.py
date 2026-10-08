@@ -515,6 +515,9 @@ def create_research_agent(tools: list):
         all_tool_calls = []
         combined_content = "Research Phase - Sub-agent findings:\n"
         needs_more_tools = False
+        # Sub-tasks that yielded neither tool calls nor content. These must be surfaced to
+        # the merger explicitly, otherwise it fills the gap with a plausible narrative.
+        unproductive_subtasks: list[str] = []
 
         # Deduplicate tool calls across sub-agents
         seen_signatures: set[str] = set()
@@ -570,8 +573,9 @@ def create_research_agent(tools: list):
                 if filtered_tools:
                     needs_more_tools = True
                     combined_content += (
-                        f"(Sub-agent {i + 1} is fetching data using "
-                        f"{len(filtered_tools)} tools...)\n"
+                        f"[STATUS — NOT A RESULT] Sub-agent {i + 1} issued "
+                        f"{len(filtered_tools)} tool call(s); results will arrive as "
+                        f"ToolMessages.\n"
                     )
                     if content_text and len(content_text) > 150:
                         combined_content += f"{content_text}\n"
@@ -581,11 +585,35 @@ def create_research_agent(tools: list):
                     if content_text:
                         combined_content += f"{content_text}\n"
                     else:
-                        combined_content += "(Sub-agent tools unavailable; used existing data)\n"
+                        combined_content += (
+                            f"[NO DATA] Sub-task {i + 1} produced no result: its tool calls "
+                            f"were duplicates or filtered out, and it returned no content. "
+                            f"Treat this sub-task as NOT COMPLETED — do not report findings "
+                            f"for it.\n"
+                        )
+                        unproductive_subtasks.append(sub_task)
             elif content_text:
                 combined_content += f"{content_text}\n"
             else:
-                combined_content += "(Sub-agent completed its part of the task)\n"
+                combined_content += (
+                    f"[NO DATA] Sub-task {i + 1} returned neither tool calls nor content. "
+                    f"Treat this sub-task as NOT COMPLETED — do not report findings for it.\n"
+                )
+                unproductive_subtasks.append(sub_task)
+
+        if unproductive_subtasks:
+            logger.warning(
+                "Research Agent: %d sub-task(s) produced no data: %s",
+                len(unproductive_subtasks),
+                unproductive_subtasks,
+            )
+            combined_content += (
+                "\n=== SUB-TASKS WITH NO DATA ===\n"
+                "The following sub-tasks produced no tool results and no content. The final "
+                "report MUST list them as not completed and MUST NOT contain any findings, "
+                "values or conclusions for them:\n"
+                + "".join(f"- {t}\n" for t in unproductive_subtasks)
+            )
 
         # Force merge if we've exceeded the round cap
         if _parallel_round > MAX_SUB_AGENT_TOOL_ROUNDS:

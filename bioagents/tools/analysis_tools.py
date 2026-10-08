@@ -1,11 +1,11 @@
 """Analysis tools for protein sequence analysis."""
 
+import json
 from collections import Counter
-from typing import Literal
+from pathlib import Path
+from typing import Any, Literal
 
 from langchain_core.tools import tool
-
-from bioagents.tools.provider_utils import get_provider_key_or_ask
 
 # Standard amino acid molecular weights (average isotopic composition)
 AMINO_ACID_WEIGHTS = {
@@ -207,13 +207,99 @@ def calculate_isoelectric_point(fasta_sequence: str) -> str:
         return f"Error calculating isoelectric point: {e!s}"
 
 
-Aggrescan3DProvider = Literal["Tamarind Bio", "Levitate Bio"]
+Aggrescan3DProvider = Literal["Local (aggrescan3d)", "Tamarind Bio", "Levitate Bio"]
 
 
 @tool
-def run_aggrescan3d(structure_pdb: str, provider: Aggrescan3DProvider = "Tamarind Bio") -> str:  # noqa: ARG001
-    """Runs Aggrescan3D to predict aggregation propensity on protein structures."""
-    key = get_provider_key_or_ask(provider, "Aggrescan3D")
-    if "[ENGAGEMENT_PENDING]" in key:
-        return key
-    return f"Aggrescan3D analysis completed successfully using {provider}."
+def run_aggrescan3d(
+    structure_pdb: str,
+    provider: Aggrescan3DProvider = "Local (aggrescan3d)",
+    output_dir: str = "aggrescan3d_output",
+) -> str:
+    """Predict structure-based protein aggregation propensity with Aggrescan3D.
+
+    Runs the real `aggrescan3d` command-line tool against a PDB structure and returns
+    the actual per-residue aggregation scores plus the total A3D score.
+
+    Args:
+        structure_pdb: Path to the input PDB structure file.
+        provider: Execution backend. 'Local (aggrescan3d)' runs the installed CLI.
+        output_dir: Directory for Aggrescan3D output files.
+
+    Returns:
+        JSON with status, total_score, per-residue scores and output paths. If the
+        aggrescan3d executable is not installed, returns status='error' saying so —
+        it never returns an aggregation score that was not computed.
+    """
+    import shutil
+    import subprocess  # nosec B404
+
+    from bioagents.tools.capability_reporting import capability_unavailable, missing_binary
+
+    pdb_path = Path(structure_pdb).expanduser()
+    if not pdb_path.exists():
+        return capability_unavailable(
+            "Aggrescan3D",
+            reason=f"Input PDB not found: {structure_pdb}",
+        )
+
+    executable = shutil.which("aggrescan")
+    if executable is None:
+        return missing_binary(
+            "Aggrescan3D",
+            "aggrescan",
+            install_hint="uv pip install aggrescan3d  (also requires FoldX for the dynamic mode)",
+            use_instead=("analyze_amino_acid_composition for a sequence-level hydrophobicity view"),
+            provider=provider,
+        )
+
+    out_path = Path(output_dir).expanduser()
+    out_path.mkdir(parents=True, exist_ok=True)
+    try:
+        result = subprocess.run(  # nosec B603
+            [executable, "-i", str(pdb_path.resolve()), "-w", str(out_path.resolve())],
+            capture_output=True,
+            text=True,
+            timeout=1800,
+        )
+    except subprocess.TimeoutExpired:
+        return capability_unavailable(
+            "Aggrescan3D", reason="aggrescan timed out after 1800s.", input_pdb=str(pdb_path)
+        )
+
+    if result.returncode != 0:
+        return json.dumps(
+            {
+                "status": "error",
+                "error_type": "execution_failed",
+                "message": f"aggrescan exited with code {result.returncode}.",
+                "stderr": result.stderr[-2000:],
+                "performed_any_computation": False,
+            },
+            indent=2,
+        )
+
+    scores_file = out_path / "A3D.csv"
+    per_residue: list[dict[str, Any]] = []
+    total_score = None
+    if scores_file.exists():
+        import csv
+
+        with scores_file.open() as fh:
+            for row in csv.DictReader(fh):
+                per_residue.append(row)
+        score_values = [float(r["score"]) for r in per_residue if r.get("score")]
+        total_score = round(sum(score_values), 4) if score_values else None
+
+    return json.dumps(
+        {
+            "status": "success",
+            "tool": "Aggrescan3D",
+            "input_pdb": str(pdb_path),
+            "total_score": total_score,
+            "num_residues_scored": len(per_residue),
+            "per_residue_scores": per_residue[:200],
+            "output_dir": str(out_path),
+        },
+        indent=2,
+    )

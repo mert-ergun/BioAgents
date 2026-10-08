@@ -1,5 +1,6 @@
 """Transcriptomics tools for differential expression, enrichment, and normalization."""
 
+import json
 import textwrap
 
 from langchain_core.tools import tool
@@ -109,26 +110,82 @@ def run_differential_expression(
         return f"Error running differential expression analysis: {e}"
 
 
-@tool
-def run_gene_set_enrichment(gene_list: str, database: str = "GO_Biological_Process") -> str:
-    """Run gene set enrichment analysis on a list of genes.
+# Enrichr library names are year-suffixed and an unknown name silently returns an empty
+# result instead of an error, so the name is validated before the request is made.
+ENRICHR_LIBRARIES: frozenset[str] = frozenset(
+    {
+        "GO_Biological_Process_2023",
+        "GO_Molecular_Function_2023",
+        "GO_Cellular_Component_2023",
+        "GO_Biological_Process_2021",
+        "GO_Molecular_Function_2021",
+        "GO_Cellular_Component_2021",
+        "KEGG_2021_Human",
+        "KEGG_2019_Mouse",
+        "Reactome_2022",
+        "Reactome_Pathways_2024",
+        "MSigDB_Hallmark_2020",
+        "WikiPathway_2023_Human",
+        "WikiPathways_2024_Human",
+        "ChEA_2022",
+        "ENCODE_TF_ChIP-seq_2015",
+        "TRANSFAC_and_JASPAR_PWMs",
+        "Human_Phenotype_Ontology",
+        "DisGeNET",
+        "OMIM_Disease",
+        "GTEx_Tissue_Expression_Up",
+        "GTEx_Tissue_Expression_Down",
+        "CellMarker_2024",
+        "PanglaoDB_Augmented_2021",
+    }
+)
 
-    Generates and executes a Python script using the Enrichr API.
+
+@tool
+def run_gene_set_enrichment(gene_list: str, database: str = "GO_Biological_Process_2023") -> str:
+    """Run gene set enrichment analysis on a list of genes via the Enrichr API.
 
     Args:
         gene_list: Comma-separated list of gene symbols (e.g. 'TP53,BRCA1,EGFR').
-        database: Enrichr gene set library. Common options:
+        database: Enrichr gene set library name. It must be an EXACT Enrichr library
+                  name — these are year-suffixed, and an unknown name returns no results
+                  rather than an error. Valid options include:
                   'GO_Biological_Process_2023', 'GO_Molecular_Function_2023',
-                  'KEGG_2021_Human', 'Reactome_2022', 'MSigDB_Hallmark_2020'.
+                  'GO_Cellular_Component_2023', 'KEGG_2021_Human', 'Reactome_2022',
+                  'MSigDB_Hallmark_2020', 'WikiPathway_2023_Human'.
 
     Returns:
-        JSON string with enriched terms, p-values, and overlapping genes.
+        JSON string with enriched terms, p-values, adjusted p-values, odds ratios and
+        overlapping genes, sorted by p-value. If the library name is not recognised the
+        tool returns an error naming valid libraries rather than an empty result that
+        could be mistaken for "no enrichment found".
     """
     try:
         sandbox = get_sandbox()
         genes = [g.strip() for g in gene_list.split(",") if g.strip()]
         if not genes:
             return "Error: No genes provided. Use comma-separated gene symbols."
+
+        if database not in ENRICHR_LIBRARIES:
+            suggestion = next(
+                (lib for lib in ENRICHR_LIBRARIES if lib.startswith(database)),
+                None,
+            )
+            return json.dumps(
+                {
+                    "status": "error",
+                    "error_type": "invalid_library",
+                    "message": (
+                        f"'{database}' is not a known Enrichr library. Enrichr returns an "
+                        f"empty result for unknown libraries, which is indistinguishable "
+                        f"from 'no enrichment found', so the request was not sent."
+                    ),
+                    "did_you_mean": suggestion,
+                    "valid_libraries": sorted(ENRICHR_LIBRARIES),
+                    "performed_any_computation": False,
+                },
+                indent=2,
+            )
 
         script = textwrap.dedent(f"""\
             import requests, json

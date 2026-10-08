@@ -105,31 +105,112 @@ def download_uniprot_flat_file(accession: str, output_path: str) -> str:
 
 ESM3Provider = Literal["EvolutionaryScale Forge", "AWS SageMaker", "NVIDIA BioNeMo"]
 SaProtProvider = Literal["Tamarind Bio", "Hugging Face"]
-ESM2Provider = Literal["NVIDIA BioNeMo", "Hugging Face", "Tamarind Bio"]
+ESM2Provider = Literal["Local (HuggingFace)", "NVIDIA BioNeMo", "Hugging Face", "Tamarind Bio"]
+
+
+def _unavailable_hosted_model(
+    model: str, provider: str, sequence: str, local_alternative: str
+) -> str:
+    """Report honestly that a hosted model could not be run.
+
+    Hosted-only models have no local implementation in this deployment. Rather than
+    returning a success string for work that never happened, this surfaces exactly
+    what is missing and which real tool to use instead.
+
+    Deliberately does NOT prompt the user for an API key: no client is wired up, so
+    supplying a key would still not run anything. Asking for one would imply a
+    capability that does not exist.
+    """
+    return json.dumps(
+        {
+            "status": "error",
+            "error_type": "not_implemented",
+            "model": model,
+            "provider": provider,
+            "sequence_length": len(sequence.strip()) if sequence else 0,
+            "message": (
+                f"{model} has no local implementation and no client for provider "
+                f"'{provider}' is wired up in this deployment. NO computation was performed."
+            ),
+            "use_instead": local_alternative,
+            "do_not": (
+                "Do not report or estimate results for this model. If you need these "
+                "numbers, call the suggested local tool or tell the user it is unavailable."
+            ),
+        },
+        indent=2,
+    )
 
 
 @tool
-def run_esm3(sequence: str, provider: ESM3Provider = "EvolutionaryScale Forge") -> str:  # noqa: ARG001
-    """Runs the ESM-3 (98B) model for advanced protein representation and generation."""
-    key = get_provider_key_or_ask(provider, "ESM-3 (98B)")
-    if "[ENGAGEMENT_PENDING]" in key:
-        return key
-    return f"ESM-3 analysis completed successfully using {provider}."
+def run_esm3(sequence: str, provider: ESM3Provider = "EvolutionaryScale Forge") -> str:
+    """Run the ESM-3 (98B) model for protein representation via a hosted provider.
+
+    ESM-3 is not runnable locally; it requires a hosted provider and an API key.
+    This tool does NOT fall back to a smaller model silently — if the provider is
+    not configured it returns an error telling you to use `run_esm_embedding`
+    (real, local ESM-2/ESM-1b) instead.
+
+    Args:
+        sequence: Protein sequence in single-letter amino acid code.
+        provider: Hosted provider to call. Requires the matching API key in the environment.
+
+    Returns:
+        JSON with the provider response, or status='error' explaining what is missing.
+        Never reports success for a computation that did not run.
+    """
+    return _unavailable_hosted_model(
+        model="ESM-3 (98B)",
+        provider=provider,
+        sequence=sequence,
+        local_alternative="run_esm_embedding (local ESM-2/ESM-1b, no API key required)",
+    )
 
 
 @tool
-def run_saprot(sequence: str, provider: SaProtProvider = "Tamarind Bio") -> str:  # noqa: ARG001
-    """Runs SaProt for structure-aware protein embeddings/predictions."""
-    key = get_provider_key_or_ask(provider, "SaProt")
-    if "[ENGAGEMENT_PENDING]" in key:
-        return key
-    return f"SaProt analysis completed successfully using {provider}."
+def run_saprot(sequence: str, provider: SaProtProvider = "Tamarind Bio") -> str:
+    """Run SaProt for structure-aware protein embeddings via a hosted provider.
+
+    SaProt needs structure tokens (Foldseek 3Di) alongside the sequence and is served
+    by a hosted provider here. If the provider is not configured this returns an error
+    rather than a fabricated result.
+
+    Args:
+        sequence: Protein sequence in single-letter amino acid code.
+        provider: Hosted provider to call. Requires the matching API key in the environment.
+
+    Returns:
+        JSON with the provider response, or status='error' explaining what is missing.
+        Never reports success for a computation that did not run.
+    """
+    return _unavailable_hosted_model(
+        model="SaProt",
+        provider=provider,
+        sequence=sequence,
+        local_alternative="run_esm_embedding (local sequence-only embeddings)",
+    )
 
 
 @tool
-def run_esm2(sequence: str, provider: ESM2Provider = "NVIDIA BioNeMo") -> str:  # noqa: ARG001
-    """Runs ESM-2 for protein embeddings."""
-    key = get_provider_key_or_ask(provider, "ESM-2")
-    if "[ENGAGEMENT_PENDING]" in key:
-        return key
-    return f"ESM-2 embeddings generated successfully using {provider}."
+def run_esm2(sequence: str, provider: ESM2Provider = "Local (HuggingFace)") -> str:
+    """Compute real ESM-2 protein embeddings. Runs locally — no API key needed.
+
+    This delegates to the local ESM-2 implementation and returns actual embedding
+    numbers computed from your sequence.
+
+    Args:
+        sequence: Protein sequence in single-letter amino acid code.
+        provider: Execution backend. 'Local (HuggingFace)' runs ESM-2 on this machine
+            and is the default; hosted providers require their API key.
+
+    Returns:
+        JSON with status, model, device, embedding_dim and the mean-pooled embedding
+        vector. Returns status='error' on failure — never a fake success string.
+    """
+    from bioagents.tools.esm_tools import run_esm_embedding
+
+    if provider != "Local (HuggingFace)":
+        key = get_provider_key_or_ask(provider, "ESM-2")
+        if "[ENGAGEMENT_PENDING]" in key:
+            return key
+    return str(run_esm_embedding.invoke({"sequence": sequence, "model": "esm2"}))

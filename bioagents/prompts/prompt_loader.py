@@ -6,6 +6,34 @@ from pathlib import Path
 
 ModelMap = dict[str, str]
 
+# Sections with a dedicated formatter below (or deliberately excluded, like <metadata>).
+# Every other top-level section is rendered generically so new guidance is never dropped.
+_HANDLED_SECTIONS = frozenset(
+    {
+        "metadata",
+        "role",
+        "capabilities",
+        "team",
+        "responsibilities",
+        "evaluation_criteria",
+        "output_format",
+        "data_formats",
+        "instructions",
+        "error_handling",
+        "workflow",
+        "decision_guidelines",
+        "communication_style",
+        "best_practices",
+        "examples",
+    }
+)
+
+
+def _humanize_tag(tag: str) -> str:
+    """Turn an XML tag like 'avoiding_pitfalls' into 'Avoiding Pitfalls'."""
+    return tag.replace("_", " ").replace("-", " ").title()
+
+
 # ---------------------------------------------------------------------------
 # Experiment prompt-override context variable
 # ---------------------------------------------------------------------------
@@ -199,6 +227,16 @@ class PromptLoader:
                 sections.append(bp_text)
 
         # Add examples (if present)
+        # Render any section this loader has no dedicated formatter for, in document
+        # order. Without this, authoring a new section silently drops it from the prompt:
+        # the file looks correct on disk while the model never receives the content.
+        for child in root:
+            if child.tag in _HANDLED_SECTIONS:
+                continue
+            generic = self._format_generic_section(child)
+            if generic:
+                sections.append(generic)
+
         examples = root.find("examples")
         if examples is not None:
             examples_text = self._format_examples(examples)
@@ -207,6 +245,61 @@ class PromptLoader:
 
         # Join all sections with double newlines
         return "\n\n".join(sections)
+
+    def _render_unconsumed(self, parent: ET.Element, consumed: set[str]) -> list[str]:
+        """Render child elements a dedicated formatter did not handle.
+
+        Dedicated formatters match specific tags (``step``, ``practice``, ...). Anything
+        else authored under the same section would otherwise vanish from the prompt, so
+        each formatter passes the tags it consumed and gets the remainder rendered.
+        """
+        rendered: list[str] = []
+        for child in parent:
+            if child.tag in consumed:
+                continue
+            detail = self._format_generic_section(child, depth=1)
+            if detail:
+                rendered.append(detail)
+        return rendered
+
+    def _format_generic_section(self, element: ET.Element, depth: int = 0) -> str:
+        """Render an arbitrary prompt section as readable indented text.
+
+        Used for sections without a dedicated formatter so that newly authored guidance
+        reaches the model instead of being dropped. Element attributes (such as
+        ``priority="critical"``) are preserved because they carry authoring intent.
+        """
+        lines: list[str] = []
+        indent = "  " * depth
+
+        if depth == 0:
+            lines.append(f"## {_humanize_tag(element.tag)}")
+        else:
+            label = _humanize_tag(element.tag)
+            attrs = " ".join(f"{k}={v}" for k, v in element.attrib.items())
+            header = f"{indent}- **{label}**" + (f" ({attrs})" if attrs else "")
+            text = (element.text or "").strip()
+            children = list(element)
+            if text and not children:
+                lines.append(f"{header}: {text}")
+                return "\n".join(lines)
+            lines.append(header)
+            if text:
+                lines.append(f"{indent}  {text}")
+
+        if depth == 0:
+            text = (element.text or "").strip()
+            if text:
+                lines.append(text)
+
+        for child in element:
+            rendered = self._format_generic_section(child, depth + 1)
+            if rendered:
+                lines.append(rendered)
+
+        body = "\n".join(lines).rstrip()
+        # A section header with nothing under it adds noise, not instruction.
+        return body if len(body.splitlines()) > 1 or depth > 0 else ""
 
     def _format_capabilities(self, capabilities: ET.Element) -> str:
         """Format the capabilities section."""
@@ -217,15 +310,52 @@ class PromptLoader:
             desc = capability.find("description")
             tool = capability.find("tool")
 
-            if name is not None and name.text:
-                cap_line = f"- {name.text.strip()}"
+            # The capability name may be a <name> child or a name="" attribute, and the
+            # tools may be a single <tool> or a <tools> wrapper. Supporting only one
+            # shape silently drops whole capabilities — including which tools serve them.
+            label = (
+                name.text.strip()
+                if (name is not None and name.text)
+                else (capability.get("name") or "").strip()
+            )
+
+            tool_names: list[str] = []
+            if tool is not None and tool.text:
+                tool_names.append(tool.text.strip())
+            tools_wrapper = capability.find("tools")
+            if tools_wrapper is not None:
+                tool_names.extend(t.text.strip() for t in tools_wrapper.findall("tool") if t.text)
+
+            if label:
+                cap_line = f"- {label}"
                 if desc is not None and desc.text:
                     cap_line += f": {desc.text.strip()}"
-                if tool is not None and tool.text:
-                    cap_line += f" (Tool: {tool.text.strip()})"
+                if tool_names:
+                    cap_line += f" (Tools: {', '.join(dict.fromkeys(tool_names))})"
                 lines.append(cap_line)
-            elif capability.text:
+
+                # Capabilities often carry nested detail (steps, examples, parameter
+                # notes). Dropping it strips the concrete how-to an agent needs.
+                for child in capability:
+                    if child.tag in ("name", "description", "tool", "tools"):
+                        continue
+                    detail = self._format_generic_section(child, depth=1)
+                    if detail:
+                        lines.append(detail)
+            elif capability.text and capability.text.strip():
                 lines.append(f"- {capability.text.strip()}")
+                for child in capability:
+                    detail = self._format_generic_section(child, depth=1)
+                    if detail:
+                        lines.append(detail)
+
+        # Capability entries may use tags other than <capability>; render those too.
+        for child in capabilities:
+            if child.tag == "capability":
+                continue
+            detail = self._format_generic_section(child, depth=0)
+            if detail:
+                lines.append(detail)
 
         return "\n".join(lines) if len(lines) > 1 else ""
 
@@ -278,19 +408,40 @@ class PromptLoader:
         return models.get(provider_key)
 
     def _format_team(self, team: ET.Element) -> str:
-        """Format the team section for supervisor."""
+        """Format the team section for supervisor.
+
+        Renders each agent's capabilities as well as its description. The supervisor
+        cannot route correctly — or check that a specialist can actually do the job —
+        if it only sees one-line descriptions, so every authored child element is
+        included rather than a fixed subset.
+        """
         lines = ["Your team consists of:"]
 
         for agent in team.findall("agent"):
             name = agent.get("name", "Unknown")
-            desc = agent.find("description")
-            use_when = agent.find("use_when")
-
             lines.append(f"\n**{name}**")
+
+            desc = agent.find("description")
             if desc is not None and desc.text:
                 lines.append(f"  - {desc.text.strip()}")
+
+            capabilities = agent.find("capabilities")
+            if capabilities is not None:
+                cap_text = " ".join(t.strip() for t in capabilities.itertext() if t.strip())
+                if cap_text:
+                    lines.append(f"  - Capabilities: {cap_text}")
+
+            use_when = agent.find("use_when")
             if use_when is not None and use_when.text:
                 lines.append(f"  - Use when: {use_when.text.strip()}")
+
+            # Any other authored detail (constraints, tools, limits) must not be dropped.
+            for child in agent:
+                if child.tag in ("description", "capabilities", "use_when"):
+                    continue
+                extra = " ".join(t.strip() for t in child.itertext() if t.strip())
+                if extra:
+                    lines.append(f"  - {_humanize_tag(child.tag)}: {extra}")
 
         return "\n".join(lines)
 
@@ -329,6 +480,8 @@ class PromptLoader:
             if step.text:
                 order = step.get("order", "")
                 lines.append(f"{order}. {step.text.strip()}")
+
+        lines.extend(self._render_unconsumed(workflow, {"step"}))
 
         return "\n".join(lines) if len(lines) > 1 else ""
 
@@ -386,6 +539,15 @@ class PromptLoader:
                 if desc is not None and desc.text:
                     line += f": {desc.text.strip()}"
                 lines.append(line)
+            # A <section> may carry more than a description (content items, examples).
+            for child in section:
+                if child.tag == "description":
+                    continue
+                detail = self._format_generic_section(child, depth=1)
+                if detail:
+                    lines.append(detail)
+
+        lines.extend(self._render_unconsumed(output_format, {"requirement", "section"}))
 
         return "\n".join(lines) if len(lines) > 1 else ""
 
@@ -430,6 +592,8 @@ class PromptLoader:
         for practice in best_practices.findall("practice"):
             if practice.text:
                 lines.append(f"- {practice.text.strip()}")
+
+        lines.extend(self._render_unconsumed(best_practices, {"practice"}))
 
         return "\n".join(lines) if len(lines) > 1 else ""
 

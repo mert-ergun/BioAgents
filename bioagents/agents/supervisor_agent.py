@@ -3,6 +3,7 @@
 import json
 import logging
 import uuid
+from functools import lru_cache
 from typing import Literal
 
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
@@ -75,6 +76,23 @@ class RouteResponse(BaseModel):
 
 
 SUPERVISOR_PROMPT = load_prompt("supervisor")
+
+
+@lru_cache(maxsize=1)
+def _agent_tool_inventory() -> str:
+    """Render the agent→tool inventory for the supervisor, cached per process.
+
+    Built from the shared manifest so it always reflects the real wiring. Returns an
+    empty string if the manifest cannot be built — the supervisor must keep routing even
+    when the inventory is unavailable.
+    """
+    try:
+        from bioagents.tools.agent_manifest import describe_agent_tools
+
+        return describe_agent_tools()
+    except Exception:
+        logger.warning("Could not build the agent tool inventory for the supervisor.")
+        return ""
 
 
 def create_supervisor_agent(members: list[str]):
@@ -457,6 +475,13 @@ def create_supervisor_agent(members: list[str]):
         # Window messages for the routing LLM to avoid slow calls on large histories.
         # Keep the first message (user query) and the last 12 messages (recent context).
         routing_messages = messages[:1] + messages[-12:] if len(messages) > 14 else messages
+
+        # Tell the supervisor which concrete tools each specialist holds. Without this it
+        # routes from prose descriptions alone and can hand a task to an agent that has
+        # no tool capable of doing it — which then comes back as a narrative, not a result.
+        inventory = _agent_tool_inventory()
+        if inventory:
+            routing_messages = [SystemMessage(content=inventory), *list(routing_messages)]
 
         # Inject steering directives so the LLM respects real-time user guidance.
         steering_texts = extract_steering_messages(messages)

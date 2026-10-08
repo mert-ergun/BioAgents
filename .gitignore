@@ -227,3 +227,19 @@ __marimo__/
 outputs/
 logs/
 redundant/
+
+# Runtime artifacts written by agent runs and tests. These were tracked, so every
+# run produced spurious diffs and risked committing scratch state.
+# experiment_runs/ and paper_benchmark_results/ are deliberately NOT listed: they
+# hold committed benchmark history.
+data/bioagents_admin.db
+data/bioagents_admin.db-shm
+data/bioagents_admin.db-wal
+sandbox_workdir/
+debug_tool_outputs/
+generated_artifacts/
+
+# Coverage output
+htmlcov/
+coverage.xml
+.coverage

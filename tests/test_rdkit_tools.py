@@ -1,7 +1,11 @@
-"""Unit tests for rdkit-agent wrapper and LangChain tools."""
+"""Unit tests for the RDKit chemistry tools.
+
+These used to be skipped wholesale because they required a Node.js `rdkit-agent`
+CLI that was never installed. The tools now run on the RDKit Python library, so the
+suite executes for real.
+"""
 
 import json
-import shutil
 
 import pytest
 
@@ -22,11 +26,6 @@ from bioagents.tools.rdkit_tools import (
     search_substructure,
     validate_smiles,
     validate_smirks,
-)
-
-pytestmark = pytest.mark.skipif(
-    shutil.which("rdkit-agent") is None,
-    reason="rdkit-agent CLI not installed (npm install -g rdkit-agent)",
 )
 
 
@@ -98,8 +97,35 @@ class TestDescriptorTools:
 class TestSimilarityAndFilterTools:
     """Test similarity and filtering tools."""
 
-    def test_similarity_search(self):
-        """Test similarity search."""
+    def test_similarity_search_ranks_closest_analogue_first(self):
+        """Toluene is the closest analogue of benzene in this set."""
+        result = search_similar_molecules_tool.invoke(
+            {
+                "query": "c1ccccc1",
+                "targets": "Cc1ccccc1,CCO,c1ccc2ccccc2c1",
+                "threshold": 0.2,
+            }
+        )
+        data = json.loads(result)
+        assert data["success"] is True
+        body = data["data"]
+
+        assert body["query"] == "c1ccccc1"
+        assert body["targets_count"] == 3
+        assert body["hits"], "expected hits above a 0.2 Tanimoto threshold"
+        assert body["hits"][0]["smiles"] == "Cc1ccccc1"
+
+        scores = [h["similarity"] for h in body["hits"]]
+        assert scores == sorted(scores, reverse=True), "hits must be ranked by similarity"
+        # Ethanol shares no ring system with benzene and must not clear the threshold.
+        assert "CCO" not in [h["smiles"] for h in body["hits"]]
+
+    def test_similarity_threshold_excludes_weak_matches(self):
+        """A strict threshold must return nothing rather than a best-effort match.
+
+        Benzene/toluene Tanimoto over Morgan(2) is ~0.27, so a 0.5 cutoff legitimately
+        excludes every target here. Returning an empty hit list is the correct answer.
+        """
         result = search_similar_molecules_tool.invoke(
             {
                 "query": "c1ccccc1",
@@ -109,8 +135,8 @@ class TestSimilarityAndFilterTools:
         )
         data = json.loads(result)
         assert data["success"] is True
-        # rdkit-agent returns all_results, not hits
-        assert "all_results" in data["data"] or "results" in data["data"]
+        assert data["data"]["hits"] == []
+        assert data["data"]["hit_count"] == 0
 
     def test_filter_lipinski(self):
         """Test filtering by Lipinski's Rule of Five."""

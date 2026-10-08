@@ -63,3 +63,10 @@ TOOL_POLICY_STRICTNESS = os.getenv("BIOAGENTS_TOOL_POLICY_STRICTNESS", "moderate
 
 # Comma-separated extra tool categories to allow beyond defaults.
 TOOL_POLICY_EXTRA_CATEGORIES = os.getenv("BIOAGENTS_TOOL_POLICY_EXTRA_CATEGORIES", "")
+
+# Max tool-calling rounds a single agent may run for one supervisor task before control
+# is forced back to the supervisor. The agent -> tools -> agent cycle is otherwise
+# unbounded: an agent that keeps calling tools never returns, so the supervisor's loop
+# detection and re-routing never get a chance to run and one specialist consumes the
+# entire workflow step budget.
+MAX_AGENT_TOOL_ROUNDS = max(1, _env_int("BIOAGENTS_MAX_AGENT_TOOL_ROUNDS", 8))

@@ -9,14 +9,21 @@ from langchain_core.tools import tool
 
 @tool
 def search_local_papers_with_paperqa(pdf_folder_path: str, query: str) -> str:
-    """
-    Answers user questions by reading local PDF papers in the specified directory.
-    Use this tool to extract information, summarize literature, or answer specific
-    questions based on PDFs.
+    """Answer a question by reading the PDF papers in a local folder (RAG over PDFs).
+
+    Use this to extract methods, summarise findings, or answer a specific question from
+    papers already downloaded to disk. It searches ONLY local files — to search published
+    literature online use the literature agent's search_pubmed/search_arxiv tools.
 
     Args:
-        pdf_folder_path: The folder path where the PDF files are located.
-        query: The question or research topic to search for in the papers.
+        pdf_folder_path: Folder containing the PDF files, relative to the project root.
+        query: The question to answer or research topic to look for in those papers.
+
+    Returns:
+        A prose answer grounded in the PDFs, with the supporting passages cited. If the
+        folder has no PDFs, or no passage answers the question, it says so — treat that
+        as "not found in these papers", not as evidence of absence, and never fill the
+        gap with recalled knowledge presented as a finding from the papers.
     """
     import os
 

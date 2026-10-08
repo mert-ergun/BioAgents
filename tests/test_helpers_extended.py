@@ -132,7 +132,11 @@ class TestPrepareMessagesForAgent:
     def test_windowing_respects_max_messages(self):
         msgs = [HumanMessage(content=f"msg {i}") for i in range(50)]
         result = prepare_messages_for_agent(msgs, "test", max_messages=5)
-        assert len(result) <= 6  # max_messages + first_human if not in window
+
+        # The conduct-rules SystemMessage is injected guidance, not conversation, so it
+        # does not count against the window budget.
+        conversation = [m for m in result if not isinstance(m, SystemMessage)]
+        assert len(conversation) <= 6  # max_messages + first_human if not in window
 
     def test_truncates_long_ai_content(self):
         msgs = [
