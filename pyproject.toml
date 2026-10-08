@@ -156,6 +156,9 @@ module = [
     "docker.*",
     "esm.*",
     "langchain.*",
+    "rdkit.*",
+    "sascorer.*",
+    "transformers.*",
     "langchain_google_genai.*",
     "langgraph.*",
     "litellm.*",
@@ -167,6 +170,12 @@ module = [
     "ace.*",
 ]
 ignore_missing_imports = true
+
+# NOTE: RDKit has no py.typed and builds much of its API dynamically at import time
+# (Descriptors.MolWt and friends), so a local mypy run that can see the real package
+# reports those attributes as missing. Per-module follow_imports does not suppress it.
+# The pre-commit hook runs mypy in an isolated env where RDKit is absent, so RDKit
+# symbols resolve to Any there and the gate is unaffected.
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

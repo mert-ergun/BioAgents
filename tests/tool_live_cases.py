@@ -11,7 +11,6 @@ enforces that, so a tool can never be silently untested.
 from __future__ import annotations
 
 import json
-import shutil
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -208,12 +207,12 @@ def _hosted_model_skip(tool_name: str, label: str) -> LiveCase:
 
 
 def _rdkit_case(args: dict, check: Checker) -> LiveCase:
-    """RDKit tools shell out to the `rdkit-agent` Node CLI (optional install)."""
-    if shutil.which("rdkit-agent") is None:
-        return _skip(
-            "rdkit-agent CLI not installed (npm install -g rdkit-agent); note the "
-            "tool still returns success=true in this state"
-        )
+    """RDKit tools run on the native RDKit Python library — always exercised live.
+
+    They used to shell out to an optional Node `rdkit-agent` CLI and were skipped
+    wholesale when it was absent, which hid that a missing CLI was being reported as a
+    chemically invalid molecule.
+    """
     return LiveCase(args=args, check=check)
 
 
@@ -655,7 +654,7 @@ def _make_pdf(ctx: LiveContext) -> str:
 
 
 def _rdkit_cases() -> dict[str, LiveCase]:
-    """RDKit tools all shell out to the same optional Node CLI."""
+    """RDKit tools, all running on the native RDKit Python backend."""
     simple = expect(min_length=10)
     cases = {
         "validate_smiles": ({"smiles": "CCO"}, expect(contains=("valid",), min_length=10)),
