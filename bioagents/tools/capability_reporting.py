@@ -9,8 +9,12 @@ capability reports it the same way.
 
 from __future__ import annotations
 
+import contextlib
 import json
+import logging
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 # Appended to every unavailable-capability payload. The agents' system prompts
 # reinforce this, but repeating it in the tool result puts the instruction in the
@@ -142,26 +146,57 @@ def check_modules(modules: list[str]) -> list[str]:
     return missing
 
 
-def cuda_is_usable() -> bool:
-    """Return True only if torch can actually launch a kernel on the local GPU.
+#: Free VRAM (MiB) a GPU must have before we route work to it. A trivial probe
+#: allocation succeeds on an almost-full card, so without this check a second job
+#: starts on the GPU and then dies of OOM part-way through a real computation.
+MIN_FREE_VRAM_MIB = 2048
 
-    ``torch.cuda.is_available()`` reports True for a GPU whose compute capability the
-    installed torch build was not compiled for (e.g. an sm_120 card on a build topping
-    out at sm_90). Such a device then fails at the first real kernel launch with
-    ``no kernel image is available for execution on the device``. Probing with an
-    actual operation is the only reliable check.
+
+def cuda_is_usable(min_free_mib: int | None = None) -> bool:
+    """Return True only if the local GPU can actually run work right now.
+
+    Two separate things can be wrong, and both have bitten this project:
+
+    1. ``torch.cuda.is_available()`` reports True for a GPU whose compute capability
+       the installed torch was not built for (an sm_120 card on a build topping out at
+       sm_90). It then fails at the first real kernel launch with "no kernel image is
+       available for execution on the device", so the check must actually run something.
+    2. The GPU is fine but already full. A tiny probe allocation still succeeds, and the
+       caller then OOMs once it loads a real model, so free memory is checked too.
+
+    Args:
+        min_free_mib: Required free VRAM. Defaults to ``MIN_FREE_VRAM_MIB``; pass 0 to
+            skip the headroom check when the caller's workload is known to be small.
     """
     import os
 
     override = os.getenv("BIOAGENTS_FORCE_CPU")
     if override and override.lower() in ("1", "true", "yes"):
         return False
+
+    threshold = MIN_FREE_VRAM_MIB if min_free_mib is None else min_free_mib
+    env_threshold = os.getenv("BIOAGENTS_MIN_FREE_VRAM_MIB")
+    if min_free_mib is None and env_threshold:
+        with contextlib.suppress(ValueError):
+            threshold = int(env_threshold)
+
     try:
         import torch
 
         if not torch.cuda.is_available():
             return False
         torch.zeros(8, device="cuda").sum().item()
+
+        if threshold > 0:
+            free_bytes, _total = torch.cuda.mem_get_info()
+            free_mib = free_bytes / (1024 * 1024)
+            if free_mib < threshold:
+                logger.info(
+                    "GPU has only %.0f MiB free (need %d MiB); using CPU instead.",
+                    free_mib,
+                    threshold,
+                )
+                return False
         return True
     except Exception:
         return False

@@ -1125,8 +1125,12 @@ def _run_rfdiffusion_local(
                 f"installed in this environment: {', '.join(missing)}."
             ),
             how_to_enable=(
-                "Install the RFdiffusion environment (SE3nv): see RFdiffusion/env/SE3nv.yml. "
-                "Note this also needs a CUDA build of torch matching the local GPU."
+                "RFdiffusion cannot be installed into this environment as shipped: its "
+                "SE3nv spec (RFdiffusion/env/SE3nv.yml) pins Python 3.9, PyTorch 1.9 and "
+                "cudatoolkit 11.1, which conflict with this project's Python and torch, "
+                "and CUDA 11.1 cannot target a Blackwell (sm_120) GPU at all. Enabling it "
+                "means either a separate conda env on a pre-Blackwell GPU, or a fork "
+                "updated to a current torch plus a matching DGL/SE3Transformer build."
             ),
             use_instead="design_binders_bindcraft or generate_binder_backbones once the environment is installed",
             missing_modules=missing,

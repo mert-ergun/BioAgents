@@ -3,6 +3,7 @@
 import contextlib
 import importlib.util
 import json
+import logging
 import os
 import shutil
 import socket
@@ -32,6 +33,8 @@ from smolagents import AgentLogger, DockerExecutor, LocalPythonExecutor, LogLeve
 # already been patched), skip the re-patch entirely.
 # ---------------------------------------------------------------------------
 from smolagents.remote_executors import RemotePythonExecutor as _RPE
+
+module_logger = logging.getLogger(__name__)
 
 _original_patch = _RPE._patch_final_answer_with_exception
 
@@ -134,15 +137,31 @@ def apply_local_executor_runtime_env() -> None:
 
     Partial CUDA installs (driver present, cuDNN missing) often break ``import torch``.
     - Prepends pip ``nvidia/*/lib`` paths so optional ``pip install nvidia-cudnn-cu12`` libs load.
-    - Masks GPUs unless BIOAGENTS_TORCH_CUDA=1 so many stacks fall back to CPU.
+    - Exposes the GPU only when a real kernel launch succeeds, so a broken or
+      mismatched CUDA stack degrades to CPU instead of crashing mid-computation.
     - Patches ``json.JSONEncoder`` to handle numpy scalar types.
+
+    ``BIOAGENTS_TORCH_CUDA`` overrides the probe in either direction: set it truthy to
+    force the GPU through, or falsy to mask it even when it works.
     """
     _patch_json_numpy_serialization()
-    if os.getenv("BIOAGENTS_TORCH_CUDA", "").lower() in ("1", "true", "yes"):
-        _prepend_nvidia_pip_libs_to_ld_path()
-        return
     _prepend_nvidia_pip_libs_to_ld_path()
-    os.environ.setdefault("CUDA_VISIBLE_DEVICES", "")
+
+    override = os.getenv("BIOAGENTS_TORCH_CUDA", "").strip().lower()
+    if override in ("1", "true", "yes"):
+        return
+    if override in ("0", "false", "no"):
+        os.environ["CUDA_VISIBLE_DEVICES"] = ""
+        return
+
+    # Probe rather than trust torch.cuda.is_available(): it reports True for a GPU
+    # whose compute capability the installed torch was not built for, and the failure
+    # only surfaces at the first kernel launch, deep inside the agent's code.
+    from bioagents.tools.capability_reporting import cuda_is_usable
+
+    if not cuda_is_usable():
+        module_logger.info("No usable CUDA device for the code sandbox; running on CPU.")
+        os.environ.setdefault("CUDA_VISIBLE_DEVICES", "")
 
 
 def _extra_builtins() -> dict[str, object]:

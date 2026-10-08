@@ -683,17 +683,47 @@ def run_esmfold(sequence: str, output_dir: str = "esmfold_output") -> str:
             "facebook/esmfold_v1", revision=revision
         )
         model = EsmForProteinFolding.from_pretrained(  # nosec B615
-            "facebook/esmfold_v1", revision=revision
+            "facebook/esmfold_v1", revision=revision, low_cpu_mem_usage=True
         )
         model.eval()
+
+        if device == "cuda":
+            # ESMFold in full precision is ~13 GB of weights, which alone fills a 16 GB
+            # card and leaves nothing for the forward pass. These are the upstream
+            # optimisations — half precision for the language-model stem and chunked
+            # trunk attention — and the cast must happen BEFORE the transfer, otherwise
+            # the fp32 copy OOMs on the way to the device.
+            model.esm = model.esm.half()
+            torch.backends.cuda.matmul.allow_tf32 = True
+            model.trunk.set_chunk_size(int(os.getenv("BIOAGENTS_ESMFOLD_CHUNK_SIZE", "64")))
+
         model.to(device)
 
         inputs = tokenizer([seq], return_tensors="pt", add_special_tokens=False).to(device)
-        with torch.no_grad():
-            outputs = model(**inputs)
+        try:
+            with torch.no_grad():
+                outputs = model(**inputs)
+        except torch.cuda.OutOfMemoryError as exc:
+            torch.cuda.empty_cache()
+            return capability_unavailable(
+                "ESMFold",
+                reason=(f"Ran out of GPU memory folding a {len(seq)}-residue sequence: {exc}"),
+                how_to_enable=(
+                    "Lower BIOAGENTS_ESMFOLD_CHUNK_SIZE (e.g. 32 or 16), fold a shorter "
+                    "sequence, or set BIOAGENTS_ESM_DEVICE=cpu to trade speed for memory."
+                ),
+                use_instead="fetch_alphafold_structure (AlphaFold DB lookup)",
+                sequence_length=len(seq),
+            )
 
         pdb_text = model.output_to_pdb(outputs)[0]
+        # HuggingFace ESMFold emits pLDDT on a 0-1 scale, but every published
+        # confidence band (>90 very high, 70-90 confident, ...) is stated on the 0-100
+        # scale. Reporting the raw 0-1 value would read as "very low confidence" to
+        # anyone applying the standard thresholds, so it is normalised here.
         plddt = outputs["plddt"][0, :, 1]
+        if float(plddt.max()) <= 1.0:
+            plddt = plddt * 100
         mean_plddt = float(plddt.mean())
 
         from pathlib import Path
@@ -712,7 +742,10 @@ def run_esmfold(sequence: str, output_dir: str = "esmfold_output") -> str:
                 "sequence_length": len(seq),
                 "pdb_path": str(pdb_file),
                 "mean_plddt": round(mean_plddt, 2),
-                "plddt_interpretation": "pLDDT > 90 very high, 70-90 confident, 50-70 low, < 50 very low",
+                "plddt_scale": "0-100",
+                "plddt_interpretation": (
+                    "pLDDT > 90 very high, 70-90 confident, 50-70 low, < 50 very low"
+                ),
                 "per_residue_plddt": [round(float(x), 2) for x in plddt.tolist()],
             },
             indent=2,

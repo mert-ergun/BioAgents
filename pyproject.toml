@@ -2,15 +2,19 @@
 requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
-# Use CUDA-enabled PyTorch for GPU support.
-# Switch back to "https://download.pytorch.org/whl/cpu" for CPU-only.
+# CUDA-enabled PyTorch. The CUDA version here must cover the compute capability of
+# the target GPU: a cu126 build tops out at sm_90, so on a Blackwell card (sm_120,
+# e.g. RTX 50-series) torch.cuda.is_available() returns True but the first kernel
+# launch fails with "no kernel image is available for execution on the device".
+# cu130 ships sm_120 kernels. Requires an NVIDIA driver providing CUDA >= 13.0.
+# Switch to "https://download.pytorch.org/whl/cpu" for CPU-only installs.
 [[tool.uv.index]]
-url = "https://download.pytorch.org/whl/cu126"
-name = "pytorch-cu126"
+url = "https://download.pytorch.org/whl/cu130"
+name = "pytorch-cu130"
 explicit = true
 
 [tool.uv.sources]
-torch = { index = "pytorch-cu126" }
+torch = { index = "pytorch-cu130" }
 
 [project]
 name = "bioagents"
@@ -53,8 +57,11 @@ dependencies = [
     # Required by the real ESM tools (bioagents/tools/esm_tools.py) and by the local
     # ProteinMPNN runner. These were previously only in the optional "esm" extra, so a
     # plain `uv sync` removed them and those tools failed at import.
-    "torch>=2.2.0",
+    # cu130 wheels start at 2.14.1; earlier builds lack sm_120 kernels.
+    "torch>=2.14.1",
     "transformers>=4.40.0",
+    # Required by ESMFold (run_esmfold) for weight loading/device placement.
+    "accelerate>=0.34.0",
     # Imported directly by docking_tools (ligand preparation, SMILES->3D) and the drug
     # discovery workflow nodes. It was never declared, so it only worked where someone
     # had installed it by hand and a clean sync silently broke docking.

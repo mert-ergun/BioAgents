@@ -1,7 +1,6 @@
 """Integration tests for rdkit-agent with BioAgents system."""
 
 import json
-import shutil
 
 import pytest
 
@@ -16,10 +15,8 @@ from bioagents.tools.rdkit_tools import (
     validate_smiles,
 )
 
-pytestmark = pytest.mark.skipif(
-    shutil.which("rdkit-agent") is None,
-    reason="rdkit-agent CLI not installed (npm install -g rdkit-agent)",
-)
+# These used to be skipped whenever the Node `rdkit-agent` CLI was absent, which was
+# always. The tools now run on the RDKit Python library, so the suite executes.
 
 
 class TestValidatorAgent:
