@@ -1,9 +1,6 @@
 """Verifies a file written by one agent is findable and readable by another.
 
-Regression context: file tools reported absolute host paths like
-``/home/user/BioAgents/sandbox_workdir/default/4gv1.pdb``. The coder/ml/dl agents run in
-a container that mounts the project root at ``/app``, so that path does not exist for
-them — a file one agent produced was effectively invisible to the next.
+Containerised agents see the project root at ``/app``, so host paths do not carry over.
 """
 
 from __future__ import annotations

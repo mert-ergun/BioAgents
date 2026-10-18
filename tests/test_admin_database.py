@@ -1,7 +1,4 @@
-"""Tests for the admin database layer.
-
-Uses in-memory SQLite for all tests to ensure isolation.
-"""
+"""Tests for the admin database layer, on in-memory SQLite for isolation."""
 
 from __future__ import annotations
 
@@ -305,7 +302,6 @@ class TestSearchLogs:
     def test_sql_injection_prevention(self, db: AdminDatabase) -> None:
         db.upsert_client("c1", "ip", "ua")
         db.log_activity(client_id="c1", action="query")
-        # This should not crash or return unexpected data
         result = db.search_logs(query="'; DROP TABLE activity_log; --")
         assert result["total"] == 0
 

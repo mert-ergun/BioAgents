@@ -11,20 +11,19 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import tempfile
 from pathlib import Path
 
 from langchain_core.tools import BaseTool, tool
 
+from bioagents.sandbox.workspace import to_portable_path
+from bioagents.tools.workspace_paths import resolve_input_file, resolve_output_dir
+
 logger = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------------
-# Constants
-# ---------------------------------------------------------------------------
 
-# Workspace base directory for file operations (prevents path traversal)
-_WORKSPACE_BASE = Path(os.environ.get("BIOAGENTS_SANDBOX_DIR", str(Path.cwd()))).resolve()
+_PDB_SUFFIXES = (".pdb", ".ent", ".cif", ".pdbqt")
+_PDBQT_SUFFIXES = (".pdbqt",)
 
 # Distance cutoffs for interaction analysis (Angstroms)
 HBOND_DISTANCE_CUTOFF = 3.5
@@ -33,41 +32,23 @@ HYDROPHOBIC_DISTANCE_CUTOFF = 4.0
 # Max SMILES length to prevent resource exhaustion
 MAX_SMILES_LENGTH = 1000
 
-# Water residue names to strip during receptor preparation
 _WATER_RESNAMES = {"HOH", "WAT", "DOD", "TIP3", "H2O"}
 
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-
-def _validate_path(path_str: str) -> Path:
-    """Validate a file path stays within the allowed workspace.
-
-    Args:
-        path_str: Raw file path string to validate.
-
-    Returns:
-        Resolved Path object.
+def _output_file(path_str: str) -> Path:
+    """Validate an output file path, anchoring relative paths at the run workspace.
 
     Raises:
-        ValueError: If path traversal is detected or path is outside workspace.
+        ValueError: If path traversal is detected or path is outside the allowed roots.
     """
-    resolved = Path(path_str).resolve()
-    # Block obvious traversal attempts
-    if ".." in Path(path_str).parts:
-        raise ValueError(f"Path traversal rejected: {path_str}")
-    # Allow absolute paths under workspace, and all relative paths
-    if (
-        resolved.is_absolute()
-        and not str(resolved).startswith(str(_WORKSPACE_BASE))
-        and not str(resolved).startswith(tempfile.gettempdir())
-    ):
-        raise ValueError(
-            f"Path outside allowed workspace: {path_str}. Workspace: {_WORKSPACE_BASE}"
-        )
-    return resolved
+    raw = Path(path_str)
+    parent = str(raw.parent) if str(raw.parent) != "." else None
+    return resolve_output_dir(parent) / raw.name
+
+
+def _resolve_input(path_str: str, label: str, suffixes: tuple[str, ...]) -> Path:
+    """Resolve an existing input file (workspace-, project-, container-relative or absolute)."""
+    return resolve_input_file(path_str, label=label, suffixes=suffixes)
 
 
 def _parse_pdb_structure(path: Path, name: str = "structure"):
@@ -85,7 +66,6 @@ def _parse_pdb_structure(path: Path, name: str = "structure"):
     """
     from Bio.PDB import PDBParser
 
-    # Check file content is not empty or obviously non-PDB
     content = path.read_text(errors="replace").strip()
     if not content:
         raise ValueError(f"PDB file is empty: {path}")
@@ -163,11 +143,8 @@ def _pdb_to_pdbqt(pdb_path: str, output_path: str | None = None) -> dict:
         }
 
     try:
-        path = _validate_path(pdb_path)
-        if not path.exists():
-            return {"status": "error", "message": f"PDB file not found: {pdb_path}"}
-
-        out = _validate_path(output_path) if output_path is not None else path.with_suffix(".pdbqt")
+        path = _resolve_input(pdb_path, "Receptor PDB", _PDB_SUFFIXES)
+        out = _output_file(output_path) if output_path is not None else path.with_suffix(".pdbqt")
 
         structure = _parse_pdb_structure(path, name="receptor")
 
@@ -178,7 +155,6 @@ def _pdb_to_pdbqt(pdb_path: str, output_path: str | None = None) -> dict:
             res = atom.get_parent()
             chain = res.get_parent()
 
-            # Skip non-standard residues and waters
             hetflag = res.id[0]
             if hetflag != " ":
                 continue
@@ -203,11 +179,11 @@ def _pdb_to_pdbqt(pdb_path: str, output_path: str | None = None) -> dict:
 
         return {
             "status": "success",
-            "file_path": str(out.absolute()),
+            "file_path": to_portable_path(out),
             "atom_count": atom_serial,
         }
 
-    except ValueError as e:
+    except (ValueError, FileNotFoundError) as e:
         return {"status": "error", "message": str(e)}
     except Exception as e:
         logger.error("Error preparing receptor: %s", e)
@@ -251,7 +227,6 @@ def _smiles_to_pdbqt(smiles: str, output_path: str | None = None) -> dict:
 
         mol = Chem.AddHs(mol)
 
-        # Generate 3D coordinates
         result = AllChem.EmbedMolecule(mol, randomSeed=42)
         if result == -1:
             result = AllChem.EmbedMolecule(
@@ -263,17 +238,14 @@ def _smiles_to_pdbqt(smiles: str, output_path: str | None = None) -> dict:
                 "message": f"Could not generate 3D coordinates for: {smiles}",
             }
 
-        # Energy minimization
         AllChem.MMFFOptimizeMolecule(mol, maxIters=500)
 
-        # Compute properties
         mw = round(Descriptors.ExactMolWt(mol), 2)
         logp = round(Descriptors.MolLogP(mol), 2)
         hbd = Descriptors.NumHDonors(mol)
         hba = Descriptors.NumHAcceptors(mol)
         rotatable_bonds = Descriptors.NumRotatableBonds(mol)
 
-        # Convert to PDBQT
         preparator = MoleculePreparation()
         mol_setups = preparator.prepare(mol)
         pdbqt_str, _, _ = PDBQTWriterLegacy.write_string(mol_setups[0])
@@ -282,13 +254,13 @@ def _smiles_to_pdbqt(smiles: str, output_path: str | None = None) -> dict:
             tmp = tempfile.mkdtemp(prefix="bioagents_dock_")
             output_path = str(Path(tmp) / "ligand.pdbqt")
 
-        validated_out = _validate_path(output_path)
+        validated_out = _output_file(output_path)
         with validated_out.open("w") as f:
             f.write(pdbqt_str)
 
         return {
             "status": "success",
-            "file_path": str(validated_out.absolute()),
+            "file_path": to_portable_path(validated_out),
             "smiles": smiles,
             "properties": {
                 "molecular_weight": mw,
@@ -300,7 +272,7 @@ def _smiles_to_pdbqt(smiles: str, output_path: str | None = None) -> dict:
             },
         }
 
-    except ValueError as e:
+    except (ValueError, FileNotFoundError) as e:
         return {"status": "error", "message": str(e)}
     except Exception as e:
         logger.error("Error preparing ligand: %s", e)
@@ -341,11 +313,6 @@ def _parse_docking_output(pdbqt_path: str) -> list[dict]:
     return poses
 
 
-# ---------------------------------------------------------------------------
-# LangChain Tool Definitions
-# ---------------------------------------------------------------------------
-
-
 @tool
 def prepare_receptor(
     pdb_path: str,
@@ -367,7 +334,7 @@ def prepare_receptor(
     """
     try:
         if output_dir:
-            validated_dir = _validate_path(output_dir)
+            validated_dir = resolve_output_dir(output_dir)
             name = Path(pdb_path).stem + ".pdbqt"
             out = str(validated_dir / name)
         else:
@@ -375,7 +342,7 @@ def prepare_receptor(
 
         result = _pdb_to_pdbqt(pdb_path, out)
         return json.dumps(result, indent=2)
-    except ValueError as e:
+    except (ValueError, FileNotFoundError) as e:
         return json.dumps({"status": "error", "message": str(e)})
 
 
@@ -400,16 +367,13 @@ def prepare_ligand(
         JSON string with preparation status, file path, and molecular properties.
     """
     try:
-        if output_dir:
-            validated_dir = _validate_path(output_dir)
-            validated_dir.mkdir(parents=True, exist_ok=True)
-            out = str(validated_dir / f"{ligand_name}.pdbqt")
-        else:
-            out = None
+        # Default to the shared workspace so the docking step (and other agents) can find it.
+        validated_dir = resolve_output_dir(output_dir, default_subdir="docking")
+        out = str(validated_dir / f"{ligand_name}.pdbqt")
 
         result = _smiles_to_pdbqt(smiles, out)
         return json.dumps(result, indent=2)
-    except ValueError as e:
+    except (ValueError, FileNotFoundError) as e:
         return json.dumps({"status": "error", "message": str(e)})
 
 
@@ -461,37 +425,22 @@ def run_docking(
         )
 
     try:
-        # Validate input file paths
-        rec_path = _validate_path(receptor_pdbqt_path)
-        lig_path = _validate_path(ligand_pdbqt_path)
+        rec_path = _resolve_input(receptor_pdbqt_path, "Receptor PDBQT", _PDBQT_SUFFIXES)
+        lig_path = _resolve_input(ligand_pdbqt_path, "Ligand PDBQT", _PDBQT_SUFFIXES)
 
-        for path_obj, label in [(rec_path, "Receptor"), (lig_path, "Ligand")]:
-            if not path_obj.exists():
-                return json.dumps(
-                    {"status": "error", "message": f"{label} file not found: {path_obj}"}
-                )
+        # Default to the shared workspace so other agents can open the poses.
+        out_dir = resolve_output_dir(output_dir, default_subdir="docking")
 
-        # Resolve output directory
-        if output_dir:
-            out_dir = _validate_path(output_dir)
-            out_dir.mkdir(parents=True, exist_ok=True)
-        else:
-            out_dir = Path(tempfile.mkdtemp(prefix="bioagents_dock_"))
-
-        # Initialize Vina
         v = Vina(sf_name="vina")
         v.set_receptor(str(rec_path))
         v.set_ligand_from_file(str(lig_path))
 
-        # Compute affinity maps
         center = [center_x, center_y, center_z]
         box_size = [box_size_x, box_size_y, box_size_z]
         v.compute_vina_maps(center=center, box_size=box_size)
 
-        # Run docking
         v.dock(exhaustiveness=exhaustiveness, n_poses=num_poses)
 
-        # Extract energies with defensive length check
         energies = v.energies()
         poses: list[dict] = []
         for i, energy_row in enumerate(energies):
@@ -512,12 +461,10 @@ def run_docking(
         if not poses:
             return json.dumps({"status": "error", "message": "Docking produced no valid poses."})
 
-        # Save poses
         ligand_stem = lig_path.stem
         poses_path = out_dir / f"{ligand_stem}_docked.pdbqt"
         v.write_poses(str(poses_path), n_poses=num_poses)
 
-        # Parse the output for RMSD information
         parsed_poses = _parse_docking_output(str(poses_path))
         for i, pose in enumerate(poses):
             if i < len(parsed_poses):
@@ -535,12 +482,12 @@ def run_docking(
                 "exhaustiveness": exhaustiveness,
                 "num_poses": len(poses),
                 "poses": poses,
-                "docked_poses_file": str(poses_path.absolute()),
+                "docked_poses_file": to_portable_path(poses_path),
             },
             indent=2,
         )
 
-    except ValueError as e:
+    except (ValueError, FileNotFoundError) as e:
         return json.dumps({"status": "error", "message": str(e)})
     except Exception as e:
         logger.error("Error running docking: %s", e)
@@ -584,9 +531,7 @@ def identify_binding_site(
         )
 
     try:
-        path = _validate_path(pdb_path)
-        if not path.exists():
-            return json.dumps({"status": "error", "message": f"PDB file not found: {pdb_path}"})
+        path = _resolve_input(pdb_path, "Receptor PDB", _PDB_SUFFIXES)
 
         structure = _parse_pdb_structure(path, name="protein")
         model = structure[0]
@@ -649,7 +594,7 @@ def identify_binding_site(
             indent=2,
         )
 
-    except ValueError as e:
+    except (ValueError, FileNotFoundError) as e:
         return json.dumps({"status": "error", "message": str(e)})
     except Exception as e:
         logger.error("Error identifying binding site: %s", e)
@@ -695,31 +640,17 @@ def analyze_docking_results(
         )
 
     try:
-        poses_path = _validate_path(docked_poses_path)
-        if not poses_path.exists():
-            return json.dumps(
-                {
-                    "status": "error",
-                    "message": f"Docked poses file not found: {docked_poses_path}",
-                }
-            )
-
-        rec_path = _validate_path(receptor_pdb_path)
-        if not rec_path.exists():
-            return json.dumps(
-                {"status": "error", "message": f"Receptor file not found: {receptor_pdb_path}"}
-            )
+        poses_path = _resolve_input(docked_poses_path, "Docked poses file", _PDBQT_SUFFIXES)
+        rec_path = _resolve_input(receptor_pdb_path, "Receptor PDB", _PDB_SUFFIXES)
 
         parsed_poses = _parse_docking_output(str(poses_path))
 
         rec_structure = _parse_pdb_structure(rec_path, name="receptor")
         lig_structure = _parse_pdb_structure(poses_path, name="ligand")
 
-        # Analyze best pose (first model)
         best_pose = parsed_poses[0] if parsed_poses else {}
         lig_model = lig_structure[0]
 
-        # Collect receptor atoms
         rec_atoms: list[dict] = []
         for atom in rec_structure[0].get_atoms():
             res = atom.get_parent()
@@ -735,7 +666,6 @@ def analyze_docking_results(
                 }
             )
 
-        # Collect ligand atoms (first model only)
         lig_atoms: list[dict] = []
         for atom in lig_model.get_atoms():
             element = atom.element.strip().upper()
@@ -753,12 +683,10 @@ def analyze_docking_results(
         # Use the wider of distance_cutoff and the interaction-specific cutoffs
         max_detection_dist = max(distance_cutoff, HYDROPHOBIC_DISTANCE_CUTOFF)
 
-        # Interaction element sets
         hbond_elements = {"N", "O"}
         hydrophobic_elements = {"C"}
 
         interactions: list[dict] = []
-        # Use consistent keys matching interaction_type values
         residue_contacts: dict[str, dict] = {}
 
         for lig_atom in lig_atoms:
@@ -805,7 +733,6 @@ def analyze_docking_results(
                         }
                     )
 
-        # Summarize unique residues
         contact_summary = []
         for residue, counts in sorted(residue_contacts.items()):
             contact_summary.append({"residue": residue, **counts})
@@ -830,7 +757,7 @@ def analyze_docking_results(
             indent=2,
         )
 
-    except ValueError as e:
+    except (ValueError, FileNotFoundError) as e:
         return json.dumps({"status": "error", "message": str(e)})
     except Exception as e:
         logger.error("Error analyzing docking results: %s", e)

@@ -33,14 +33,19 @@ DOCKING_AGENT_PROMPT = (
     "## Important Rules\n"
     "- ALWAYS use your tools to perform actual docking computations. NEVER fabricate or "
     "hallucinate docking scores, binding affinities, or interaction data.\n"
-    "- If a required file does not exist, report the error clearly.\n"
+    "- File paths may be given relative to the shared workspace (e.g. "
+    "`001_task/4GV1.pdb`), relative to the project root, as `/app/...` container paths "
+    "or as absolute paths; file names are matched case-insensitively. If a file is not "
+    "found, the error lists the files that do exist — retry with one of those paths "
+    "before reporting the file as missing.\n"
     "- If docking fails, report the actual error and suggest alternatives.\n"
     "- Report all binding affinity scores in kcal/mol with proper sign conventions.\n"
     "- Discuss ADMET considerations (Lipinski Rule of 5, molecular properties) based on "
     "the actual computed properties from prepare_ligand.\n"
     "- When multiple ligands are docked, compare their binding affinities and interaction "
     "profiles to identify the best candidate.\n"
-    "- Output docked pose files are saved to the working directory for further analysis."
+    "- Prepared ligands and docked poses are saved under `docking/` in the shared "
+    "workspace by default; report the paths returned by the tools."
 )
 
 
