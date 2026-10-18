@@ -39,7 +39,6 @@ class TestGetOrCreateRateLimiter:
         limiter1 = _get_or_create_rate_limiter("test_shared", 15)
         limiter2 = _get_or_create_rate_limiter("test_shared", 15)
 
-        # Should be the exact same object
         assert limiter1 is limiter2
 
 
@@ -107,7 +106,6 @@ class TestGetLLM:
 
             result = get_llm(provider="openai")
 
-            # Should return a rate-limited wrapper around timeout-bounded LLM
             assert isinstance(result, RateLimitedLLM)
             assert isinstance(result.llm, TimeoutBoundLLM)
             assert result.llm._llm == mock_llm
@@ -148,7 +146,6 @@ class TestGetLLM:
 
             result = get_llm(provider="ollama")
 
-            # Should return a rate-limited wrapper
             assert isinstance(result, RateLimitedLLM)
 
     @patch.dict(os.environ, {"GEMINI_API_KEY": "test-gemini-key"}, clear=True)
@@ -181,7 +178,6 @@ class TestGetLLM:
 
             result = get_llm(provider="gemini")
 
-            # Gemini should have default rate limiting of 8 requests/minute
             assert isinstance(result, RateLimitedLLM)
 
     @patch.dict(os.environ, {"GEMINI_API_KEY": "test-key", "GEMINI_RATE_LIMIT": "15"}, clear=True)
@@ -194,7 +190,6 @@ class TestGetLLM:
             result = get_llm(provider="gemini")
 
             assert isinstance(result, RateLimitedLLM)
-            # Rate limiter should be set to 15 requests/minute
             assert result.rate_limiter.max_requests == 15
 
     @patch.dict(os.environ, {"LLM_PROVIDER": "openai", "OPENAI_API_KEY": "test-key"}, clear=True)

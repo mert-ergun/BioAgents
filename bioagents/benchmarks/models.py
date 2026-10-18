@@ -19,7 +19,6 @@ class STELLATask:
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "STELLATask":
         """Create STELLATask from dictionary."""
-        # Handle task_name which might be a string directly
         task_name = data.get("task_name", "")
         if isinstance(task_name, dict):
             # If it's a dict, try to extract the value
@@ -27,14 +26,12 @@ class STELLATask:
         elif not isinstance(task_name, str):
             task_name = str(task_name)
 
-        # Handle task_type which might be a string directly
         task_type = data.get("task_type", "")
         if isinstance(task_type, dict):
             task_type = next(iter(task_type.values())) if task_type else ""
         elif not isinstance(task_type, str):
             task_type = str(task_type)
 
-        # Handle task_description
         task_description = data.get("task_description", "")
         if isinstance(task_description, dict):
             task_description = next(iter(task_description.values())) if task_description else ""
@@ -63,19 +60,14 @@ class STELLATask:
                 if query_str.strip():
                     return query_str
 
-        # Use task description if available and non-empty
         if self.task_description and self.task_description.strip():
             return self.task_description
 
-        # Fall back to task_type if description is empty
         if self.task_type and self.task_type.strip():
             return self.task_type
 
         # Last resort: use task name
         if self.task_name:
-            # Convert task name to a more readable query
-            # e.g., "Non_cutter_Restriction_Enzyme_Identification_pCMV_PE6c" ->
-            # "Identify all restriction enzymes that do NOT cut within the pCMV-PE6c plasmid sequence"
             name = self.task_name.replace("_", " ")
             return name
 

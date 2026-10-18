@@ -252,7 +252,6 @@ class TestToolRegistry:
         """Test filtering by category."""
         temp_registry.register_tool(sample_tool)
 
-        # Add another tool with different category
         other_tool = ToolDefinition(
             name="other_tool",
             description="Another tool",
@@ -324,11 +323,9 @@ class TestToolRegistry:
 
     def test_persistence(self, tmp_path, sample_tool):
         """Test that registry persists across instances."""
-        # Create first instance and add tool
         registry1 = ToolRegistry(tools_dir=tmp_path)
         registry1.register_tool(sample_tool)
 
-        # Create second instance - should load the same tool
         registry2 = ToolRegistry(tools_dir=tmp_path)
 
         assert registry2.get_tool("sample_tool") is not None
@@ -431,7 +428,6 @@ class TestGraphIntegration:
         """Test that the graph includes tool_builder node."""
         from bioagents.graph import create_graph
 
-        # Mock all agent creations to avoid API calls
         mock_summary.return_value = MagicMock()
         mock_supervisor.return_value = MagicMock()
         mock_research.return_value = MagicMock()
@@ -444,10 +440,8 @@ class TestGraphIntegration:
         mock_dl.return_value = MagicMock()
         mock_coder.return_value = MagicMock()
 
-        # This should not raise an exception
         graph = create_graph()
 
-        # Check that the graph was created
         assert graph is not None
 
 
@@ -458,7 +452,6 @@ class TestToolBuilderAgent:
         """Test agent creation."""
         from bioagents.agents.tool_builder_agent import create_tool_builder_agent
 
-        # Mock the LLM to avoid API calls
         with patch("bioagents.agents.tool_builder_agent.get_llm") as mock_get_llm:
             mock_llm = MagicMock()
             mock_llm.bind_tools = MagicMock(return_value=mock_llm)

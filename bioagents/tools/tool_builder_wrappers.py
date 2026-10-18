@@ -35,7 +35,6 @@ def create_smolagent_tool_from_registry(tool_name: str) -> SmolTool:
     if tool_def is None:
         raise ValueError(f"Tool '{tool_name}' not found in registry")
 
-    # Build inputs schema
     inputs_schema = {}
     for param in tool_def.parameters:
         inputs_schema[param.name] = {
@@ -44,7 +43,6 @@ def create_smolagent_tool_from_registry(tool_name: str) -> SmolTool:
             "nullable": not param.required,
         }
 
-    # Capture values for class definition
     _tool_name = tool_def.name
     _tool_desc = tool_def.description
     _tool_inputs = inputs_schema
@@ -361,8 +359,7 @@ class RequestNewToolTool(Tool):
         output_description: str,
         suggested_software: str | None = None,
     ) -> str:
-        # This creates a request that the Tool Builder Agent can process
-        # In a full implementation, this would add to a queue or trigger the agent
+        # Stub: a full implementation would queue this for the Tool Builder Agent.
 
         request = {
             "request_type": "new_tool",
@@ -378,7 +375,6 @@ class RequestNewToolTool(Tool):
             ),
         }
 
-        # Log the request for the supervisor to pick up
         logger.info(f"New tool request: {task_description}")
 
         return json.dumps(request, indent=2)

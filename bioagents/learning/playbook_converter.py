@@ -24,7 +24,6 @@ def extract_instructions(xml_root: ET.Element) -> list[dict[str, str]]:
     for idx, inst_elem in enumerate(instructions_elem.findall("instruction")):
         content = inst_elem.text or ""
         priority = inst_elem.get("priority", "medium")
-        # Generate a simple ID for tracking
         inst_id = f"inst-{idx:05d}"
 
         instructions.append(
@@ -88,7 +87,6 @@ def xml_to_playbook(xml_prompt: str, agent_name: str) -> str:  # noqa: ARG001
 
         sections[section].append(inst)
 
-    # Build playbook
     playbook_lines = []
     for section_name, section_instructions in sections.items():
         if section_instructions:
@@ -96,7 +94,6 @@ def xml_to_playbook(xml_prompt: str, agent_name: str) -> str:  # noqa: ARG001
             playbook_lines.append("")
 
             for inst in section_instructions:
-                # Convert to playbook format: [id] helpful=0 harmful=0 :: content
                 bullet_id = inst["id"]
                 content = inst["content"]
                 line = f"[{bullet_id}] helpful=0 harmful=0 :: {content}"
@@ -132,18 +129,15 @@ def apply_delta_updates(xml_root: ET.Element, operations: list[dict], next_id: i
         priority = op.get("priority", "medium")
 
         if op_type == "ADD":
-            # Add new instruction
             new_inst = ET.SubElement(instructions_elem, "instruction")
             new_inst.set("priority", priority)
             new_inst.text = content
 
-            # Generate ID for tracking (will be mapped in playbook)
             add_inst_id = f"inst-{current_id:05d}"
             new_inst.set("ace_id", add_inst_id)  # Store for mapping
             current_id += 1
 
         elif op_type == "UPDATE":
-            # Update existing instruction (by ID or content match)
             update_inst_id: str | None = op.get("id")
             if update_inst_id:
                 for inst in instructions_elem.findall("instruction"):
@@ -155,7 +149,6 @@ def apply_delta_updates(xml_root: ET.Element, operations: list[dict], next_id: i
                         break
 
         elif op_type == "DELETE":
-            # Delete instruction by ID
             delete_inst_id: str | None = op.get("id")
             if delete_inst_id:
                 for inst in instructions_elem.findall("instruction"):
@@ -182,24 +175,19 @@ def playbook_to_xml(playbook: str, xml_template: str) -> str:
     """
     from bioagents.learning.playbook_manager import _parse_playbook_line
 
-    # Parse XML template
     root = ET.fromstring(xml_template)  # nosec B314
 
-    # Find or create instructions element
     instructions_elem = root.find("instructions")
     if instructions_elem is None:
         instructions_elem = ET.SubElement(root, "instructions")
 
-    # Parse playbook to extract bullets
     playbook_lines = playbook.strip().split("\n")
     bullets_to_add = []
 
     for line in playbook_lines:
-        # Skip section headers and empty lines
         if line.strip().startswith("#") or not line.strip():
             continue
 
-        # Parse bullet line
         parsed = _parse_playbook_line(line)
         if parsed:
             helpful = parsed.get("helpful", 0) or 0
@@ -219,15 +207,12 @@ def playbook_to_xml(playbook: str, xml_template: str) -> str:
                     }
                 )
 
-    # Sort by score (most helpful first)
     bullets_to_add.sort(key=lambda x: x["score"], reverse=True)
 
-    # Add bullets as instructions to XML
     # Priority: high if score > 10, medium if score > 5, low otherwise
     for bullet in bullets_to_add:
         new_inst = ET.SubElement(instructions_elem, "instruction")
 
-        # Set priority based on helpful score
         score_raw: Any = bullet.get("score", 0)
         score: int = score_raw if isinstance(score_raw, int) else 0
         if score > 10:
@@ -241,13 +226,11 @@ def playbook_to_xml(playbook: str, xml_template: str) -> str:
         bullet_content = bullet.get("content", "")
         if isinstance(bullet_content, str):
             new_inst.text = bullet_content
-        # Store playbook metadata
         bullet_helpful = bullet.get("helpful", 0)
         bullet_harmful = bullet.get("harmful", 0)
         new_inst.set("ace_helpful", str(bullet_helpful))
         new_inst.set("ace_harmful", str(bullet_harmful))
 
-    # Convert back to string
     return ET.tostring(root, encoding="unicode")
 
 
@@ -272,7 +255,6 @@ def load_xml_prompt(agent_name: str) -> str:
     except Exception:  # nosec B110
         pass
 
-    # Fallback: try to load directly
     base_path = Path(__file__).parent.parent.parent
     prompt_path = base_path / "bioagents" / "prompts" / f"{agent_name}.xml"
     if prompt_path.exists():

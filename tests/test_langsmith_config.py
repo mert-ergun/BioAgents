@@ -173,7 +173,6 @@ class TestGetLangSmithConfig:
             assert config["configurable"]["langsmith"]["enabled"] is True
             assert config["configurable"]["langsmith"]["project"] == "test-project"
 
-            # Should set env vars
             assert os.environ["LANGCHAIN_API_KEY"] == "test-key"
             assert os.environ["LANGCHAIN_PROJECT"] == "test-project"
             assert os.environ["LANGCHAIN_ENDPOINT"] == "https://test.endpoint"
@@ -229,7 +228,6 @@ class TestSetupLangSmithEnvironment:
         """Test does nothing when disabled."""
         with patch.dict(os.environ, {"LANGCHAIN_TRACING_V2": "false"}, clear=True):
             setup_langsmith_environment()
-            # Should not change anything
             assert os.environ.get("LANGCHAIN_TRACING_V2") == "false"
 
     def test_raises_when_invalid(self):
@@ -251,7 +249,6 @@ class TestSetupLangSmithEnvironment:
         with patch.dict(os.environ, initial_env, clear=True):
             setup_langsmith_environment()
 
-            # Check mirrored variables
             assert os.environ["LANGSMITH_API_KEY"] == "test-key"
             assert os.environ["LANGSMITH_PROJECT"] == "test-project"
             assert os.environ["LANGSMITH_ENDPOINT"] == "https://test.endpoint"

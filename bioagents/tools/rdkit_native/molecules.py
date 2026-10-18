@@ -16,9 +16,8 @@ from bioagents.tools.rdkit_native._common import (
 
 logger = logging.getLogger(__name__)
 
-# Repair strategies, tried in order of how much they alter the input. Each returns a
-# candidate SMILES string or None, and carries the confidence we have in a molecule
-# recovered that way.
+# Repair strategies ordered by how much they alter the input; each returns a candidate
+# SMILES (or None) plus the confidence in a molecule recovered that way.
 _REPAIR_CONFIDENCE = {
     "as_written": 1.0,
     "sanitize_relaxed": 0.8,
@@ -142,10 +141,8 @@ def _repair_candidates(raw: str):
         yield "strip_whitespace", stripped
     if "[" in raw and ":" in raw:
         yield "drop_atom_maps", re.sub(r":\d+(?=\])", "", raw)
-    # Lowercase halogens are a common hand-typing slip: 'cl' means aromatic-C + L.
-    # 'cl'/'br' typed in lowercase parse as aromatic-c + L, which is never valid. A
-    # following lowercase letter is a legitimate aromatic atom, so it must not block
-    # the fix (e.g. 'clc1ccccc1' -> 'Clc1ccccc1').
+    # Lowercase 'cl'/'br' are typing slips that parse as aromatic-c + L, which is never valid.
+    # A following lowercase letter is a legitimate aromatic atom, so it must not block the fix.
     fixed_halogens = re.sub(r"(?<![A-Za-z\[])(cl|br)", lambda m: m.group(0).title(), raw)
     if fixed_halogens != raw:
         yield "uppercase_halogens", fixed_halogens

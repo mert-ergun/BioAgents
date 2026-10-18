@@ -25,10 +25,6 @@ from bioagents.workflows.drug_discovery.schemas import (
 from bioagents.workflows.node import WorkflowNode
 from bioagents.workflows.schemas import NodeMetadata
 
-# ---------------------------------------------------------------------------
-# Structure readiness
-# ---------------------------------------------------------------------------
-
 
 class StructureReadinessNode(WorkflowNode):
     workflow_type_id: ClassVar[str] = "dd_structure_readiness"
@@ -78,10 +74,7 @@ class StructureReadinessNode(WorkflowNode):
             pid = first.get("pdb_id")
             if pid:
                 pkg["pdb_id"] = pid
-                # Holo assumed when the first-ranked entry is present — real
-                # implementation would inspect ligand records; we stay honest
-                # and label as "holo" only if a native_ligand_smiles is provided
-                # upstream, else "apo".
+                # Labelled "holo" only when native_ligand_smiles is supplied upstream, else "apo".
                 pkg["kind"] = "apo"
                 pkg["preparation_notes"] = f"Selected top PDB entry {pid}."
                 pkg["confidence_metric"] = float(first.get("score") or 0.0)
@@ -101,11 +94,6 @@ class StructureReadinessNode(WorkflowNode):
             "box_size": [20.0, 20.0, 20.0],
         }
         return {"structure_package": pkg}
-
-
-# ---------------------------------------------------------------------------
-# Docking and Boltz lanes (stubs by default)
-# ---------------------------------------------------------------------------
 
 
 def _score_smiles_against_receptor(smiles: str, seed_key: str) -> float:
@@ -252,7 +240,6 @@ class BoltzComplexStubNode(WorkflowNode):
             if not isinstance(smi, str):
                 continue
             seed = stable_seed(smi, receptor, "boltz")
-            # Sigmoid over descriptor-based affinity; deterministic.
             desc_score = _score_smiles_against_receptor(smi, f"boltz:{receptor}")
             prob = 1.0 / (1.0 + math.exp(-(-desc_score - 5.5)))
             jitter = (seed % 1000) / 1000.0 * 0.1 - 0.05
@@ -312,11 +299,6 @@ class PlipInteractionsStubNode(WorkflowNode):
             ]
             out.append({"smiles": smi, "contacts": contacts})
         return {"interactions": out, "stub": True}
-
-
-# ---------------------------------------------------------------------------
-# Real computation over stub outputs
-# ---------------------------------------------------------------------------
 
 
 class RedockingValidationNode(WorkflowNode):

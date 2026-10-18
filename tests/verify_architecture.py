@@ -18,11 +18,9 @@ def verify_agent_functions_return_dicts():
     """Verify agent functions return proper dict structure."""
     from bioagents.agents.research_agent import create_research_agent
 
-    # Mock tools
     mock_tools = []
     agent_func = create_research_agent(mock_tools)
 
-    # Call with minimal state
     state = {"messages": [HumanMessage(content="test")], "memory": {}}
 
     result = agent_func(state)

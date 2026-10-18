@@ -73,11 +73,7 @@ def create_report_agent():
             memory = state.get("memory", {}) or {}
             messages = state.get("messages", []) or []
 
-            # ── FIX: idempotency guard ──────────────────────────────────────────
-            # If report memory already holds a successful result, skip re-running
-            # the LLM entirely and return the cached data.  This prevents the
-            # agent from doing duplicate work when the supervisor mistakenly
-            # routes here a second time.
+            # Idempotency guard: return the cached report if memory already holds a success.
             existing_report = memory.get("report", {})
             if existing_report.get("status") == "success" and existing_report.get("data"):
                 logger.info(
@@ -92,9 +88,7 @@ def create_report_agent():
                     "error": None,
                     "messages": [AIMessage(content=cached_raw or "Report (cached)", name="Report")],
                 }
-            # ───────────────────────────────────────────────────────────────────
 
-            # Find user message
             for m in messages:
                 if isinstance(m, HumanMessage):
                     break
@@ -130,7 +124,6 @@ def format_memory_for_report(memory: dict) -> str:
     """
     lines = []
 
-    # List all agents and their status
     lines.append("Available Agent Results:")
     lines.append("-" * 50)
 
@@ -145,7 +138,6 @@ def format_memory_for_report(memory: dict) -> str:
                 lines.append(f"  Errors: {agent_data.get('errors')}")
             continue
 
-        # Include structured data if available
         if agent_data.get("data") and isinstance(agent_data["data"], dict):
             lines.append("  Data:")
             try:
@@ -155,7 +147,6 @@ def format_memory_for_report(memory: dict) -> str:
             except (TypeError, ValueError):
                 lines.append(f"  {agent_data['data']!s}")
 
-        # Include raw output as fallback
         if agent_data.get("raw_output") and not agent_data.get("data"):
             raw = agent_data["raw_output"]
             if isinstance(raw, str):
@@ -180,7 +171,6 @@ def parse_report_json(text: str, memory: dict) -> dict:
 
     text = text.strip()
 
-    # Strategy 1: Direct JSON parse
     try:
         parsed = json.loads(text)
         if isinstance(parsed, dict) and "title" in parsed:
@@ -188,7 +178,6 @@ def parse_report_json(text: str, memory: dict) -> dict:
     except json.JSONDecodeError:
         pass
 
-    # Strategy 2: Extract JSON from markdown or text
     json_match = re.search(r"\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}", text, re.DOTALL)
     if json_match:
         try:
@@ -199,9 +188,7 @@ def parse_report_json(text: str, memory: dict) -> dict:
         except json.JSONDecodeError:
             pass
 
-    # Strategy 3: Try to fix common JSON issues
     try:
-        # Remove markdown code blocks
         fixed_text = re.sub(r"```json\n?", "", text)
         fixed_text = re.sub(r"```\n?", "", fixed_text)
         fixed_text = fixed_text.strip()
@@ -213,7 +200,6 @@ def parse_report_json(text: str, memory: dict) -> dict:
     except json.JSONDecodeError:
         pass
 
-    # Strategy 4: If all parsing fails, create fallback from raw text
     logger.warning(f"Could not parse report JSON. Creating fallback. Text: {text[:200]}")
     return create_fallback_report(text, memory)
 
@@ -231,10 +217,8 @@ def create_fallback_report(raw_text: str, memory: dict) -> dict:
     """
     from datetime import datetime
 
-    # Extract which agents completed
     completed_agents = [k for k, v in memory.items() if v.get("status") == "success"]
 
-    # Build sections from memory
     sections = []
     key_findings = []
 
@@ -243,7 +227,6 @@ def create_fallback_report(raw_text: str, memory: dict) -> dict:
         if agent_mem.get("status") != "success":
             continue
 
-        # Add section for this agent's findings
         if agent_mem.get("data"):
             sections.append(
                 {
@@ -252,14 +235,12 @@ def create_fallback_report(raw_text: str, memory: dict) -> dict:
                 }
             )
 
-            # Extract findings from data
             if isinstance(agent_mem["data"], dict):
                 if "key_findings" in agent_mem["data"]:
                     key_findings.extend(agent_mem["data"]["key_findings"])
                 elif "fetched_sequences" in agent_mem["data"]:
                     key_findings.append(f"Retrieved sequence data for {agent_name}")
 
-    # If no sections from memory, use raw text
     if not sections and raw_text:
         sections.append({"name": "Analysis Results", "content": raw_text[:500]})
 

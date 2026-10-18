@@ -51,17 +51,14 @@ def create_rdkit_validator_agent(llm: ChatOpenAI | None = None):
         try:
             messages = state.get("messages", [])
 
-            # Extract SMILES from the most recent user message
             smiles_list = []
             for msg in reversed(messages):
                 if isinstance(msg, HumanMessage):
                     raw = msg.content
                     text = raw if isinstance(raw, str) else str(raw)
-                    # Parse SMILES from message (simple extraction)
-                    # Looking for patterns like: CCO, c1ccccc1, etc.
+                    # Crude SMILES extraction: words containing chemical notation.
                     words = text.split()
                     for word in words:
-                        # Check if word looks like SMILES (contains chemical notation)
                         if any(
                             char in word
                             for char in [
@@ -88,7 +85,6 @@ def create_rdkit_validator_agent(llm: ChatOpenAI | None = None):
                 {"smiles": smiles_list, "smirks": [], "request_type": "validate"}
             )
 
-            # Format output message
             output_text = "Validation Report:\n"
             output_text += f"Total inputs: {len(smiles_list)}\n"
             output_text += f"Valid: {len(validation_results['validated_inputs'])}\n"
@@ -104,7 +100,6 @@ def create_rdkit_validator_agent(llm: ChatOpenAI | None = None):
                     if issue["repair_suggestion"]:
                         output_text += f"    Suggestion: {issue['repair_suggestion']}\n"
 
-            # Store in memory
             memory = state.get("memory", {})
             memory["rdkit_validator"] = {
                 "status": "success",
@@ -150,7 +145,6 @@ def _validate_chemistry_inputs(inputs: dict[str, Any]) -> dict[str, Any]:
     smirks_list = inputs.get("smirks", [])
     request_type = inputs.get("request_type", "validate")
 
-    # Normalize to lists
     if isinstance(smiles_list, str):
         smiles_list = [smiles_list] if smiles_list else []
     if isinstance(smirks_list, str):
@@ -159,7 +153,6 @@ def _validate_chemistry_inputs(inputs: dict[str, Any]) -> dict[str, Any]:
     issues = []
     validated_inputs = []
 
-    # Validate SMILES
     for smiles in smiles_list:
         try:
             result = validate_smiles.invoke({"smiles": smiles})
@@ -182,7 +175,6 @@ def _validate_chemistry_inputs(inputs: dict[str, Any]) -> dict[str, Any]:
                         }
                     )
                 else:
-                    # Try to get repair suggestion
                     repair_suggestion = None
                     if request_type == "validate_and_repair":
                         try:
@@ -229,7 +221,6 @@ def _validate_chemistry_inputs(inputs: dict[str, Any]) -> dict[str, Any]:
                 }
             )
 
-    # Validate SMIRKS
     for smirks in smirks_list:
         try:
             result = validate_smirks.invoke({"smirks": smirks})
@@ -286,7 +277,6 @@ def _validate_chemistry_inputs(inputs: dict[str, Any]) -> dict[str, Any]:
                 }
             )
 
-    # Determine recommendation
     error_count = sum(1 for issue in issues if issue["severity"] == "error")
     warning_count = sum(1 for issue in issues if issue["severity"] == "warning")
 
@@ -308,10 +298,6 @@ def _validate_chemistry_inputs(inputs: dict[str, Any]) -> dict[str, Any]:
         "allow_proceeding": True,  # Always allow in suggestive mode
     }
 
-
-# ============================================================================
-# VALIDATOR FUNCTIONS FOR INTEGRATION
-# ============================================================================
 
 _validator_instance: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] | None = None
 

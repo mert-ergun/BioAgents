@@ -81,7 +81,6 @@ class TestCalculateMolecularWeight:
         fasta = ">test\nMASL*KGF"
         result = calculate_molecular_weight.invoke({"fasta_sequence": fasta})
 
-        # Should ignore the * character
         assert "Warning" not in result or "Warning: Unknown amino acids" not in result
 
     def test_calculate_with_gaps(self):
@@ -89,7 +88,6 @@ class TestCalculateMolecularWeight:
         fasta = ">test\nMASL-KGF"
         result = calculate_molecular_weight.invoke({"fasta_sequence": fasta})
 
-        # Should ignore the - character
         assert "Warning" not in result or "Warning: Unknown amino acids" not in result
 
     def test_calculate_with_unknown_amino_acid(self):
@@ -113,7 +111,6 @@ class TestCalculateMolecularWeight:
         """Test error handling for invalid input."""
         result = calculate_molecular_weight.invoke({"fasta_sequence": ""})
 
-        # Should handle empty sequence gracefully
         assert isinstance(result, str)
 
     def test_tool_metadata(self):
@@ -144,7 +141,6 @@ class TestAnalyzeAminoAcidComposition:
         result = analyze_amino_acid_composition.invoke({"fasta_sequence": fasta})
 
         assert "Total amino acids: 20" in result
-        # All amino acids should appear in the report
         for aa in "ARNDCEQGHILKMFPSTWYV":
             assert aa in result
 
@@ -181,7 +177,6 @@ class TestAnalyzeAminoAcidComposition:
         fasta = ">test\nMASL*KGF*"
         result = analyze_amino_acid_composition.invoke({"fasta_sequence": fasta})
 
-        # Should not count * characters
         assert "Total amino acids: 7" in result
 
     def test_analyze_with_gaps(self):
@@ -189,7 +184,6 @@ class TestAnalyzeAminoAcidComposition:
         fasta = ">test\nMASL-KGF-"
         result = analyze_amino_acid_composition.invoke({"fasta_sequence": fasta})
 
-        # Should not count - characters
         assert "Total amino acids: 7" in result
 
     def test_analyze_empty_sequence(self):
@@ -242,9 +236,7 @@ class TestCalculateIsoelectricPoint:
         fasta = ">test\nKKKKKKKKKK"  # 10 lysines
         result = calculate_isoelectric_point.invoke({"fasta_sequence": fasta})
 
-        # Extract pI value - should be high (basic)
         assert "Estimated pI" in result
-        # With many positive charges, pI should be > 7
         lines = result.split("\n")
         pi_line = next(line for line in lines if "Estimated pI" in line)
         pi_value = float(pi_line.split(":")[-1].strip())
@@ -255,7 +247,6 @@ class TestCalculateIsoelectricPoint:
         fasta = ">test\nDDDDDDDDDD"  # 10 aspartic acids
         result = calculate_isoelectric_point.invoke({"fasta_sequence": fasta})
 
-        # Extract pI value - should be low (acidic)
         assert "Estimated pI" in result
         lines = result.split("\n")
         pi_line = next(line for line in lines if "Estimated pI" in line)
@@ -267,7 +258,6 @@ class TestCalculateIsoelectricPoint:
         fasta = ">test\nAAAAAAAAAAA"  # No charged residues
         result = calculate_isoelectric_point.invoke({"fasta_sequence": fasta})
 
-        # Should have a neutral pI estimation
         assert "Estimated pI" in result
 
     def test_calculate_includes_disclaimer(self):
@@ -289,7 +279,6 @@ class TestCalculateIsoelectricPoint:
         """Test error handling for invalid input."""
         result = calculate_isoelectric_point.invoke({"fasta_sequence": ""})
 
-        # Should handle gracefully
         assert isinstance(result, str)
 
     def test_tool_metadata(self):
@@ -317,7 +306,6 @@ class TestAminoAcidWeights:
     def test_weight_ranges(self):
         """Test that weights are in reasonable ranges."""
         for _aa, weight in AMINO_ACID_WEIGHTS.items():
-            # Amino acid weights should be between 50 and 250 Da
             assert 50 < weight < 250
 
     def test_specific_weights(self):

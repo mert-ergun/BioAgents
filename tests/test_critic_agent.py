@@ -55,7 +55,6 @@ class TestCriticAgent:
         state = {"messages": [HumanMessage(content="Test")]}
         agent(state)
 
-        # Check that invoke was called with messages that include system message
         call_args = mock_llm.invoke.call_args[0][0]
         assert len(call_args) >= 2  # System message + user message
         assert isinstance(call_args[0], SystemMessage)

@@ -97,7 +97,6 @@ class TestResearchAgent:
         state = {"messages": [HumanMessage(content="Test")]}
         agent(state)
 
-        # Check that invoke was called with messages that include system message
         call_args = mock_bound_llm.invoke.call_args[0][0]
         assert len(call_args) >= 2  # System message + user message
         assert hasattr(call_args[0], "__class__")
@@ -159,7 +158,6 @@ class TestAnalysisAgent:
         state = {"messages": [HumanMessage(content="Test")]}
         agent(state)
 
-        # Check that invoke was called with messages that include system message
         call_args = mock_bound_llm.invoke.call_args[0][0]
         assert len(call_args) >= 2  # System message + user message
 
@@ -320,7 +318,6 @@ class TestReportAgent:
         state = {"messages": [HumanMessage(content="Test")]}
         agent(state)
 
-        # Report agent shouldn't call bind_tools
         assert not hasattr(mock_llm, "bind_tools") or not mock_llm.bind_tools.called
 
     @patch("bioagents.agents.report_agent.get_llm")
@@ -336,7 +333,6 @@ class TestReportAgent:
         state = {"messages": [HumanMessage(content="Test")]}
         agent(state)
 
-        # Check that invoke was called with messages that include system message
         call_args = mock_llm.invoke.call_args[0][0]
         assert len(call_args) >= 2  # System message + user message
 
@@ -353,13 +349,11 @@ class TestSupervisorAgent:
 
     def test_route_response_validation(self):
         """Test RouteResponse validates agent choices."""
-        # Valid choices
         valid_agents = ["research", "analysis", "report", "FINISH"]
         for agent in valid_agents:
             response = RouteResponse(next_agent=agent, reasoning="Test")
             assert response.next_agent == agent
 
-        # Invalid choice should raise validation error
         import pydantic
 
         with pytest.raises(pydantic.ValidationError):
@@ -387,7 +381,6 @@ class TestSupervisorAgent:
         mock_structured_llm = Mock()
         mock_chain = Mock()
 
-        # Create mock route response
         mock_route_response = RouteResponse(
             next_agent="research", reasoning="Need to fetch protein data"
         )
@@ -396,7 +389,6 @@ class TestSupervisorAgent:
         mock_llm.with_structured_output = Mock(return_value=mock_structured_llm)
         mock_get_llm.return_value = mock_llm
 
-        # Patch the prompt creation to return our mock chain
         with patch(
             "bioagents.agents.supervisor_agent.ChatPromptTemplate.from_messages"
         ) as mock_prompt:
@@ -486,7 +478,6 @@ class TestSupervisorAgent:
         members = ["research", "analysis", "report", "custom_agent"]
         agent = create_supervisor_agent(members)
 
-        # The agent should be created successfully
         assert callable(agent)
 
 
@@ -499,7 +490,6 @@ class TestAgentIntegration:
         mock_llm = Mock()
         mock_bound_llm = Mock()
 
-        # Sub-agent returns a response with tool calls
         mock_response = AIMessage(
             content="Fetching UniProt data",
             tool_calls=[
@@ -542,7 +532,6 @@ class TestAgentIntegration:
         mock_structured_llm = Mock()
         mock_chain = Mock()
 
-        # Simulate routing decisions
         routing_sequence = [
             RouteResponse(next_agent="research", reasoning="Fetch data first"),
             RouteResponse(next_agent="analysis", reasoning="Now analyze the data"),
@@ -562,7 +551,6 @@ class TestAgentIntegration:
             members = ["research", "analysis", "report"]
             agent = create_supervisor_agent(members)
 
-            # Simulate multiple calls
             state1 = {
                 "messages": [HumanMessage(content="Please fetch protein data for UniProt P04637.")]
             }

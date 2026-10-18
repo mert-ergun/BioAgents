@@ -28,7 +28,6 @@ try:
 except ImportError:
     HAS_SPACY_LAYOUT = False
 
-# ToolUniverse wrapper for webpage extraction
 from bioagents.tools.tool_universe import DEFAULT_WRAPPER
 
 logger = logging.getLogger(__name__)
@@ -58,11 +57,6 @@ def _extract_with_spacy_layout(pdf_path: str) -> str:
     return str(markdown) if markdown else ""
 
 
-# ============================================================================
-# SECTION 1: LangChain @tool Functions
-# ============================================================================
-
-
 @tool
 def fetch_webpage_as_pdf_text(url: str, timeout: int = 30) -> str:
     """Fetch a web page and extract its readable text, including JS-rendered pages.
@@ -87,9 +81,8 @@ def fetch_webpage_as_pdf_text(url: str, timeout: int = 30) -> str:
         logger.error(f"Error fetching webpage as PDF: {e}")
         return f"Error fetching webpage '{url}': {e!s}"
 
-    # The browser renderer is an optional ToolUniverse extra. Most pages do not need JS,
-    # so fall back to a plain HTTP fetch rather than returning nothing — an agent that
-    # cannot read a page tends to proceed on recalled knowledge instead.
+    # The browser renderer is an optional ToolUniverse extra, so fall back to a plain HTTP
+    # fetch rather than nothing: an agent that cannot read a page falls back on recall.
     if _browser_unavailable(result):
         logger.info("Browser renderer unavailable; falling back to plain HTTP for %s", url)
         from bioagents.tools.web_tools import fetch_url_content
@@ -131,7 +124,6 @@ def extract_pdf_text_spacy_layout(local_pdf_path: str) -> str:
         where the engine can detect it. If the file does not exist or cannot be parsed,
         returns a string starting with "Error:" that explains which step failed.
     """
-    # Validate file exists
     path = Path(local_pdf_path)
     if not path.exists():
         return f"Error: File not found at '{local_pdf_path}'"
@@ -139,7 +131,6 @@ def extract_pdf_text_spacy_layout(local_pdf_path: str) -> str:
     if path.suffix.lower() != ".pdf":
         return f"Error: File '{local_pdf_path}' is not a PDF."
 
-    # Try PyMuPDF first (lightweight, always available in Docker)
     if HAS_PYMUPDF:
         try:
             logger.info(f"Extracting PDF text with PyMuPDF: {local_pdf_path}")
@@ -150,7 +141,6 @@ def extract_pdf_text_spacy_layout(local_pdf_path: str) -> str:
         except Exception as e:
             logger.error(f"PyMuPDF extraction failed: {e}")
 
-    # Fallback to spaCy-layout (better layout analysis but heavy)
     if HAS_SPACY_LAYOUT:
         try:
             logger.info(f"Extracting PDF text with spaCy-layout: {local_pdf_path}")
@@ -162,7 +152,6 @@ def extract_pdf_text_spacy_layout(local_pdf_path: str) -> str:
             logger.error(f"spaCy-layout extraction failed: {e}")
             return f"Error processing PDF with spaCy-layout: {e!s}"
 
-    # No library available
     return (
         "Error: No PDF extraction library available. "
         "Install pymupdf (`pip install pymupdf`) or spacy + spacy-layout."

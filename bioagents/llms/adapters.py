@@ -10,9 +10,8 @@ from smolagents import ChatMessage, MessageRole, Model
 
 logger = logging.getLogger(__name__)
 
-# smolagents CodeAgent passes the markdown closing fence as a stop sequence. That halts
-# generation at the *first* "```" in the stream — including inside Python docstrings or
-# strings — truncating code and causing parse/retry loops and huge malformed outputs.
+# smolagents passes the closing fence as a stop sequence, which also halts on a fence
+# inside a docstring and truncates the code.
 _CODE_AGENT_FENCE_STOPS = frozenset({"```", "\n```", "```\n"})
 
 _MAX_DUPLICATE_CODE = 2
@@ -101,7 +100,6 @@ class LangChainModelAdapter(Model):
 
         content = _fix_code_fences(content)
 
-        # Log raw LLM output for debugging empty-response loops
         logger.debug(
             "LangChainModelAdapter.generate raw output: "
             "content_type=%s, content_len=%d, "
@@ -113,9 +111,7 @@ class LangChainModelAdapter(Model):
             "```python" in content if content else False,
         )
 
-        # Detect repeated identical code generation (the LLM keeps generating the
-        # same broken code without learning from execution errors).  Break the loop
-        # by injecting a final_answer after N consecutive duplicates.
+        # Break the loop when the model re-emits identical broken code N times.
         code_match = _CODE_BLOCK_RE.search(content) if content else None
         if code_match and "final_answer" not in code_match.group(1):
             code_hash = hashlib.md5(
@@ -148,9 +144,7 @@ class LangChainModelAdapter(Model):
                 "```"
             )
         elif content is not None and "```python" not in content:
-            # Non-empty text without a code block: the model is giving a summary
-            # or final answer after completing its task. Wrap it in final_answer()
-            # so smolagents recognizes it as task completion.
+            # A summary with no code block: wrap it so smolagents sees task completion.
             answer = content.replace('"', '\\"').strip()
             content = (
                 "Thoughts: Task completed, providing final answer.\n"

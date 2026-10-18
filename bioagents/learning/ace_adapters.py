@@ -8,7 +8,6 @@ from typing import Any
 from langchain_core.language_models import BaseChatModel
 from openai import OpenAI
 
-# Import Gemini adapter if needed
 create_gemini_ace_client: Callable[[Any], Any] | None = None
 with contextlib.suppress(ImportError):
     from bioagents.learning.gemini_adapter import create_gemini_ace_client

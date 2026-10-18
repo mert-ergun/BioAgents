@@ -67,7 +67,6 @@ class TestBasicWorkflow:
         *new_agent_mocks,
     ):
         """Test that graph can be created with all components."""
-        # Setup all mocks
         mock_summary.return_value = Mock()
         mock_supervisor.return_value = Mock()
         mock_research.return_value = Mock()
@@ -80,7 +79,6 @@ class TestBasicWorkflow:
         mock_dl.return_value = Mock()
         mock_coder.return_value = Mock()
 
-        # Create graph - should not raise any errors
         graph = create_graph()
 
         assert graph is not None
@@ -92,7 +90,6 @@ class TestBasicWorkflow:
         """Test fetching protein data through the tool."""
         from bioagents.tools.proteomics_tools import fetch_uniprot_fasta
 
-        # Mock successful API response
         mock_response = Mock()
         mock_response.status_code = 200
         mock_response.text = (
@@ -113,21 +110,17 @@ class TestBasicWorkflow:
             calculate_molecular_weight,
         )
 
-        # Sample protein sequence
         fasta = """>sp|P04637|P53_HUMAN Cellular tumor antigen p53
 MEEPQSDPSVEPPLSQETFSDLWKLLPENNVLSPLPSQAMDDLMLSPDDIEQWFTEDPGP"""
 
-        # Test molecular weight calculation
         mw_result = calculate_molecular_weight.invoke({"fasta_sequence": fasta})
         assert "Molecular Weight" in mw_result
         assert "Da" in mw_result
 
-        # Test amino acid composition
         comp_result = analyze_amino_acid_composition.invoke({"fasta_sequence": fasta})
         assert "Amino Acid Composition Analysis" in comp_result
         assert "Hydrophobic residues" in comp_result
 
-        # Test isoelectric point
         pi_result = calculate_isoelectric_point.invoke({"fasta_sequence": fasta})
         assert "Estimated pI" in pi_result
         assert "Charged Residues" in pi_result
@@ -213,7 +206,6 @@ class TestEndToEndWorkflow:
         *new_agent_mocks,
     ):
         """Test a simple query workflow."""
-        # Mock supervisor routing: research -> FINISH
         supervisor_calls = [
             {"next": "research", "reasoning": "Fetch data", "messages": []},
             {"next": "FINISH", "reasoning": "Done", "messages": []},
@@ -244,7 +236,6 @@ class TestEndToEndWorkflow:
 
         initial_state = {"messages": [HumanMessage(content="Fetch protein P04637")]}
 
-        # Should complete without errors
         try:
             result = graph.invoke(initial_state)
             assert "messages" in result
@@ -280,7 +271,6 @@ class TestEndToEndWorkflow:
         *new_agent_mocks,
     ):
         """Test a multi-step workflow: research -> analysis -> report -> finish."""
-        # Mock supervisor routing through all agents
         supervisor_calls = [
             {"next": "research", "reasoning": "Fetch data", "messages": []},
             {"next": "analysis", "reasoning": "Analyze data", "messages": []},
@@ -323,7 +313,6 @@ class TestEndToEndWorkflow:
             "messages": [HumanMessage(content="Analyze protein P04637 and create a report")]
         }
 
-        # Should complete without errors
         try:
             result = graph.invoke(initial_state)
             assert "messages" in result
@@ -340,18 +329,15 @@ class TestToolChaining:
         from bioagents.tools.analysis_tools import calculate_molecular_weight
         from bioagents.tools.proteomics_tools import fetch_uniprot_fasta
 
-        # This test would fetch real data if not mocked
         with patch("bioagents.tools.proteomics_tools.requests.get") as mock_get:
             mock_response = Mock()
             mock_response.status_code = 200
             mock_response.text = ">sp|P04637|P53_HUMAN\nMEEPQSDPSVEPPLSQETFSDLWKLL"
             mock_get.return_value = mock_response
 
-            # Fetch protein
             fasta = fetch_uniprot_fasta.invoke({"protein_id": "P04637"})
             assert ">sp|P04637|P53_HUMAN" in fasta
 
-            # Analyze it
             mw_result = calculate_molecular_weight.invoke({"fasta_sequence": fasta})
             assert "Molecular Weight" in mw_result
 
@@ -365,7 +351,6 @@ class TestToolChaining:
 
         fasta = ">test|TEST_PROTEIN\nMASLKGFVPTARLKDEGHIYWRNC"
 
-        # All tools should work on the same sequence
         mw_result = calculate_molecular_weight.invoke({"fasta_sequence": fasta})
         comp_result = analyze_amino_acid_composition.invoke({"fasta_sequence": fasta})
         pi_result = calculate_isoelectric_point.invoke({"fasta_sequence": fasta})
@@ -424,11 +409,9 @@ class TestSystemConfiguration:
             llm1 = get_llm(provider="openai")
             llm2 = get_llm(provider="openai")
 
-            # Both should have rate limiters
             assert hasattr(llm1, "rate_limiter")
             assert hasattr(llm2, "rate_limiter")
 
-            # They should share the same rate limiter instance
             assert llm1.rate_limiter is llm2.rate_limiter
 
     def test_prompt_loader_caching(self):
@@ -439,7 +422,6 @@ class TestSystemConfiguration:
             prompt1 = load_prompt("supervisor")
             prompt2 = load_prompt("supervisor")
 
-            # Should return the same content
             assert prompt1 == prompt2
         except FileNotFoundError:
             pytest.skip("Prompt file not found")
@@ -455,7 +437,6 @@ class TestRealWorldScenarios:
             calculate_molecular_weight,
         )
 
-        # Realistic p53 sequence fragment
         p53_fasta = """>sp|P04637|P53_HUMAN Cellular tumor antigen p53
 MEEPQSDPSVEPPLSQETFSDLWKLLPENNVLSPLPSQAMDDLMLSPDDIEQWFTEDPGP
 DEAPRMPEAAPPVAPAPAAPTPAAPAPAPSWPLSSSVPSQKTYQGSYGFRLGFLHSGTAK
@@ -465,12 +446,10 @@ SCMGGMNRRPILTIITLEDSSGNLLGRNSFEVRVCACPGRDRRTEEENLRKKGEPHHELP
 PGSTKRALPNNTSSSPQPKKKPLDGEYFTLQIRGRERFEMFRELNEALELKDAQAGKEPG
 GSRAHSSHLKSKKGQSTSRHKKLMFKTEGPDSD"""
 
-        # Test molecular weight
         mw_result = calculate_molecular_weight.invoke({"fasta_sequence": p53_fasta})
         assert "Molecular Weight" in mw_result
         assert "kDa" in mw_result
 
-        # Test composition
         comp_result = analyze_amino_acid_composition.invoke({"fasta_sequence": p53_fasta})
         assert "Amino Acid Composition" in comp_result
         assert "Total amino acids" in comp_result
@@ -481,20 +460,16 @@ GSRAHSSHLKSKKGQSTSRHKKLMFKTEGPDSD"""
         from bioagents.tools.analysis_tools import calculate_molecular_weight
         from bioagents.tools.proteomics_tools import fetch_uniprot_fasta
 
-        # Mock UniProt response
         mock_response = Mock()
         mock_response.status_code = 200
         mock_response.text = ">sp|P62988|UBB_HUMAN Ubiquitin\nMQIFVKTLTGKTITLEVEPSDTIENVKAKIQDKEGIPPDQQRLIFAGKQLEDGRTLSDYNIQKESTLHLVLRLRGG"
         mock_get.return_value = mock_response
 
-        # Step 1: Fetch protein
         fasta = fetch_uniprot_fasta.invoke({"protein_id": "P62988"})
         assert ">sp|P62988|UBB_HUMAN" in fasta
         assert "MQIFVKTLT" in fasta
 
-        # Step 2: Analyze
         mw_result = calculate_molecular_weight.invoke({"fasta_sequence": fasta})
         assert "Molecular Weight" in mw_result
 
-        # The workflow completed successfully
         assert True

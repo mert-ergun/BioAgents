@@ -3,8 +3,6 @@
 Provides access to various bioinformatics and cheminformatics tools.
 """
 
-# Import rdkit-agent tools
-# Import existing tools
 from bioagents.tools.analysis_tools import (
     analyze_amino_acid_composition,
     calculate_isoelectric_point,

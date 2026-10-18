@@ -6,7 +6,6 @@ from unittest.mock import patch
 
 import pytest
 
-# === DEBUG OUTPUT SETUP ===
 DEBUG_OUTPUT_DIR = Path("debug_tool_outputs")
 DEBUG_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -22,7 +21,6 @@ def debug_write(name, content):
     print(f"✓ Debug written: {path}")
 
 
-# ===== MOCK TESTS: Fast, no dependencies =====
 class TestPdfToolsMocked:
     """Unit tests - using Mock."""
 
@@ -55,7 +53,6 @@ class TestPdfToolsMocked:
         assert "Connection timeout" in result
 
 
-# ===== INTEGRATION TESTS: Real reading =====
 @pytest.mark.integration
 class TestPdfToolsIntegration:
     """Integration tests - Real reading."""
@@ -73,7 +70,6 @@ class TestPdfToolsIntegration:
 
             debug_write("integration_real_webpage.txt", result)
 
-            # Basic checks
             assert len(result) > 0, "Web page returned empty"
             if "tooluniverse" in result.lower() and "not installed" in result.lower():
                 pytest.skip("tooluniverse package not installed (required for live webpage fetch)")
@@ -101,7 +97,6 @@ class TestPdfToolsIntegration:
 
         print("\n📄 Searching for PDF file...")
 
-        # Try multiple possible paths
         test_paths = [
             "tests/test_files/sample.pdf",
             "BioAgents/tests/test_files/sample.pdf",
@@ -127,7 +122,6 @@ class TestPdfToolsIntegration:
 
             debug_write("integration_real_pdf.md", result)
 
-            # Basic checks
             assert len(result) > 0, "PDF text returned empty"
             assert "Error" not in result, f"PDF reading error: {result[:200]}"
 
@@ -139,7 +133,6 @@ class TestPdfToolsIntegration:
             pytest.fail(error_msg)
 
 
-# ===== DEBUG TEST: Always runs =====
 class TestDebugOutput:
     """Verify that the debug system works."""
 

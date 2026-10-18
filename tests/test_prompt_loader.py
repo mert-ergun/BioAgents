@@ -254,7 +254,6 @@ class TestPromptLoader:
             result = loader.load_prompt("test_prompt")
 
             assert "Agent" in result
-            # Empty sections should not appear
             assert "Your capabilities include:" not in result or result.count("\n\n") >= 0
 
     def test_section_separation(self):
@@ -276,7 +275,6 @@ class TestPromptLoader:
             loader = PromptLoader(prompts_dir=tmpdir)
             result = loader.load_prompt("test_prompt")
 
-            # Sections should be separated by double newlines
             assert "\n\n" in result
 
     def test_load_prompt_with_evaluation_criteria(self):
@@ -462,14 +460,11 @@ class TestLoadPromptFunction:
 
     def test_load_prompt_function_uses_global_loader(self):
         """Test that load_prompt function uses the global loader."""
-        # This test attempts to load an actual prompt from the project
-        # It will work if the prompts directory is properly set up
         try:
             result = load_prompt("supervisor")
             assert isinstance(result, str)
             assert len(result) > 0
         except FileNotFoundError:
-            # If the file doesn't exist, that's also valid for the test environment
             pytest.skip("Supervisor prompt file not found in default location")
 
     def test_load_actual_prompts(self):
@@ -493,7 +488,6 @@ class TestPromptIntegrity:
         """Test that supervisor prompt has expected structure."""
         try:
             result = load_prompt("supervisor")
-            # Should contain team information
             assert any(
                 keyword in result.lower() for keyword in ["team", "route", "supervisor", "agent"]
             )
@@ -504,7 +498,6 @@ class TestPromptIntegrity:
         """Test that research prompt has expected structure."""
         try:
             result = load_prompt("research")
-            # Should contain research-related information
             assert any(
                 keyword in result.lower() for keyword in ["research", "fetch", "data", "protein"]
             )
@@ -515,7 +508,6 @@ class TestPromptIntegrity:
         """Test that analysis prompt has expected structure."""
         try:
             result = load_prompt("analysis")
-            # Should contain analysis-related information
             assert any(
                 keyword in result.lower()
                 for keyword in ["analysis", "analyze", "calculate", "sequence"]
@@ -527,7 +519,6 @@ class TestPromptIntegrity:
         """Test that report prompt has expected structure."""
         try:
             result = load_prompt("report")
-            # Should contain report-related information
             assert any(keyword in result.lower() for keyword in ["report", "synthesize", "present"])
         except FileNotFoundError:
             pytest.skip("Report prompt file not found")

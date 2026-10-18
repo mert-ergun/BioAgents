@@ -14,9 +14,8 @@ import bioagents.limits as _limits
 # Shared pool: avoids per-call executor overhead; invoke is still one future at a time per thread.
 _pool = ThreadPoolExecutor(max_workers=32, thread_name_prefix="bioagents_llm_timeout")
 
-# Global workflow deadline (epoch seconds).  When set, every invoke() will use
-# min(static_timeout, time_remaining_to_deadline) so LLM calls cannot overshoot
-# the experiment / streaming wall-clock budget.
+# Epoch seconds. When set, invoke() uses min(static_timeout, time left) so an LLM call
+# cannot overshoot the workflow's wall-clock budget.
 _workflow_deadline: float | None = None
 
 

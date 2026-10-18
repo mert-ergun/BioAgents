@@ -16,10 +16,6 @@ from bioagents.agents.helpers import (
 )
 from bioagents.agents.supervisor_helpers import check_finish_if_code_agent_substantive_repeat
 
-# =========================================================================
-# get_content_text
-# =========================================================================
-
 
 class TestGetContentText:
     def test_string_content(self):
@@ -41,11 +37,6 @@ class TestGetContentText:
     def test_mixed_list(self):
         blocks = [{"type": "text", "text": "a"}, "b", {"type": "image", "url": "x"}]
         assert get_content_text(blocks) == "a b"
-
-
-# =========================================================================
-# is_empty_response
-# =========================================================================
 
 
 class TestIsEmptyResponse:
@@ -74,11 +65,6 @@ class TestIsEmptyResponse:
             tool_calls=[{"name": "t", "args": {}, "id": "1"}],
         )
         assert is_empty_response(response) is False
-
-
-# =========================================================================
-# prepare_messages_for_agent
-# =========================================================================
 
 
 class TestPrepareMessagesForAgent:
@@ -133,8 +119,7 @@ class TestPrepareMessagesForAgent:
         msgs = [HumanMessage(content=f"msg {i}") for i in range(50)]
         result = prepare_messages_for_agent(msgs, "test", max_messages=5)
 
-        # The conduct-rules SystemMessage is injected guidance, not conversation, so it
-        # does not count against the window budget.
+        # The injected conduct-rules SystemMessage is guidance, not window budget.
         conversation = [m for m in result if not isinstance(m, SystemMessage)]
         assert len(conversation) <= 6  # max_messages + first_human if not in window
 
@@ -148,11 +133,6 @@ class TestPrepareMessagesForAgent:
             if isinstance(m, AIMessage):
                 text = get_content_text(m.content)
                 assert len(text) < 10000
-
-
-# =========================================================================
-# extract_best_content
-# =========================================================================
 
 
 class TestExtractBestContent:
@@ -189,11 +169,6 @@ class TestExtractBestContent:
         msgs = [AIMessage(content="x" * 5000)]
         best = extract_best_content(msgs)
         assert len(best) <= 4100  # 4000 + truncation marker
-
-
-# =========================================================================
-# invoke_with_retry
-# =========================================================================
 
 
 class TestInvokeWithRetry:
@@ -253,11 +228,6 @@ class TestInvokeWithRetry:
         assert result["messages"][0].tool_calls
 
 
-# =========================================================================
-# create_retry_response
-# =========================================================================
-
-
 class TestCreateRetryResponse:
     def test_returns_on_first_success(self):
         mock_llm = Mock()
@@ -299,11 +269,6 @@ class TestCreateRetryResponse:
         assert "custom task hint" in result["messages"][0].content
 
 
-# =========================================================================
-# extract_task_from_messages
-# =========================================================================
-
-
 class TestExtractTaskFromMessages:
     def test_detects_uniprot_id(self):
         msgs = [HumanMessage(content="Fetch protein P04637")]
@@ -326,11 +291,6 @@ class TestExtractTaskFromMessages:
         assert len(hint) > 0
 
 
-# =========================================================================
-# get_message_content
-# =========================================================================
-
-
 class TestGetMessageContent:
     def test_string_content(self):
         msg = AIMessage(content="hello")
@@ -346,11 +306,6 @@ class TestGetMessageContent:
 
     def test_no_content(self):
         assert get_message_content(42) == ""
-
-
-# =========================================================================
-# check_finish_if_code_agent_substantive_repeat
-# =========================================================================
 
 
 class TestCheckFinishIfCodeAgentSubstantiveRepeat:

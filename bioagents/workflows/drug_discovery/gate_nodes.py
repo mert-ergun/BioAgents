@@ -563,11 +563,6 @@ class RetrosynthesisGateNode(_GateBase):
         return {"verdicts": verdicts}
 
 
-# ---------------------------------------------------------------------------
-# Decision log aggregator
-# ---------------------------------------------------------------------------
-
-
 class DecisionLogNode(WorkflowNode):
     """Aggregate all gate verdicts and compute a promotion tier per candidate."""
 
@@ -682,7 +677,6 @@ class DecisionLogNode(WorkflowNode):
         if any_fail or any_global_fail:
             return TIER_REJECT
 
-        # Basic plausibility: a structural signal + no ADMET/off-target fail.
         structural_ok = any(
             v in (VERDICT_PASS, VERDICT_BORDERLINE)
             for v in (dock_val, boltz_hit, consensus)
@@ -691,7 +685,6 @@ class DecisionLogNode(WorkflowNode):
         if not structural_ok:
             return TIER_REJECT
 
-        # Hit: structural + admet ok + no off-target critical
         if admet in (VERDICT_PASS, VERDICT_BORDERLINE, None) and ot1 in (
             VERDICT_PASS,
             None,
@@ -700,14 +693,12 @@ class DecisionLogNode(WorkflowNode):
         else:
             return TIER_REJECT
 
-        # Optimizable hit: consensus at least borderline + route at least borderline
         if consensus in (VERDICT_PASS, VERDICT_BORDERLINE) and retro in (
             VERDICT_PASS,
             VERDICT_BORDERLINE,
         ):
             tier = TIER_OPTIMIZABLE_HIT
 
-        # Lead: consensus pass + admet pass + ot1 pass + retro pass
         if (
             consensus == VERDICT_PASS
             and admet == VERDICT_PASS
@@ -716,7 +707,6 @@ class DecisionLogNode(WorkflowNode):
         ):
             tier = TIER_LEAD
 
-        # De-risked lead: additionally ot2 pass
         if tier == TIER_LEAD and ot2 == VERDICT_PASS:
             tier = TIER_DE_RISKED_LEAD
 

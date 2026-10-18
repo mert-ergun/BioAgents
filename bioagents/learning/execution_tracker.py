@@ -84,7 +84,6 @@ class ExecutionTracker:
         if agent_name:
             records = [r for r in records if r.agent_name == agent_name]
 
-        # Return most recent first
         return list(reversed(records[-limit:]))
 
     def clear(self) -> None:
