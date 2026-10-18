@@ -9,29 +9,18 @@ import shutil
 import socket
 import subprocess  # nosec B404
 import sys
+from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
-# ---------------------------------------------------------------------------
-# Monkey-patch smolagents evaluate_with — upstream stores __enter__() return
-# in the contexts list, then calls __exit__ on it.  Context managers whose
-# __enter__ returns None (e.g. torch.no_grad()) crash with
-# "NoneType has no attribute __exit__".  Fix: store the context manager itself.
-# ---------------------------------------------------------------------------
+# Patched below: upstream stores __enter__()'s return value and calls __exit__ on it,
+# so a context manager returning None (torch.no_grad()) crashes.
 import smolagents.local_python_executor as _lpe
 from rich.console import Console
-from smolagents import AgentLogger, DockerExecutor, LocalPythonExecutor, LogLevel
+from smolagents import AgentLogger, LocalPythonExecutor, LogLevel
 
-# ---------------------------------------------------------------------------
-# Monkey-patch RemotePythonExecutor._patch_final_answer_with_exception to be
-# idempotent.  smolagents calls this on every agent.run() invocation via
-# send_tools(), but the patch is not safe to apply twice: the second call
-# grabs the already-patched `forward` (which calls self._forward) as the
-# "original forward", stores it as `_forward`, and from that point both
-# `forward` and `_forward` call `self._forward` → infinite recursion.
-#
-# The fix: if the tool's class is already named `_FinalAnswerTool` (i.e. has
-# already been patched), skip the re-patch entirely.
-# ---------------------------------------------------------------------------
+# Patched below to be idempotent: smolagents re-applies it on every run(), and applying
+# it twice makes forward and _forward call each other forever.
 from smolagents.remote_executors import RemotePythonExecutor as _RPE
 
 module_logger = logging.getLogger(__name__)
@@ -146,6 +135,11 @@ def apply_local_executor_runtime_env() -> None:
     """
     _patch_json_numpy_serialization()
     _prepend_nvidia_pip_libs_to_ld_path()
+    # Agent code runs in this interpreter: pin the core stack so `pip install X`
+    # cannot downgrade numpy/torch/rdkit underneath the running process.
+    from bioagents.sandbox.pip_guard import apply_pip_guard
+
+    apply_pip_guard()
 
     override = os.getenv("BIOAGENTS_TORCH_CUDA", "").strip().lower()
     if override in ("1", "true", "yes"):
@@ -154,9 +148,8 @@ def apply_local_executor_runtime_env() -> None:
         os.environ["CUDA_VISIBLE_DEVICES"] = ""
         return
 
-    # Probe rather than trust torch.cuda.is_available(): it reports True for a GPU
-    # whose compute capability the installed torch was not built for, and the failure
-    # only surfaces at the first kernel launch, deep inside the agent's code.
+    # torch.cuda.is_available() is True for a GPU whose compute capability the installed
+    # torch lacks kernels for; that only fails at the first launch, so probe instead.
     from bioagents.tools.capability_reporting import cuda_is_usable
 
     if not cuda_is_usable():
@@ -200,136 +193,256 @@ def find_available_port(start_port: int = 8888, max_retries: int = 100) -> int:
     )
 
 
-def create_executor(
-    agent_type: str, additional_imports: list
-) -> DockerExecutor | LocalPythonExecutor:
-    """
-    Create a Docker executor for code execution, falling back to LocalExecutor if Docker fails.
+SANDBOX_IMAGE = os.getenv("BIOAGENTS_SANDBOX_IMAGE", "bioagents-sandbox")
 
-    Can be forced to use LocalPythonExecutor by setting USE_LOCAL_EXECUTOR=true environment variable.
+# Without an explicit GPU the CUDA torch build is 5+ GB of kernels that cannot run.
+_SANDBOX_GPU = os.getenv("BIOAGENTS_SANDBOX_GPU", "").strip().lower() in ("1", "true", "yes")
 
-    Args:
-        agent_type: Type of agent (e.g., 'coder', 'ml', 'dl')
-        additional_imports: List of Python packages to install in the Docker image
+_TORCH_CPU_INDEX = "https://download.pytorch.org/whl/cpu"
 
-    Returns:
-        DockerExecutor or LocalPythonExecutor instance
-    """
-    # Check if local executor should be used (via environment variable)
-    use_local = os.getenv("USE_LOCAL_EXECUTOR", "false").lower() in ("true", "1", "yes")
+_PACKAGE_ALIASES = {
+    "Bio": "biopython",
+    "sklearn": "scikit-learn",
+    "pkg_resources": "setuptools",
+}
 
-    if use_local:
-        apply_local_executor_runtime_env()
-        print(f"Using LocalPythonExecutor for {agent_type} (USE_LOCAL_EXECUTOR=true)")
-        from bioagents.sandbox.coder_helpers import PermissiveList
+_STDLIB_MODULES = frozenset(
+    {
+        "typing",
+        "json",
+        "os",
+        "os.path",
+        "sys",
+        "pathlib",
+        "subprocess",
+        "io",
+        "base64",
+        "binascii",
+        "importlib",
+        "posixpath",
+        "ntpath",
+        "collections",
+        "itertools",
+        "math",
+        "random",
+        "re",
+        "time",
+        "datetime",
+        "statistics",
+        "queue",
+    }
+)
 
-        return LocalPythonExecutor(
-            additional_authorized_imports=PermissiveList(additional_imports),
-            additional_functions=_extra_builtins(),
+
+def _pip_packages(imports: list[str]) -> list[str]:
+    """Map an authorized-import list to the pip packages the image needs."""
+    packages: list[str] = []
+    for imp in imports:
+        base = imp[:-2] if imp.endswith(".*") else imp
+        if base in _STDLIB_MODULES or base.startswith("bioagents"):
+            continue
+        name = _PACKAGE_ALIASES.get(base, base)
+        if name not in packages:
+            packages.append(name)
+    return packages
+
+
+def sandbox_packages() -> list[str]:
+    """Packages for the shared image: the union of what coder, ML and DL may import."""
+    from bioagents.sandbox.coder_helpers import (
+        DEFAULT_CODER_IMPORTS,
+        DEFAULT_DL_IMPORTS,
+        DEFAULT_ML_IMPORTS,
+    )
+
+    union: list[str] = []
+    for imports in (DEFAULT_CODER_IMPORTS, DEFAULT_ML_IMPORTS, DEFAULT_DL_IMPORTS):
+        for pkg in _pip_packages(imports):
+            if pkg not in union:
+                union.append(pkg)
+    return union
+
+
+def build_dockerfile(packages: list[str] | None = None) -> str:
+    """Dockerfile for the shared sandbox image."""
+    packages = sandbox_packages() if packages is None else packages
+    others = [p for p in packages if p != "torch"]
+    kernel = "jupyter_kernel_gateway jupyter_client ipykernel"
+
+    if "torch" in packages and not _SANDBOX_GPU:
+        torch_line = (
+            f"RUN pip install --no-cache-dir --index-url {_TORCH_CPU_INDEX} torch\n        "
         )
+    elif "torch" in packages:
+        torch_line = "RUN pip install --no-cache-dir torch\n        "
+    else:
+        torch_line = ""
 
-    image_name = f"bioagents-{agent_type}"
-    try:
-        terminal_console = Console(
-            file=sys.stdout,
-            width=None,
-            force_terminal=True,
-        )
-        logger = AgentLogger(level=LogLevel.INFO, console=terminal_console)
-        port = find_available_port()
-
-        # Filter imports for pip install (remove wildcards and stdlib modules)
-        pip_packages = []
-        package_mapping = {
-            "Bio": "biopython",
-            "sklearn": "scikit-learn",
-            "pkg_resources": "setuptools",
-        }
-        # Common standard library modules to exclude from pip install
-        stdlib_modules = {
-            "typing",
-            "json",
-            "os",
-            "os.path",
-            "sys",
-            "pathlib",
-            "subprocess",
-            "io",
-            "base64",
-            "binascii",
-            "importlib",
-            "posixpath",
-            "ntpath",
-            "collections",
-            "itertools",
-            "math",
-            "random",
-            "re",
-            "time",
-            "datetime",
-            "statistics",
-            "queue",
-        }
-        for imp in additional_imports:
-            base_pkg = imp[:-2] if imp.endswith(".*") else imp
-
-            if base_pkg in stdlib_modules:
-                continue
-            if base_pkg.startswith("bioagents"):
-                continue
-
-            pkg_to_install = package_mapping.get(base_pkg, base_pkg)
-            if pkg_to_install not in pip_packages:
-                pip_packages.append(pkg_to_install)
-
-        dockerfile_content = f"""
-        FROM python:3.12-bullseye
+    return f"""
+        FROM python:3.12-slim
 
         WORKDIR /app
 
-        ENV PYTHONPATH=/app:$PYTHONPATH
+        # The container runs as the host uid, which has no passwd entry and so no home.
+        # Jupyter, matplotlib and pip all need a writable one or the kernel never starts.
+        ENV PYTHONPATH=/app:$PYTHONPATH \\
+            PIP_NO_CACHE_DIR=1 \\
+            PIP_DISABLE_PIP_VERSION_CHECK=1 \\
+            HOME=/tmp/sandbox-home \\
+            JUPYTER_RUNTIME_DIR=/tmp/sandbox-home/jupyter/runtime \\
+            JUPYTER_DATA_DIR=/tmp/sandbox-home/jupyter/data \\
+            XDG_CACHE_HOME=/tmp/sandbox-home/cache \\
+            MPLCONFIGDIR=/tmp/sandbox-home/matplotlib
 
-        RUN pip install jupyter_kernel_gateway jupyter_client ipykernel {" ".join(pip_packages)}
+        RUN mkdir -p /tmp/sandbox-home/jupyter/runtime /tmp/sandbox-home/jupyter/data \\
+            /tmp/sandbox-home/cache /tmp/sandbox-home/matplotlib && chmod -R 777 /tmp/sandbox-home
+
+        {torch_line}RUN pip install --no-cache-dir {kernel} {" ".join(others)}
 
         EXPOSE 8888
         CMD ["jupyter", "kernelgateway", "--KernelGatewayApp.ip='0.0.0.0'", "--KernelGatewayApp.port=8888", "--KernelGatewayApp.allow_origin='*'"]
         """
 
-        docker_path = shutil.which("docker")
-        if docker_path:
-            try:
-                subprocess.run(  # nosec B603
-                    [docker_path, "image", "inspect", image_name],
-                    check=True,
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
-                )
-                should_build = False
-            except subprocess.CalledProcessError:
-                should_build = True
-        else:
-            should_build = True
 
-        cwd = str(Path.cwd())
-        container_run_kwargs = {"volumes": {cwd: {"bind": "/app", "mode": "rw"}}}
+def sandbox_image_tag(dockerfile: str) -> str:
+    """Tag the image with a digest of its recipe.
 
-        return DockerExecutor(
-            image_name=image_name,
-            dockerfile_content=dockerfile_content,
-            additional_imports=[],
-            logger=logger,
-            port=port,
-            build_new_image=should_build,
-            container_run_kwargs=container_run_kwargs,
+    A fixed tag meant an edited Dockerfile kept resolving to the already-built image,
+    so recipe changes appeared to do nothing until the image was removed by hand.
+    """
+    import hashlib
+
+    digest = hashlib.sha256(dockerfile.encode()).hexdigest()[:12]
+    return f"{SANDBOX_IMAGE}:{digest}"
+
+
+def _sandbox_user() -> str | None:
+    """The uid:gid the sandbox container should run as, or None to leave it to Docker."""
+    override = os.getenv("BIOAGENTS_SANDBOX_UID", "").strip()
+    if override:
+        return override if ":" in override else f"{override}:{override}"
+    if not hasattr(os, "getuid"):  # pragma: no cover - non-POSIX
+        return None
+    return f"{os.getuid()}:{os.getgid()}"
+
+
+def _image_exists(image_name: str) -> bool:
+    docker_path = shutil.which("docker")
+    if not docker_path:
+        return False
+    try:
+        subprocess.run(  # nosec B603
+            [docker_path, "image", "inspect", image_name],
+            check=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
         )
-    except Exception as e:
-        print(f"Warning: Could not initialize DockerExecutor for {agent_type}: {e}")
-        print("Falling back to LocalExecutor (NOT SANDBOXED) for development purposes.")
+    except subprocess.CalledProcessError:
+        return False
+    return True
 
-        apply_local_executor_runtime_env()
-        from bioagents.sandbox.coder_helpers import PermissiveList
 
-        return LocalPythonExecutor(
-            additional_authorized_imports=PermissiveList(additional_imports),
-            additional_functions=_extra_builtins(),
-        )
+_IDLE_ATTRS: dict[str, Callable[[], Any]] = {"fatal_error": lambda: None, "state": dict}
+
+
+class LazyExecutor:
+    """Defers executor creation until the agent actually runs code.
+
+    Building the graph constructs the coder, ML and DL agents; starting a container for
+    each would cost three for a run that typically uses one.
+    """
+
+    def __init__(self, factory):
+        self._factory = factory
+        self._executor = None
+
+    @property
+    def started(self) -> bool:
+        return self._executor is not None
+
+    def _ensure(self):
+        if self._executor is None:
+            self._executor = self._factory()
+        return self._executor
+
+    def __call__(self, *args, **kwargs):
+        return self._ensure()(*args, **kwargs)
+
+    def __getattr__(self, name: str):
+        if name.startswith("_"):
+            raise AttributeError(name)
+        # Status reads must not start a container.
+        if self._executor is None and name in _IDLE_ATTRS:
+            return _IDLE_ATTRS[name]()
+        return getattr(self._ensure(), name)
+
+    def cleanup(self) -> None:
+        """Release the executor, without starting one that was never needed."""
+        if self._executor is not None and hasattr(self._executor, "cleanup"):
+            self._executor.cleanup()
+
+
+def _local_executor(additional_imports: list) -> LocalPythonExecutor:
+    apply_local_executor_runtime_env()
+    from bioagents.sandbox.coder_helpers import PermissiveList
+
+    return LocalPythonExecutor(
+        additional_authorized_imports=PermissiveList(additional_imports),
+        additional_functions=_extra_builtins(),
+    )
+
+
+def create_executor(agent_type: str, additional_imports: list) -> Any:
+    """Create the code executor for ``agent_type``.
+
+    Coder, ML and DL share one image built from the union of their allowed imports;
+    the container stays per-agent so their variables cannot leak, and starts on first use.
+
+    Set USE_LOCAL_EXECUTOR=true to run agent code in this process instead (not sandboxed).
+    """
+    if os.getenv("USE_LOCAL_EXECUTOR", "false").lower() in ("true", "1", "yes"):
+        print(f"Using LocalPythonExecutor for {agent_type} (USE_LOCAL_EXECUTOR=true)")
+        return _local_executor(additional_imports)
+
+    def factory():
+        try:
+            terminal_console = Console(file=sys.stdout, width=None, force_terminal=True)
+            logger = AgentLogger(level=LogLevel.INFO, console=terminal_console)
+
+            # Run as the host user: files the container writes into the shared
+            # workspace were root-owned, so a host-side agent editing the same artifact
+            # got PermissionError and treated the finished work as a stale relic to
+            # archive and redo. BIOAGENTS_SANDBOX_UID=0 restores running as root.
+            container_run_kwargs: dict[str, Any] = {
+                "volumes": {str(Path.cwd()): {"bind": "/app", "mode": "rw"}},
+                "environment": {"BIOAGENTS_BLAST_IN_CELL": "1"},
+            }
+            user = _sandbox_user()
+            if user:
+                container_run_kwargs["user"] = user
+            if _SANDBOX_GPU:
+                from docker.types import DeviceRequest
+
+                container_run_kwargs["device_requests"] = [
+                    DeviceRequest(count=-1, capabilities=[["gpu"]])
+                ]
+
+            from bioagents.sandbox.resilient_executor import ResilientDockerExecutor
+
+            dockerfile = build_dockerfile()
+            image = sandbox_image_tag(dockerfile)
+            return ResilientDockerExecutor(
+                image_name=image,
+                dockerfile_content=dockerfile,
+                additional_imports=[],
+                logger=logger,
+                port=find_available_port(),
+                build_new_image=not _image_exists(image),
+                container_run_kwargs=container_run_kwargs,
+            )
+        except Exception as e:
+            print(f"Warning: Could not initialize DockerExecutor for {agent_type}: {e}")
+            print("Falling back to LocalExecutor (NOT SANDBOXED) for development purposes.")
+            return _local_executor(additional_imports)
+
+    return LazyExecutor(factory)
