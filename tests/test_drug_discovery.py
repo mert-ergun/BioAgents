@@ -1,13 +1,4 @@
-"""Unit + scenario + API tests for the drug-discovery workflow family.
-
-Covers:
-  • Gate-node pass/borderline/fail behaviour for every gate in doc 2.6.
-  • DecisionLogNode tier promotion logic (doc 2.7).
-  • Scenario graph builders (A/B/C/D) are DAGs with the expected aggregators.
-  • JSON round-trip: each scenario serializes → deserializes identically.
-  • /api/drug-discovery/scenarios returns the 4 scenarios + default thresholds.
-  • /api/drug-discovery/run rejects unknown ids and missing required inputs.
-"""
+"""Unit + scenario + API tests for the drug-discovery workflow family (doc 2.6/2.7)."""
 
 from __future__ import annotations
 
@@ -51,10 +42,6 @@ from bioagents.workflows.preset_catalog import (
 )
 from bioagents.workflows.serialization import graph_from_definition
 from frontend.drug_discovery_routes import include_drug_discovery_routes
-
-# ---------------------------------------------------------------------------
-# Gate pass/borderline/fail behaviour (doc section 2.6)
-# ---------------------------------------------------------------------------
 
 
 class TestGateNodes:
@@ -226,11 +213,6 @@ class TestGateNodes:
         assert by_smi["none"] == VERDICT_FAIL
 
 
-# ---------------------------------------------------------------------------
-# Decision-log tier promotion (doc section 2.7)
-# ---------------------------------------------------------------------------
-
-
 def _v(gate: str, verdict: str, candidate_id: str = "__global__") -> dict:
     return {
         "gate": gate,
@@ -299,17 +281,11 @@ class TestDecisionLogNode:
         assert tier in {TIER_HIT, TIER_OPTIMIZABLE_HIT}
 
 
-# ---------------------------------------------------------------------------
-# Scenario builders
-# ---------------------------------------------------------------------------
-
-
 class TestScenarioGraphs:
     @pytest.mark.parametrize("scenario_id", sorted(SCENARIO_INFO.keys()))
     def test_each_scenario_builds_dag(self, scenario_id: str) -> None:
         info = SCENARIO_INFO[scenario_id]
         g = info["builder"]({"n_candidates": 2, "rounds": 1})
-        # Must validate as a DAG and contain the terminal aggregator nodes.
         g.validate_is_dag()
         node_ids = set(g.node_ids())
         assert DECISION_LOG_NODE_ID in node_ids
@@ -323,20 +299,13 @@ class TestScenarioGraphs:
         g2 = graph_from_definition(definition)
         assert sorted(g2.node_ids()) == sorted(g.node_ids())
         assert set(g2.nx_graph.edges()) == set(g.nx_graph.edges())
-        # Second round-trip should be byte-stable.
         assert g2.to_definition_dict() == definition
 
     def test_preset_catalog_registers_scenarios(self) -> None:
         for sid in SCENARIO_INFO:
             assert sid in PRESET_BY_ID, f"{sid} missing from preset catalog"
             assert is_drug_discovery_preset(sid)
-        # Sanity: non-DD presets still classified separately.
         assert not is_drug_discovery_preset("protein_embedding")
-
-
-# ---------------------------------------------------------------------------
-# Input-mapping helper
-# ---------------------------------------------------------------------------
 
 
 class TestInitialInputMapping:
@@ -346,7 +315,6 @@ class TestInitialInputMapping:
             {"disease_id": "EFO_0000311", "target_uniprot": "p04637"},
         )
         assert out["brief"]["primary_id"] == "EFO_0000311"
-        # uniprot_id is uppercased by the mapper.
         assert out["uni_record"]["uniprot_id"] == "P04637"
 
     def test_target_first_duplicates_uniprot(self) -> None:
@@ -359,7 +327,6 @@ class TestInitialInputMapping:
             "dd_scenario_molecule_first",
             {"seed_smiles": "CCO, CCN;  CCC ", "target_uniprot": "p23219"},
         )
-        # series node gets a list, brief/seed_std get the first entry.
         assert out["series"]["seed_smiles"] == ["CCO", "CCN", "CCC"]
         assert out["brief"]["primary_id"] == "CCO"
         assert out["seed_std"]["smiles"] == "CCO"
@@ -376,11 +343,6 @@ class TestInitialInputMapping:
             build_scenario_initial_inputs("dd_unknown", {"x": "y"})
 
 
-# ---------------------------------------------------------------------------
-# HTTP routes
-# ---------------------------------------------------------------------------
-
-
 @pytest.fixture
 def dd_client() -> TestClient:
     app = FastAPI()
@@ -395,7 +357,6 @@ class TestScenariosEndpoint:
         data = r.json()
         ids = {s["id"] for s in data["scenarios"]}
         assert ids == set(SCENARIO_INFO.keys())
-        # Each scenario must expose form_fields + options.
         for s in data["scenarios"]:
             assert isinstance(s["form_fields"], list)
             assert s["form_fields"] == SCENARIO_FORM_FIELDS[s["id"]]
@@ -422,9 +383,7 @@ class TestRunEndpoint:
         assert "uniprot_id" in detail
 
     def test_option_clamping(self, dd_client: TestClient) -> None:
-        # n_candidates must clamp to allowed range (1..32). We test this by
-        # inspecting the GET metadata rather than running the graph (which
-        # would hit the network for fetch nodes).
+        # Inspect the GET metadata; running the graph would hit the network.
         r = dd_client.get("/api/drug-discovery/scenarios")
         opts = {s["id"]: s["options"] for s in r.json()["scenarios"]}
         target = opts["dd_scenario_target_first"]["n_candidates"]
@@ -454,12 +413,10 @@ class TestWorkflowPresetDefinitionEndpoint:
         edges = data["definition"]["edges"]
         assert isinstance(nodes, list) and nodes, "definition must have nodes"
         assert isinstance(edges, list), "definition must have edges array"
-        # Every node must have a layout hint.
         layout = data["layout"]
         for n in nodes:
             assert n["id"] in layout, f"missing layout for {n['id']}"
             assert "x" in layout[n["id"]] and "y" in layout[n["id"]]
-        # initial_inputs must reference real node ids.
         node_ids = {n["id"] for n in nodes}
         for nid in data["initial_inputs"]:
             assert nid in node_ids

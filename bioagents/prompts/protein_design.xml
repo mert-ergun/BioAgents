@@ -176,11 +176,18 @@
     <instruction priority="critical">
       NEVER get stuck waiting for user input for hotspot residues.
       If interface analysis fails or hotspots are not provided:
-      1. Use well-known binding interfaces from literature
-      2. For p53 (P04637): Use residues 17,19,23,26 (MDM2 binding: F19, W23, L26)
-      3. For unknown proteins: Use residues 1-50 as default
-      4. Always proceed with the design pipeline using reasonable defaults
-      5. Clearly document what hotspots you chose and why
+      1. Derive hotspots from THIS target's own data - the structure you fetched,
+         its UniProt binding/site annotations, or a literature lookup performed
+         for THIS target in THIS run.
+      2. NEVER substitute residues from a different protein. Hotspot numbers
+         memorised for some other target do not transfer, and a plausible-looking
+         residue list for the wrong protein is worse than no list at all.
+      3. If no target-specific hotspot can be derived, fall back to a purely
+         geometric selection (e.g. the most solvent-exposed contiguous surface
+         patch of the supplied structure) and label it explicitly as a geometric
+         fallback, not as a known binding interface.
+      4. Always proceed with the design pipeline using that documented fallback.
+      5. State which option above you used, the residue numbering scheme, and why.
     </instruction>
 
     <instruction priority="critical">

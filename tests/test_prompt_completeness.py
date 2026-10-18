@@ -1,10 +1,4 @@
-"""Guards that authored prompt content actually reaches the model.
-
-The loader used to render only a hardcoded whitelist of XML sections, silently
-dropping anything else. A prompt file could then look correct on disk while most of
-its guidance never reached the LLM (summary.xml was shipping 2.3KB of a 12.5KB file).
-These tests fail if that class of bug returns.
-"""
+"""Guards that every authored prompt section actually reaches the model."""
 
 from __future__ import annotations
 

@@ -1,16 +1,39 @@
-"""Manage playbook files (YAML storage only)."""
+"""Manage playbook files (YAML storage only).
 
+Playbooks are cross-run state: every bullet stored here is appended to the agent
+prompt of *every later run* (see
+:func:`bioagents.prompts.prompt_loader.load_prompt`). Bullets are therefore
+filtered through :mod:`bioagents.learning.playbook_safety` on both save and load
+so that fabrication directives and run-specific biological entities cannot be
+replayed into an unrelated run.
+"""
+
+import logging
 import os
 from pathlib import Path
 from typing import Any
 
+from bioagents.learning.playbook_safety import sanitize_playbook
+
+logger = logging.getLogger(__name__)
+
+#: Repository root (``.../BioAgents``), three parents up from this file:
+#: playbook_manager.py -> learning -> bioagents -> <repo root>.
+_REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+
+#: Playbook directory relative to the repository root when unset.
+_DEFAULT_PLAYBOOK_DIR = "playbooks"
+
 
 def get_playbook_dir() -> Path:
-    """Get the playbook directory path."""
-    playbook_dir = os.getenv("ACE_PLAYBOOK_DIR", "bioagents/playbooks")
-    # Convert to absolute path relative to BioAgents root
-    base_path = Path(__file__).parent.parent.parent.parent
-    playbook_path = base_path / playbook_dir
+    """Get the playbook directory path.
+
+    Honours ``ACE_PLAYBOOK_DIR``; a relative value is anchored at the repository
+    root so playbooks never land outside the checkout.
+    """
+    configured = os.getenv("ACE_PLAYBOOK_DIR", "").strip() or _DEFAULT_PLAYBOOK_DIR
+    candidate = Path(configured)
+    playbook_path = candidate if candidate.is_absolute() else _REPO_ROOT / candidate
     playbook_path.mkdir(parents=True, exist_ok=True)
     return playbook_path
 
@@ -25,6 +48,10 @@ def load_playbook(agent_name: str) -> str:
     """
     Load playbook from YAML file.
 
+    Unsafe bullets (fabrication directives, run-specific entities) are dropped
+    before the content is returned, so a playbook written by an older build
+    cannot leak into a prompt.
+
     Args:
         agent_name: Name of the agent
 
@@ -34,25 +61,44 @@ def load_playbook(agent_name: str) -> str:
     playbook_path = get_playbook_path(agent_name)
 
     if not playbook_path.exists():
-        # Return empty playbook with standard sections
         return _get_empty_playbook()
 
     with playbook_path.open(encoding="utf-8") as f:
-        return f.read()
+        raw = f.read()
+
+    return _sanitize_and_log(agent_name, raw, stage="load")
 
 
 def save_playbook(agent_name: str, playbook: str) -> None:
     """
     Save playbook to YAML file.
 
+    The playbook is sanitized first so a curator that proposes a fabrication
+    directive or an entity-specific bullet never persists it.
+
     Args:
         agent_name: Name of the agent
         playbook: Playbook content to save
     """
     playbook_path = get_playbook_path(agent_name)
+    sanitized = _sanitize_and_log(agent_name, playbook, stage="save")
 
     with playbook_path.open("w", encoding="utf-8") as f:
-        f.write(playbook)
+        f.write(sanitized)
+
+
+def _sanitize_and_log(agent_name: str, playbook: str, stage: str) -> str:
+    """Run the safety filter over *playbook*, logging anything it removes."""
+    sanitized, removed = sanitize_playbook(playbook)
+    for bullet_id, reason in removed:
+        logger.warning(
+            "Dropped %s playbook bullet %s on %s: %s",
+            agent_name,
+            bullet_id or "<unknown>",
+            stage,
+            reason,
+        )
+    return sanitized
 
 
 def update_bullet_counts(playbook: str, tags: list[dict[str, str]]) -> str:
@@ -69,7 +115,6 @@ def update_bullet_counts(playbook: str, tags: list[dict[str, str]]) -> str:
     lines = playbook.strip().split("\n")
     updated_lines = []
 
-    # Create tag lookup
     tag_map = {}
     for tag in tags:
         if isinstance(tag, dict):
@@ -87,7 +132,6 @@ def update_bullet_counts(playbook: str, tags: list[dict[str, str]]) -> str:
             updated_lines.append(line)
             continue
 
-        # Parse playbook line: [id] helpful=X harmful=Y :: content
         parsed = _parse_playbook_line(line)
         if parsed:
             parsed_bullet_id: Any = parsed.get("id")
@@ -103,7 +147,6 @@ def update_bullet_counts(playbook: str, tags: list[dict[str, str]]) -> str:
                     parsed["harmful"] = (
                         current_harmful if isinstance(current_harmful, int) else 0
                     ) + 1
-                # neutral: no change
 
                 # Reconstruct line with updated counts
                 parsed_id: Any = parsed.get("id", "")

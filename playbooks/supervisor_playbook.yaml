@@ -3,7 +3,6 @@
 [rs-00001] helpful=23 harmful=0 :: Route questions requiring numerical derivation from raw input data (e.g., molecular weight from FASTA) to a dedicated computational processing pipeline, rather than a simple information retrieval or summarization path.
 ## TOOL_PATTERNS
 
-[tp-00002] helpful=22 harmful=0 :: For precise numerical calculations, especially in scientific contexts, explicitly simulate or integrate with computational tools. Detail the steps a tool would take (e.g., 'Using a simulated bioinformatics tool, I will first parse the sequence...').
 ## CODE_PATTERNS
 
 [cp-00003] helpful=20 harmful=0 :: **Algorithmic Pattern: Molecular Weight from FASTA Sequence**

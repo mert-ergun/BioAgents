@@ -16,20 +16,14 @@ from langchain_core.tools import tool
 
 logger = logging.getLogger(__name__)
 
-# Maximum number of characters returned per retrieval call.
 _MAX_RETRIEVAL_CHARS = 4000
 
-# Minimum keyword-overlap score to be considered a match.
 _MIN_OVERLAP_SCORE = 1
 
 
 def _tokenize(text: str) -> set[str]:
     """Split text into lowercase word tokens, stripping punctuation."""
-    return {
-        w
-        for w in re.split(r"\W+", text.lower())
-        if len(w) > 1  # skip single-char tokens
-    }
+    return {w for w in re.split(r"\W+", text.lower()) if len(w) > 1}
 
 
 def _fuzzy_overlap(query_tokens: set[str], target_tokens: set[str]) -> float:
@@ -40,12 +34,10 @@ def _fuzzy_overlap(query_tokens: set[str], target_tokens: set[str]) -> float:
     """
     score = 0.0
     for qt in query_tokens:
-        # Exact match
         if qt in target_tokens:
             score += 1.0
             continue
-        # Prefix/stem match: query token is a prefix of a target token
-        # (e.g. "bind" → "binding") or vice versa
+            # Prefix/stem match in either direction ("bind" <-> "binding").
         for tt in target_tokens:
             if len(qt) >= 3 and len(tt) >= 3 and (tt.startswith(qt) or qt.startswith(tt)):
                 score += 0.7
@@ -64,14 +56,11 @@ def _score_entry(query_tokens: set[str], entry: dict[str, Any]) -> float:
     agent_tokens = _tokenize(entry.get("agent", ""))
     content_tokens = _tokenize(entry.get("content", "")[:500])
 
-    # Base overlap: query vs index (fuzzy)
     score = _fuzzy_overlap(query_tokens, index_tokens)
 
-    # Agent name match bonus
     if query_tokens & agent_tokens:
         score += 2
 
-    # Content overlap (weaker signal, fuzzy)
     score += _fuzzy_overlap(query_tokens, content_tokens) * 0.5
 
     return score
@@ -102,7 +91,6 @@ def search_node_outputs(
     if not query_tokens:
         return "Please provide a more descriptive query about what you need."
 
-    # Determine which turns to search
     if turn_number is not None:
         turn_idx = turn_number - 1  # convert to 0-indexed
         if turn_idx < 0 or turn_idx >= len(node_outputs_by_turn):
@@ -111,11 +99,9 @@ def search_node_outputs(
     else:
         turns_to_search = list(enumerate(node_outputs_by_turn, start=1))
 
-    # Score every entry
     scored: list[tuple[float, int, str, str]] = []  # (score, turn, key, content)
     for turn_num, entries in turns_to_search:
         for key, entry in entries.items():
-            # Optional agent name filter
             if agent_name and agent_name.lower() not in entry.get("agent", "").lower():
                 continue
 
@@ -124,7 +110,6 @@ def search_node_outputs(
                 scored.append((score, turn_num, key, entry.get("content", "")))
 
     if not scored:
-        # Fallback: if agent_name was specified, return everything from that agent
         if agent_name:
             fallback_parts: list[str] = []
             for turn_num, entries in turns_to_search:
@@ -142,16 +127,13 @@ def search_node_outputs(
             "Check the [PREVIOUS SESSION CATALOG] for available entries."
         )
 
-    # Sort by score descending
     scored.sort(key=lambda x: x[0], reverse=True)
 
-    # Build response within budget
     parts: list[str] = []
     total_chars = 0
     for _score, turn_num, key, content in scored:
         entry_text = f"[Turn {turn_num} — {key}]\n{content[:_MAX_RETRIEVAL_CHARS]}"
         if total_chars + len(entry_text) > _MAX_RETRIEVAL_CHARS:
-            # Truncate last entry to fit
             remaining = _MAX_RETRIEVAL_CHARS - total_chars
             if remaining > 100:
                 parts.append(entry_text[:remaining] + "\n... [truncated]")
