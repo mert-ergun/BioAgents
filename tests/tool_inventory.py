@@ -1,11 +1,6 @@
-"""Inventory of every agent-callable tool in BioAgents.
+"""Inventory of every agent-callable tool, rebuilt exactly as ``bioagents/graph.py`` does.
 
-This module is the single source of truth for the tool-callability harness. It
-rebuilds the agent -> tools mapping exactly as ``bioagents/graph.py`` does, so a
-tool that appears here is a tool that some agent can really emit a tool call for.
-
-Nothing in this module invokes a tool body. Invocation lives in
-``tests/test_tool_callability.py`` (pytest) and ``tests/tool_audit.py`` (report).
+Nothing here invokes a tool body; that lives in test_tool_callability.py and tool_audit.py.
 """
 
 from __future__ import annotations
@@ -58,9 +53,7 @@ from bioagents.tools.transcriptomics_tools import get_transcriptomics_tools
 from bioagents.tools.visualization_tools import get_visualization_tools
 from bioagents.tools.web_tools import get_web_tools
 
-# Minimum description length for a tool description to be considered usable by an
-# LLM. Short one-liners like "Runs ESM-2 for protein embeddings." give an agent no
-# idea when to pick the tool or what it gets back.
+# Below this, a description tells an agent nothing about when to pick the tool.
 MIN_DESCRIPTION_LENGTH = 40
 
 # A description "documents its return value" if it mentions returning something.
@@ -71,10 +64,6 @@ _SUCCESS_PATTERN = re.compile(
     r"\b(success|successfully|completed|generated|finished|done)\b", re.IGNORECASE
 )
 
-
-# ---------------------------------------------------------------------------
-# Tool surface: factories + loose tools, mirroring bioagents/graph.py
-# ---------------------------------------------------------------------------
 
 _TU_TOOLS = [tool_universe_find_tools, tool_universe_call_tool]
 
@@ -94,8 +83,7 @@ FACTORIES = {
     "get_transcriptomics_tools": get_transcriptomics_tools,
     "get_visualization_tools": get_visualization_tools,
     "get_web_tools": get_web_tools,
-    # Not wired into graph.py, but a public factory used by the rdkit validator
-    # agent and exported from bioagents.tools.
+    # Not in graph.py, but a public factory used by the rdkit validator agent.
     "get_all_rdkit_tools": get_all_rdkit_tools,
 }
 
@@ -120,11 +108,7 @@ ORPHAN_TOOLS: list[BaseTool] = [run_esm2, run_esm3, run_saprot]
 
 
 def build_agent_tool_map() -> dict[str, list[BaseTool]]:
-    """Rebuild the agent -> bound tool list mapping from ``bioagents/graph.py``.
-
-    Mirrors ``create_graph()`` (graph.py, the tool-list block) so that each entry
-    is exactly the list an agent's LLM is bound to.
-    """
+    """Rebuild the agent -> bound tool list mapping, mirroring ``create_graph()``."""
     structural = get_structural_tools()
     web = get_web_tools()
     git = get_git_tools()
@@ -206,11 +190,6 @@ def owners_of(tool_name: str) -> list[str]:
     return owners or ["(unreachable)"]
 
 
-# ---------------------------------------------------------------------------
-# Duplicate / shadowing detection
-# ---------------------------------------------------------------------------
-
-
 @dataclass(frozen=True)
 class DuplicateFinding:
     """A tool name that appears more than once where it should appear once."""
@@ -228,9 +207,7 @@ class DuplicateFinding:
 def find_duplicate_names_in_lists() -> list[DuplicateFinding]:
     """Find tool names listed more than once inside a single bound tool list.
 
-    A duplicate inside one list is a real defect: the list is handed to
-    ``llm.bind_tools()``, and providers reject (or silently collapse) duplicate
-    function names, so one of the two tools becomes unreachable.
+    Providers reject or collapse duplicates, so one of the two tools becomes unreachable.
     """
     findings: list[DuplicateFinding] = []
     sources: dict[str, list[BaseTool]] = {
@@ -258,8 +235,7 @@ def find_duplicate_names_in_lists() -> list[DuplicateFinding]:
 def find_shadowed_names() -> list[DuplicateFinding]:
     """Find tool names bound to two *different* tool objects anywhere.
 
-    This is the dangerous case: an agent asking for ``run_boltz`` could reach
-    either implementation depending on which list it came from.
+    An agent asking for such a name reaches whichever list it came from.
     """
     grouped: dict[str, set[int]] = defaultdict(set)
     locations: dict[str, set[str]] = defaultdict(set)
@@ -281,11 +257,6 @@ def find_shadowed_names() -> list[DuplicateFinding]:
         for name, ids in sorted(grouped.items())
         if len(ids) > 1
     ]
-
-
-# ---------------------------------------------------------------------------
-# Structural checks (no invocation of the tool body)
-# ---------------------------------------------------------------------------
 
 
 @dataclass
@@ -329,9 +300,8 @@ def analyse_structure(tool: BaseTool) -> StructuralReport:
     fields = getattr(schema, "model_fields", {}) if schema is not None else {}
 
     missing_schema_desc = [name for name, f in fields.items() if not f.description]
-    # An argument counts as documented if the schema carries a description or the
-    # docstring (which is what the agent actually sees as the tool description)
-    # names it. Both reach the model; only a silent argument is a defect.
+    # An argument is documented if the schema or the description names it; both reach
+    # the model, so only a silent argument is a defect.
     undocumented = [
         name
         for name in missing_schema_desc
@@ -349,11 +319,6 @@ def analyse_structure(tool: BaseTool) -> StructuralReport:
     )
 
 
-# ---------------------------------------------------------------------------
-# Invocation probes (go through tool.invoke, the agent-facing interface)
-# ---------------------------------------------------------------------------
-
-
 class ProbeSentinel:
     """A value no scalar pydantic field can accept."""
 
@@ -364,11 +329,7 @@ class ProbeSentinel:
 def build_invalid_payload(tool: BaseTool) -> dict | None:
     """Build an argument dict that must fail ``args_schema`` validation.
 
-    Returns ``None`` when the tool takes no arguments at all, in which case there
-    is nothing to invalidate and the caller should fall back to a real call.
-
-    The payload never reaches the tool body, so this probe is safe even for
-    destructive tools.
+    ``None`` when the tool takes no arguments; the payload never reaches the tool body.
     """
     schema = getattr(tool, "args_schema", None)
     fields = getattr(schema, "model_fields", {}) if schema is not None else {}
@@ -379,11 +340,6 @@ def build_invalid_payload(tool: BaseTool) -> dict | None:
         # Omitting required args is enough; the body is never entered.
         return {}
     return {name: ProbeSentinel() for name in fields}
-
-
-# ---------------------------------------------------------------------------
-# Phantom-tool detection
-# ---------------------------------------------------------------------------
 
 
 def _tool_function(tool: BaseTool):
@@ -455,14 +411,7 @@ def unused_parameters(tool: BaseTool) -> list[str]:
 
 
 def is_phantom_tool(tool: BaseTool) -> bool:
-    """Detect a tool that fakes success without using its own inputs.
-
-    A phantom tool is one that (a) ignores at least one of its declared
-    parameters entirely and (b) returns a hardcoded success-looking string. That
-    is the signature of a stub that reports "analysis completed successfully"
-    while doing no work -- the worst failure mode for an agent, because the
-    agent believes it.
-    """
+    """Detect a tool that ignores a declared parameter and returns a canned success string."""
     node = _function_ast(tool)
     if node is None:
         return False
@@ -474,15 +423,10 @@ def find_phantom_tools() -> list[str]:
     return sorted(name for name, tool in ALL_TOOLS.items() if is_phantom_tool(tool))
 
 
-# ---------------------------------------------------------------------------
-# Drift guard: keep this inventory honest against bioagents/graph.py
-# ---------------------------------------------------------------------------
-
 GRAPH_PATH = Path(__file__).resolve().parents[1] / "bioagents" / "graph.py"
 
-#: Tool factories used by graph.py that this harness deliberately does not audit,
-#: because they produce smolagents Tools rather than LangChain BaseTools (the
-#: coder/ml/dl agents use a different calling convention).
+#: Factories this harness skips: they produce smolagents Tools, not LangChain
+#: BaseTools, so the coder/ml/dl agents call them differently.
 NON_LANGCHAIN_FACTORIES = frozenset({"get_esm_smol_tools"})
 
 

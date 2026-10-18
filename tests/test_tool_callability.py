@@ -1,22 +1,7 @@
-"""Tool-callability smoke tests.
+"""Tool-callability smoke tests, driven through ``tool.invoke(<dict>)``.
 
-Every tool an agent can reach is exercised through ``tool.invoke(<dict>)`` --
-the exact interface a LangGraph agent uses -- so that passing here means an
-agent really can call the tool, not merely that the underlying Python function
-exists.
-
-Two layers:
-
-* structural (default, offline, fast): naming, descriptions, arg schemas,
-  duplicate names, and a validation probe proving the tool is wired up.
-* live (``--runlive``): real invocations with realistic arguments, asserting the
-  result is a real result rather than a cheerful lie.
-
-Run the live layer with::
-
-    uv run pytest tests/test_tool_callability.py --runlive
-
-A human-readable inventory is produced by ``uv run python -m tests.tool_audit``.
+Structural checks run by default; real invocations need ``--runlive``. A readable
+inventory comes from ``uv run python -m tests.tool_audit``.
 """
 
 from __future__ import annotations
@@ -44,21 +29,8 @@ from tests.tool_live_cases import (
     LiveContext,
 )
 
-# ---------------------------------------------------------------------------
-# Known-defect ledgers.
-#
-# These are explicit, visible expected-failures. A tool listed here is a known
-# bug, not an accepted standard: fixing the tool flips the entry green and the
-# test then asks for the entry to be removed.
-# ---------------------------------------------------------------------------
-
 #: Tools that return a hardcoded success string without using their own inputs.
-#: Replacing a stub with a real implementation removes it from this set
-#: automatically -- the test only fails on *new* phantoms.
-#: Empty, and it must stay empty. All eleven original offenders (run_esm2, run_esm3,
-#: run_saprot, run_alphafold2, run_boltz, run_esmfold, run_abodybuilder3, run_unimol,
-#: run_rfdiffusion, run_proteinmpnn, run_aggrescan3d) now either do real work or report
-#: an honest failure. Any name appearing here again is a regression, not a baseline.
+#: Must stay empty: a name appearing here again is a regression, not a baseline.
 KNOWN_PHANTOM_TOOLS: frozenset[str] = frozenset()
 
 #: Tools whose description never tells the agent what it gets back.
@@ -86,11 +58,6 @@ def _warn_if_fixed(fixed: set[str], ledger_name: str) -> None:
             f"{ledger_name}: {sorted(fixed)}",
             stacklevel=2,
         )
-
-
-# ---------------------------------------------------------------------------
-# 1. Structural checks over every tool (offline, always run)
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
@@ -159,11 +126,7 @@ def test_description_ledgers_are_not_stale() -> None:
 
 @pytest.mark.unit
 def test_inventory_covers_every_factory_graph_uses() -> None:
-    """The harness must not drift behind ``bioagents/graph.py``.
-
-    If someone wires a new ``get_*_tools()`` factory into an agent, this fails
-    until the factory is added to the audited surface.
-    """
+    """The harness must not drift behind ``bioagents/graph.py``."""
     missing = sorted(unaudited_graph_factories())
     assert not missing, "graph.py binds tool factories this harness does not audit: " + ", ".join(
         missing
@@ -182,11 +145,7 @@ def test_no_shadowed_tool_names() -> None:
 
 @pytest.mark.unit
 def test_no_duplicate_tool_names_in_a_bound_list() -> None:
-    """A tool list handed to ``bind_tools()`` must not repeat a name.
-
-    Providers reject or silently collapse duplicate function names, which makes
-    one of the two tools unreachable for the agent.
-    """
+    """A tool list handed to ``bind_tools()`` must not repeat a name."""
     found = {(f.tool_name, f.location) for f in find_duplicate_names_in_lists()}
     new = found - KNOWN_DUPLICATE_BINDINGS
     assert not new, "duplicate tool names inside a single bound tool list:\n  " + "\n  ".join(
@@ -203,14 +162,8 @@ def test_no_duplicate_tool_names_in_a_bound_list() -> None:
 def test_tool_is_invocable_through_agent_interface(tool_name: str) -> None:
     """``tool.invoke(...)`` reaches schema validation instead of blowing up.
 
-    This is the real agent entry point. A bad import, a broken decorator, or a
-    schema the agent cannot satisfy shows up here as ImportError/AttributeError
-    rather than a pydantic ValidationError.
-
-    The probe deliberately sends an *invalid* payload so the tool body never
-    runs -- safe even for destructive tools. Tools that take no arguments at all
-    are called for real, since there is nothing to invalidate and they are
-    read-only by construction.
+    The payload is deliberately invalid so the tool body never runs; no-arg tools are
+    called for real.
     """
     tool = ALL_TOOLS[tool_name]
     payload = build_invalid_payload(tool)
@@ -236,22 +189,9 @@ def test_agent_has_at_least_one_tool(agent_name: str) -> None:
     assert tools, f"agent {agent_name} is bound to an empty tool list"
 
 
-# ---------------------------------------------------------------------------
-# 2. Phantom-tool detection
-# ---------------------------------------------------------------------------
-
-
 @pytest.mark.unit
 def test_no_phantom_tools() -> None:
-    """No tool may fake success while ignoring its own inputs.
-
-    A phantom tool ignores at least one declared argument and returns a
-    hardcoded success-looking string. Agents trust such a result completely,
-    so this is the most damaging possible tool defect.
-
-    Known offenders are listed in ``KNOWN_PHANTOM_TOOLS``. Replacing a stub with
-    a real implementation makes this test pass for that tool with no edit here.
-    """
+    """No tool may fake success while ignoring its own inputs."""
     detected = set(find_phantom_tools())
     new_phantoms = detected - KNOWN_PHANTOM_TOOLS
     assert not new_phantoms, (
@@ -259,11 +199,6 @@ def test_no_phantom_tools() -> None:
         f"without using their own arguments: {sorted(new_phantoms)}"
     )
     _warn_if_fixed(KNOWN_PHANTOM_TOOLS - detected, "KNOWN_PHANTOM_TOOLS")
-
-
-# ---------------------------------------------------------------------------
-# 3. Live smoke tests
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
@@ -314,8 +249,7 @@ def test_tool_live_invocation(tool_name: str, live_context: LiveContext) -> None
     except AssertionError as exc:
         diagnosis = KNOWN_LIVE_FAILURES.get(tool_name)
         if diagnosis:
-            # Deliberately still a failure: this is a tracked defect in the tool,
-            # not an accepted behaviour of the harness.
+            # Still a failure: a tracked tool defect, not accepted harness behaviour.
             raise AssertionError(
                 f"{tool_name} is a known-broken tool -- {diagnosis}\n\n{exc}"
             ) from exc

@@ -55,7 +55,6 @@ def test_env_vars():
 def clean_env():
     """Fixture that cleans environment variables before and after test."""
     original_env = os.environ.copy()
-    # Clear relevant env vars
     env_vars_to_clear = [
         "OPENAI_API_KEY",
         "GEMINI_API_KEY",
@@ -70,7 +69,6 @@ def clean_env():
 
     yield
 
-    # Restore original environment
     os.environ.clear()
     os.environ.update(original_env)
 
@@ -107,7 +105,6 @@ def temp_prompt_dir(tmp_path):
     prompt_dir = tmp_path / "prompts"
     prompt_dir.mkdir()
 
-    # Create a simple test prompt
     test_prompt = prompt_dir / "test_prompt.xml"
     test_prompt.write_text("""<?xml version="1.0" encoding="UTF-8"?>
 <prompt>
@@ -149,7 +146,6 @@ def mock_rate_limiter():
 def reset_rate_limiters():
     """Fixture that resets global rate limiters after each test."""
     yield
-    # Clear global rate limiters after each test to prevent interference
     from bioagents.llms import llm_provider
 
     llm_provider._rate_limiters.clear()
@@ -213,12 +209,7 @@ def sample_tool_calls():
 
 @pytest.fixture(scope="session")
 def live_context(tmp_path_factory):
-    """Scratch workspace for live tool-callability smoke tests.
-
-    Redirects the BioAgents sandbox at the module level so live invocations of
-    sandbox-backed tools (visualization, transcriptomics) never write into the
-    repository working tree.
-    """
+    """Scratch workspace for live smoke tests, redirecting the sandbox away from the repo."""
     from bioagents.sandbox import sandbox_manager
     from tests.tool_live_cases import LiveContext
 
@@ -236,7 +227,6 @@ def live_context(tmp_path_factory):
         sandbox_manager._default_sandbox = original_default
 
 
-# Pytest configuration markers
 def pytest_configure(config):
     """Configure custom pytest markers."""
     config.addinivalue_line("markers", "integration: mark test as integration test")
@@ -250,7 +240,6 @@ def pytest_configure(config):
     config.addinivalue_line("markers", "e2e: mark test as end-to-end test")
 
 
-# Skip slow tests by default unless --runslow is passed
 def pytest_addoption(parser):
     """Add custom command line options."""
     parser.addoption("--runslow", action="store_true", default=False, help="run slow tests")

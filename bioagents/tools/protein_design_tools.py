@@ -26,11 +26,6 @@ from langchain_core.tools import tool
 logger = logging.getLogger(__name__)
 
 
-# ============================================================================
-# BindCraft / Binder Design API Tools
-# ============================================================================
-
-
 @tool
 def design_binders_bindcraft(
     target_pdb_path: str,
@@ -69,11 +64,9 @@ def design_binders_bindcraft(
         out_path = Path(output_dir)
         out_path.mkdir(parents=True, exist_ok=True)
 
-        # Parse parameters
         hotspots = [int(r.strip()) for r in target_hotspot_residues.split(",")]
         min_len, max_len = map(int, binder_length_range.split("-"))
 
-        # Create design configuration
         config = {
             "target_pdb": str(path.absolute()),
             "hotspot_residues": hotspots,
@@ -92,7 +85,6 @@ def design_binders_bindcraft(
         config_path = out_path / "design_config.json"
         config_path.write_text(json.dumps(config, indent=2))
 
-        # Check for local installations
         rfdiffusion_available = _check_rfdiffusion_available()
         proteinmpnn_available = _check_proteinmpnn_available()
         colabfold_available = _check_colabfold_available()
@@ -103,7 +95,6 @@ def design_binders_bindcraft(
             "colabfold": colabfold_available,
         }
 
-        # Determine execution mode
         if all(available_tools.values()):
             execution_mode = "local"
             message = "All tools available locally. Ready to run design pipeline."
@@ -180,10 +171,8 @@ def generate_binder_backbones(
         out_path = Path(output_dir)
         out_path.mkdir(parents=True, exist_ok=True)
 
-        # Convert target_pdb_path to absolute path
         target_pdb_abs = str(Path(target_pdb_path).absolute())
 
-        # Get the length of the target chain from the PDB file
         try:
             from Bio.PDB import PDBParser
 
@@ -193,25 +182,18 @@ def generate_binder_backbones(
             residues = list(chain.get_residues())
             target_length = len(residues)
         except Exception:
-            # Fallback: assume typical protein length
             target_length = 400
 
         hotspots = [int(r.strip()) for r in hotspot_residues.split(",")]
         hotspot_str = ",".join([f"{target_chain}{r}" for r in hotspots])
 
         if _check_rfdiffusion_available():
-            # Run RFdiffusion in its conda environment
             rfdiffusion_dir = os.environ.get("RFDIFFUSION_DIR", "RFdiffusion")
 
-            # PPI binder design format (from RFdiffusion examples/design_ppi.sh):
-            # contigmap.contigs='[A1-150/0 70-100]'
-            # - A1-150: keep target chain A residues 1 to 150
-            # - /0: chain break (NOT a separate element!)
-            # - 70-100: design a binder of length 70-100 (sampled)
+            # contigs '[A1-150/0 70-100]': keep A1-150, '/0' is a chain break, design 70-100.
             contigs_arg = f"'contigmap.contigs=[{target_chain}1-{target_length}/0 {binder_length}-{binder_length}]'"
             hotspots_arg = f"'ppi.hotspot_res=[{hotspot_str}]'"
 
-            # Check if we should force CPU mode
             # Note: PyTorch 2.7 nightly with CUDA 12.4 works on RTX 5070 Ti (sm_120) despite warnings
             force_cpu = os.environ.get("RFDIFFUSION_FORCE_CPU", "0")
             if force_cpu == "0":
@@ -228,10 +210,8 @@ def generate_binder_backbones(
                     force_cpu = "1"
                     logger.info("Could not detect GPU, using CPU mode")
 
-            # Create shell script to activate conda and run RFdiffusion
             cpu_env = "export CUDA_VISIBLE_DEVICES=''" if force_cpu == "1" else ""
-            # Set PYTORCH_ENABLE_MPS_FALLBACK to allow legacy torch.load behavior
-            # Required for RFdiffusion's e3nn dependency with PyTorch 2.7+
+            # RFdiffusion's e3nn needs legacy torch.load behaviour on PyTorch 2.7+.
             shell_cmd = f"""
 source ~/miniconda3/etc/profile.d/conda.sh
 conda activate SE3nv
@@ -252,7 +232,7 @@ python scripts/run_inference.py \\
                 ["/usr/bin/bash", "-c", shell_cmd],
                 capture_output=True,
                 text=True,
-                timeout=3600,  # 1 hour timeout
+                timeout=3600,
             )  # nosec B603 B607
 
             if result.returncode != 0:
@@ -260,7 +240,6 @@ python scripts/run_inference.py \\
                     {"status": "error", "message": f"RFdiffusion failed: {result.stderr}"}
                 )
 
-            # List generated files
             backbone_files = list(out_path.glob("binder_*.pdb"))
 
             return json.dumps(
@@ -274,7 +253,6 @@ python scripts/run_inference.py \\
                 indent=2,
             )
         else:
-            # Return instructions for Google Colab (fastest option)
             colab_command = f"""
 # In Google Colab notebook:
 !python scripts/run_inference.py \\
@@ -354,7 +332,6 @@ def design_binder_sequences(
                 {"status": "error", "message": f"Backbone PDB not found: {backbone_pdb_path}"}
             )
 
-        # ProteinMPNN command
         cmd = [
             "python",
             "protein_mpnn_run.py",
@@ -377,15 +354,12 @@ def design_binder_sequences(
         if _check_proteinmpnn_available():
             proteinmpnn_dir = os.environ.get("PROTEINMPNN_DIR", "ProteinMPNN")
 
-            # Create chain definition files
             chains_jsonl = out_path / "chains.jsonl"
 
-            # Define which chains to design vs keep fixed
             chain_data = {"chains_to_design": binder_chain}
             chains_jsonl.write_text(json.dumps({backbone_path.stem: chain_data}))
 
-            # ProteinMPNN can use the same conda environment or run standalone
-            # It has minimal dependencies that are likely already in SE3nv
+            # Reuse the SE3nv env; ProteinMPNN's dependencies are a subset of RFdiffusion's.
             shell_cmd = f"""
 source ~/miniconda3/etc/profile.d/conda.sh
 conda activate SE3nv
@@ -405,12 +379,10 @@ cd {proteinmpnn_dir}
                     {"status": "error", "message": f"ProteinMPNN failed: {result.stderr}"}
                 )
 
-            # Parse output sequences
             fasta_files = list(out_path.glob("*.fasta"))
             sequences = []
             for fasta in fasta_files:
                 content = fasta.read_text()
-                # Parse FASTA
                 for block in content.strip().split(">"):
                     if block:
                         lines = block.strip().split("\n")
@@ -423,7 +395,7 @@ cd {proteinmpnn_dir}
                     "status": "success",
                     "message": f"Designed {len(sequences)} sequences",
                     "output_dir": str(out_path),
-                    "sequences": sequences[:20],  # Limit output
+                    "sequences": sequences[:20],
                     "total_designed": len(sequences),
                 },
                 indent=2,
@@ -487,15 +459,13 @@ def predict_complex_structure(
         out_path = Path(output_dir)
         out_path.mkdir(parents=True, exist_ok=True)
 
-        # Combine sequences for multimer prediction
         complex_fasta = f">target\n{target_sequence}\n>binder\n{binder_sequence}\n"
 
         fasta_path = out_path / "complex.fasta"
         fasta_path.write_text(complex_fasta)
 
         if _check_colabfold_available():
-            # Run ColabFold locally (it's in the BioAgents venv)
-            # Note: colabfold_batch should be available when running via 'uv run'
+            # colabfold_batch ships in the BioAgents venv, so 'uv run' puts it on PATH.
             cmd = [
                 "colabfold_batch",
                 str(fasta_path),
@@ -504,15 +474,15 @@ def predict_complex_structure(
                 str(num_recycles),
                 "--num-models",
                 "3",
-                "--amber",  # Relax structures
-                "--use-gpu-relax",  # Use GPU for relaxation if available
+                "--amber",
+                "--use-gpu-relax",
             ]
 
             result = subprocess.run(
                 cmd,
                 capture_output=True,
                 text=True,
-                timeout=7200,  # 2 hour timeout
+                timeout=7200,
             )  # nosec B603
 
             if result.returncode != 0:
@@ -520,7 +490,6 @@ def predict_complex_structure(
                     {"status": "error", "message": f"ColabFold failed: {result.stderr}"}
                 )
 
-            # Parse results
             pdb_files = list(out_path.glob("*_relaxed_rank_*.pdb"))
             json_files = list(out_path.glob("*_scores_rank_*.json"))
 
@@ -548,7 +517,6 @@ def predict_complex_structure(
             )
 
         else:
-            # Return instructions for API or manual execution
             return json.dumps(
                 {
                     "status": "manual_execution_required",
@@ -607,7 +575,6 @@ def compute_binding_metrics(
                 {"status": "error", "message": f"Complex PDB not found: {complex_pdb_path}"}
             )
 
-        # Try to use BioPython for analysis
         try:
             import numpy as np
             from Bio.PDB import NeighborSearch, PDBParser
@@ -625,7 +592,6 @@ def compute_binding_metrics(
             target = model[target_chain]
             binder = model[binder_chain]
 
-            # Get interface atoms (< 5 Å between chains)
             binder_atoms = list(binder.get_atoms())
             ns = NeighborSearch(binder_atoms)
 
@@ -641,7 +607,6 @@ def compute_binding_metrics(
                     for n in nearby:
                         interface_binder_residues.add(n.get_parent().id[1])
 
-            # Calculate interface metrics
             metrics: dict[str, Any] = {
                 "interface_contacts": contacts,
                 "interface_target_residues": len(interface_target_residues),
@@ -650,13 +615,11 @@ def compute_binding_metrics(
                 "binder_length": len(list(binder.get_residues())),
             }
 
-            # Calculate ipSAE if PAE available
             if pae_json_path:
                 pae_path = Path(pae_json_path)
                 if pae_path.exists():
                     pae_data = json.loads(pae_path.read_text())
 
-                    # Handle different PAE formats
                     if isinstance(pae_data, list):
                         pae_matrix = np.array(pae_data[0].get("predicted_aligned_error", []))
                     elif "pae" in pae_data:
@@ -667,7 +630,6 @@ def compute_binding_metrics(
                     if pae_matrix.size > 0:
                         target_len = metrics["target_length"]
 
-                        # Extract interface PAE
                         ipae_1to2 = pae_matrix[:target_len, target_len:]
                         ipae_2to1 = pae_matrix[target_len:, :target_len]
 
@@ -678,7 +640,6 @@ def compute_binding_metrics(
                             float(min(np.min(ipae_1to2), np.min(ipae_2to1))), 3
                         )
 
-            # Try to get iPTM from associated scores file
             scores_path = pdb_path.with_name(pdb_path.stem.replace("_relaxed", "_scores") + ".json")
             if scores_path.exists():
                 scores = json.loads(scores_path.read_text())
@@ -686,7 +647,6 @@ def compute_binding_metrics(
                 metrics["pTM"] = scores.get("ptm", None)
                 metrics["mean_pLDDT"] = scores.get("mean_plddt", None)
 
-            # Quality assessment
             quality_pass = True
             quality_notes = []
 
@@ -720,7 +680,6 @@ def compute_binding_metrics(
             )
 
         except ImportError:
-            # Fallback without BioPython
             return json.dumps(
                 {
                     "status": "partial",
@@ -767,7 +726,6 @@ def rank_binder_designs(
                 {"status": "error", "message": f"Results directory not found: {results_dir}"}
             )
 
-        # Collect all score files
         score_files = list(results_path.glob("**/*_scores*.json"))
 
         designs = []
@@ -777,7 +735,6 @@ def rank_binder_designs(
 
                 iptm = scores.get("iptm", 0)
 
-                # Find associated PDB
                 pdb_name = score_file.stem.replace("_scores", "_relaxed")
                 pdb_path = score_file.parent / f"{pdb_name}.pdb"
 
@@ -789,7 +746,6 @@ def rank_binder_designs(
                     "mean_pLDDT": round(scores.get("mean_plddt", 0), 1),
                 }
 
-                # Check for ipSAE in PAE file
                 pae_file = score_file.parent / f"{score_file.stem.replace('_scores', '_pae')}.json"
                 if pae_file.exists():
                     design["has_pae"] = True
@@ -799,13 +755,10 @@ def rank_binder_designs(
             except Exception as e:
                 logger.warning(f"Could not parse {score_file}: {e}")
 
-        # Sort by iPTM (descending)
         designs.sort(key=lambda x: x.get("iPTM", 0), reverse=True)
 
-        # Filter by thresholds
         passing_designs = [d for d in designs if d.get("iPTM", 0) >= iptm_threshold]
 
-        # Get best iPTM among passing designs
         max_iptm = max([d["iPTM"] for d in passing_designs], default=0)
 
         return json.dumps(
@@ -899,12 +852,7 @@ def run_rfdiffusion(
     )
 
 
-# ============================================================================
-# Local execution backends
-# ============================================================================
-
-# ProteinMPNN ships several checkpoint families; the vanilla 0.20A-noise model is
-# the published default for general backbone redesign.
+# v_48_020 is ProteinMPNN's published default checkpoint for general backbone redesign.
 PROTEINMPNN_DEFAULT_MODEL = "v_48_020"
 
 
@@ -1200,18 +1148,12 @@ def _run_rfdiffusion_local(
     )
 
 
-# ============================================================================
-# Helper Functions
-# ============================================================================
-
-
 def _check_rfdiffusion_available() -> bool:
     """Check if RFdiffusion is available locally."""
     rfdiffusion_dir = os.environ.get("RFDIFFUSION_DIR")
     if rfdiffusion_dir and Path(rfdiffusion_dir).exists():
         return True
 
-    # Check common locations
     for path in ["RFdiffusion", "~/RFdiffusion", "/opt/RFdiffusion"]:
         if Path(path).expanduser().exists():
             return True
@@ -1235,7 +1177,6 @@ def _check_proteinmpnn_available() -> bool:
 def _check_colabfold_available() -> bool:
     """Check if ColabFold is available locally."""
     try:
-        # Check if colabfold_batch is in PATH
         import shutil
 
         colabfold_path = shutil.which("colabfold_batch")

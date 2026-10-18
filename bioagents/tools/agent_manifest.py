@@ -37,6 +37,45 @@ NON_TOOL_AGENTS: frozenset[str] = frozenset(
     }
 )
 
+# No implementation and no API client: every call errors. Remove a name here in the
+# same change that wires up a real backend for it.
+UNAVAILABLE_STUB_TOOLS: frozenset[str] = frozenset(
+    {
+        "run_esm3",  # hosted-only (EvolutionaryScale/SageMaker/BioNeMo), no client
+        "run_saprot",  # hosted-only (Tamarind/HF), needs Foldseek 3Di tokens
+        "run_alphafold2",  # hosted-only, no client
+        "run_abodybuilder3",  # hosted-only, no client
+        "run_unimol",  # hosted-only, no client
+    }
+)
+
+
+def _is_bindable(tool: object) -> bool:
+    """True if ``tool`` can perform work: not a known stub, not flagged unavailable."""
+    name = getattr(tool, "name", None)
+    if isinstance(name, str) and name in UNAVAILABLE_STUB_TOOLS:
+        return False
+    for target in (tool, getattr(tool, "func", None), getattr(tool, "coroutine", None)):
+        if target is not None and getattr(target, "__bioagents_unavailable__", False):
+            return False
+    return True
+
+
+def filter_bindable_tools(tools: list) -> list:
+    """Drop tools that cannot run, preserving order and dropping duplicates."""
+    seen: set[str] = set()
+    kept = []
+    for tool in tools:
+        if not _is_bindable(tool):
+            continue
+        name = getattr(tool, "name", None)
+        if isinstance(name, str):
+            if name in seen:
+                continue
+            seen.add(name)
+        kept.append(tool)
+    return kept
+
 
 def build_agent_tool_map(session_context_tool: BaseTool | None = None) -> dict[str, list]:
     """Build the agent → tools mapping used to wire the graph.
@@ -57,7 +96,7 @@ def build_agent_tool_map(session_context_tool: BaseTool | None = None) -> dict[s
     from bioagents.tools.docking_tools import get_docking_tools
     from bioagents.tools.environment_tools import get_environment_tools
     from bioagents.tools.esm_tools import get_esm_tools
-    from bioagents.tools.file_tools import get_file_tools
+    from bioagents.tools.file_tools import check_file_exists, get_file_tools, list_local_directory
     from bioagents.tools.genomics_tools import get_genomics_tools
     from bioagents.tools.git_tools import get_git_tools
     from bioagents.tools.literature_tools import get_literature_tools
@@ -68,12 +107,19 @@ def build_agent_tool_map(session_context_tool: BaseTool | None = None) -> dict[s
     )
     from bioagents.tools.protein_design_tools import get_all_protein_design_tools
     from bioagents.tools.proteomics_tools import download_uniprot_flat_file, fetch_uniprot_fasta
+    from bioagents.tools.rdkit_tools import (
+        get_all_rdkit_tools,
+        get_rdkit_analysis_tools,
+        get_rdkit_query_tools,
+        get_rdkit_validation_tools,
+    )
     from bioagents.tools.shell_tools import get_shell_tools
     from bioagents.tools.structural_tools import (
         download_structure_file,
         fetch_alphafold_structure,
         fetch_pdb_structure,
         get_structural_tools,
+        run_boltz,
     )
     from bioagents.tools.tool_builder_tools import get_tool_builder_tools
     from bioagents.tools.tool_universe import tool_universe_call_tool, tool_universe_find_tools
@@ -82,6 +128,12 @@ def build_agent_tool_map(session_context_tool: BaseTool | None = None) -> dict[s
     from bioagents.tools.web_tools import get_web_tools
 
     tool_universe = [tool_universe_find_tools, tool_universe_call_tool]
+
+    rdkit_core = get_rdkit_validation_tools() + get_rdkit_analysis_tools() + get_rdkit_query_tools()
+
+    # Every agent that writes artifacts needs to be able to ask whether the work is
+    # already on disk; without it a finished result was re-derived and overwritten.
+    workspace_checks = [check_file_exists, list_local_directory]
 
     agent_tools: dict[str, list] = {
         "research": [
@@ -100,30 +152,33 @@ def build_agent_tool_map(session_context_tool: BaseTool | None = None) -> dict[s
             calculate_isoelectric_point,
             run_aggrescan3d,
             *get_esm_tools(),
+            *rdkit_core,
+            *workspace_checks,
         ],
         "tool_builder": get_tool_builder_tools(),
-        "protein_design": get_all_protein_design_tools(),
+        "protein_design": get_all_protein_design_tools() + workspace_checks,
         "literature": get_literature_tools() + tool_universe,
         "web_browser": get_web_tools(),
         "paper_replication": get_web_tools() + get_git_tools() + [extract_pdf_text_spacy_layout],
         "data_acquisition": get_web_tools() + get_file_tools() + [download_uniprot_flat_file],
-        "genomics": get_genomics_tools() + tool_universe,
+        "genomics": get_genomics_tools() + tool_universe + workspace_checks,
         "transcriptomics": get_transcriptomics_tools() + tool_universe,
-        "structural_biology": get_structural_tools() + get_esm_tools(),
+        "structural_biology": get_structural_tools() + get_esm_tools() + workspace_checks,
         "phylogenetics": get_genomics_tools(),
         "tool_discovery": get_tool_builder_tools(),
-        "shell": get_shell_tools(),
+        "shell": get_shell_tools() + workspace_checks,
         "git": get_git_tools(),
         "environment": get_environment_tools(),
-        "visualization": get_visualization_tools(),
-        "docking": get_docking_tools(),
+        "visualization": get_visualization_tools() + workspace_checks,
+        # run_boltz: co-folding is a different computation from docking, not a fallback.
+        "docking": get_docking_tools() + get_all_rdkit_tools() + [run_boltz] + workspace_checks,
     }
 
     if session_context_tool is not None:
         for tools in agent_tools.values():
             tools.append(session_context_tool)
 
-    return agent_tools
+    return {agent: filter_bindable_tools(tools) for agent, tools in agent_tools.items()}
 
 
 def agent_tool_names(session_context_tool: BaseTool | None = None) -> dict[str, list[str]]:

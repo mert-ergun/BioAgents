@@ -31,16 +31,14 @@ def _run_pip_install_streaming(pip_cmd, timeout=180):
     Returns:
         Result object with returncode, stdout, and stderr attributes
     """
-    # Use Popen to stream output in real-time
     process = subprocess.Popen(  # nosec B603
         pip_cmd,
         stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,  # Merge stderr into stdout
+        stderr=subprocess.STDOUT,
         text=True,
         bufsize=1,  # Line buffered for real-time output
     )
 
-    # Stream output line by line in real-time
     output_lines = []
     if process.stdout is not None:
         for line in process.stdout:
@@ -49,7 +47,6 @@ def _run_pip_install_streaming(pip_cmd, timeout=180):
                 logger.info(f"pip: {line}")
                 output_lines.append(line)
 
-    # Wait for process to complete (with timeout)
     try:
         returncode = process.wait(timeout=timeout)
     except subprocess.TimeoutExpired:
@@ -58,7 +55,7 @@ def _run_pip_install_streaming(pip_cmd, timeout=180):
         logger.warning(f"Pip install timed out after {timeout}s")
         returncode = 1
 
-    # Create result object for compatibility
+    # Mimic subprocess.CompletedProcess so both install paths return the same shape.
     class Result:
         def __init__(self, returncode, output_lines):
             self.returncode = returncode
@@ -134,7 +131,6 @@ def extract_system_dependencies_from_code(code: str) -> list[str]:
         ):
             dependencies.append(bioinfo_tool)
 
-    # Remove duplicates and common false positives
     dependencies = list(set(dependencies))
     false_positives = [
         "python",
@@ -177,8 +173,7 @@ def extract_tools_from_text(text: str, _section_type: str = "methods") -> str:
     Returns:
         JSON string with extracted tool information
     """
-    # Constructed inside the guarded block below: get_llm() raises when no API key is
-    # configured, and a tool must hand the agent an error result, not an exception.
+    # get_llm() raises without an API key, so it is called inside the guarded block below.
     prompt = f"""Analyze this scientific text and extract all bioinformatics tools, software, and databases mentioned.
 
 For each tool, identify:
@@ -200,7 +195,6 @@ Focus on domain-specific tools like: samtools, BLAST, DESeq2, Scanpy, CellTypist
         response = llm.invoke(prompt)
         content = response.content if hasattr(response, "content") else str(response)
 
-        # Try to extract JSON from the response
         json_match = re.search(r"\{[\s\S]*\}", content)
         if json_match:
             return json_match.group()
@@ -229,8 +223,7 @@ def research_tool_documentation(tool_name: str, tool_url: str | None = None) -> 
     Returns:
         JSON string with gathered documentation
     """
-    # This would integrate with web search in production
-    # For now, return a structured template for the LLM to work with
+    # Placeholder: returns a template for the LLM instead of doing a real web search.
 
     result = {
         "tool_name": tool_name,
@@ -309,12 +302,10 @@ Return a JSON object with:
         response = llm.invoke(prompt)
         content = response.content if hasattr(response, "content") else str(response)
 
-        # Extract JSON or code from response
         json_match = re.search(r"\{[\s\S]*\}", content)
         if json_match:
             return json_match.group()
 
-        # If no JSON, wrap the code in a JSON structure
         code_match = re.search(r"```python\n([\s\S]*?)```", content)
         if code_match:
             return json.dumps(
@@ -374,7 +365,6 @@ def register_custom_tool(
         Status message
     """
     try:
-        # Parse parameters
         params_data = json.loads(parameters_json)
         parameters = [
             ToolParameter(
@@ -390,14 +380,12 @@ def register_custom_tool(
         dependencies = json.loads(dependencies_json)
         system_dependencies = json.loads(system_dependencies_json)
 
-        # If system_dependencies is empty, try to extract from code
         if not system_dependencies:
             extracted_deps = extract_system_dependencies_from_code(code)
             if extracted_deps:
                 system_dependencies = extracted_deps
                 logger.info(f"Auto-extracted system dependencies from code: {extracted_deps}")
 
-        # Create tool definition
         definition = ToolDefinition(
             name=name,
             description=description,
@@ -413,7 +401,6 @@ def register_custom_tool(
             source_software=source_software,
         )
 
-        # Register in the registry
         registry = get_registry()
         success = registry.register_tool(definition, overwrite=True)
 
@@ -601,7 +588,6 @@ def execute_custom_tool(tool_name: str, arguments_json: str = "{}") -> str:
                 }
             )
 
-        # Check and install system dependencies BEFORE executing
         if tool_def.system_dependencies:
             missing_deps = []
             for dep in tool_def.system_dependencies:
@@ -618,13 +604,11 @@ def execute_custom_tool(tool_name: str, arguments_json: str = "{}") -> str:
                 mamba_path = shutil.which("mamba")
                 if mamba_path:
                     try:
-                        # Install via mamba with bioconda and conda-forge channels
-                        # Use shorter timeout to avoid blocking workflow
                         install_cmd = [
                             "mamba",
                             "install",
                             "-y",
-                            "--quiet",  # Reduce output
+                            "--quiet",
                             "-c",
                             "bioconda",
                             "-c",
@@ -641,7 +625,6 @@ def execute_custom_tool(tool_name: str, arguments_json: str = "{}") -> str:
                             logger.info(
                                 f"Successfully installed dependencies via mamba: {missing_deps}"
                             )
-                            # Re-check which dependencies are still missing
                             missing_deps = [d for d in missing_deps if not shutil.which(d)]
                         else:
                             logger.warning(f"Mamba install failed: {result.stderr}")
@@ -653,17 +636,14 @@ def execute_custom_tool(tool_name: str, arguments_json: str = "{}") -> str:
                     except Exception as e:
                         logger.warning(f"Mamba install failed: {e}")
 
-                # If mamba failed or not available, try conda (fallback)
                 conda_path = shutil.which("conda")
                 if conda_path and missing_deps:
                     try:
-                        # Install via conda with bioconda and conda-forge channels
-                        # Use shorter timeout to avoid blocking workflow
                         install_cmd = [
                             "conda",
                             "install",
                             "-y",
-                            "--quiet",  # Reduce output
+                            "--quiet",
                             "-c",
                             "bioconda",
                             "-c",
@@ -680,7 +660,6 @@ def execute_custom_tool(tool_name: str, arguments_json: str = "{}") -> str:
                             logger.info(
                                 f"Successfully installed dependencies via conda: {missing_deps}"
                             )
-                            # Re-check which dependencies are still missing
                             missing_deps = [d for d in missing_deps if not shutil.which(d)]
                         else:
                             logger.warning(f"Conda install failed: {result.stderr}")
@@ -692,18 +671,15 @@ def execute_custom_tool(tool_name: str, arguments_json: str = "{}") -> str:
                     except Exception as e:
                         logger.warning(f"Conda install failed: {e}")
 
-                # Skip apt-get (requires sudo, not suitable for automatic installation)
-                # Just log a warning with instructions
+                # apt-get needs sudo, so only log manual instructions.
                 if missing_deps and os.name != "nt" and shutil.which("apt-get"):
                     logger.warning(
                         f"apt-get installation requires sudo privileges. "
                         f"Please install manually: sudo apt-get install {' '.join(missing_deps)}"
                     )
 
-                # Check what's still missing after all attempts
                 still_missing = [d for d in missing_deps if not shutil.which(d)]
                 if still_missing:
-                    # Build comprehensive install instructions
                     install_instructions = {
                         "mamba": f"mamba install -c bioconda -c conda-forge {' '.join(still_missing)}",
                         "conda": f"conda install -c bioconda -c conda-forge {' '.join(still_missing)}",
@@ -713,24 +689,20 @@ def execute_custom_tool(tool_name: str, arguments_json: str = "{}") -> str:
                             f"sudo apt-get install {' '.join(still_missing)}"
                         )
 
-                    # Log warning but try to run tool anyway (graceful degradation)
-                    # The tool itself may handle missing dependencies gracefully
+                    # Run anyway: the tool may degrade gracefully without the dependency.
                     logger.warning(
                         f"Missing system dependencies: {', '.join(still_missing)}. "
                         f"Attempting to run tool anyway. Install with: {install_instructions}"
                     )
 
-        # Check and install Python pip dependencies BEFORE executing
         if tool_def.dependencies:
             missing_pip_deps = []
             for dep in tool_def.dependencies:
-                # Try to import the package
                 # Handle package name variations (e.g., "scikit-learn" -> "sklearn")
                 module_name = dep.replace("-", "_")
                 try:
                     __import__(module_name)
                 except ImportError:
-                    # Also try the original name in case it's different
                     try:
                         __import__(dep)
                     except ImportError:
@@ -743,7 +715,6 @@ def execute_custom_tool(tool_name: str, arguments_json: str = "{}") -> str:
                 )
 
                 try:
-                    # First, try to install pip if it's missing
                     pip_cmd = [
                         sys.executable,
                         "-m",
@@ -757,7 +728,6 @@ def execute_custom_tool(tool_name: str, arguments_json: str = "{}") -> str:
                     logger.info("Installation progress (real-time):")
                     result = _run_pip_install_streaming(pip_cmd, timeout=180)
 
-                    # If pip module is missing, try to install it first
                     if result.returncode != 0 and "No module named pip" in result.stdout:
                         logger.info(
                             "Pip module not found. Attempting to install pip via ensurepip..."
@@ -770,13 +740,12 @@ def execute_custom_tool(tool_name: str, arguments_json: str = "{}") -> str:
                                 ensurepip_cmd,
                                 capture_output=True,
                                 text=True,
-                                timeout=180,  # Increased timeout to 3 minutes
+                                timeout=180,
                             )
                             if ensurepip_result.returncode == 0:
                                 logger.info(
                                     "Pip installed successfully via ensurepip. Verifying installation..."
                                 )
-                                # Verify pip is actually available
                                 verify_cmd = [sys.executable, "-m", "pip", "--version"]
                                 verify_result = subprocess.run(  # nosec B603
                                     verify_cmd,
@@ -807,9 +776,7 @@ def execute_custom_tool(tool_name: str, arguments_json: str = "{}") -> str:
                                 f"ensurepip failed with exception: {e}. Trying alternative methods..."
                             )
 
-                        # If ensurepip didn't work, try alternative methods
                         if not ensurepip_installed:
-                            # Try ensurepip with --user flag
                             try:
                                 logger.info("Trying ensurepip with --user flag...")
                                 ensurepip_user_cmd = [
@@ -831,7 +798,6 @@ def execute_custom_tool(tool_name: str, arguments_json: str = "{}") -> str:
                             except Exception as e:
                                 logger.warning(f"ensurepip --user failed: {e}")
 
-                            # Try direct pip command if available in PATH
                             if not ensurepip_installed:
                                 direct_pip = shutil.which("pip")
                                 if direct_pip:
@@ -850,7 +816,7 @@ def execute_custom_tool(tool_name: str, arguments_json: str = "{}") -> str:
                                             direct_pip_cmd, timeout=180
                                         )
                                         if result.returncode == 0:
-                                            ensurepip_installed = True  # Mark as success
+                                            ensurepip_installed = True
                                     except Exception as e:
                                         logger.warning(f"Direct pip install failed: {e}")
                                 else:
@@ -860,18 +826,15 @@ def execute_custom_tool(tool_name: str, arguments_json: str = "{}") -> str:
                                         "You can try: python -m ensurepip --upgrade"
                                     )
 
-                        # Retry pip install if ensurepip succeeded
                         if ensurepip_installed:
                             logger.info("Retrying package installation with newly installed pip...")
                             logger.info("Installation progress (real-time):")
                             result = _run_pip_install_streaming(pip_cmd, timeout=180)
 
-                    # Check result after initial install or retry
                     if result.returncode == 0:
                         logger.info(
                             f"Successfully installed Python dependencies via pip: {missing_pip_deps}"
                         )
-                        # Re-check which dependencies are still missing
                         still_missing_pip = []
                         for dep in missing_pip_deps:
                             module_name = dep.replace("-", "_")
@@ -895,14 +858,12 @@ def execute_custom_tool(tool_name: str, arguments_json: str = "{}") -> str:
                 except Exception as e:
                     logger.warning(f"Pip install failed: {e}")
 
-        # Check if there are still missing dependencies before executing
         still_missing_before_exec = []
         if tool_def.system_dependencies:
             still_missing_before_exec = [
                 d for d in tool_def.system_dependencies if not shutil.which(d)
             ]
 
-        # Now execute the tool
         func = registry.load_tool_function(tool_name)
 
         if func is None:
@@ -916,14 +877,12 @@ def execute_custom_tool(tool_name: str, arguments_json: str = "{}") -> str:
         args = json.loads(arguments_json)
         result = func(**args)
 
-        # Check if result indicates missing dependencies
-        # (some tools return error dicts with dependency messages)
+        # Some tools return an error dict naming the missing dependency.
         if isinstance(result, dict):
             error_msg = result.get("message", "") or result.get("error", "")
             if still_missing_before_exec and any(
                 dep in error_msg.lower() for dep in still_missing_before_exec
             ):
-                # Build install instructions for the error response
                 install_instructions = {
                     "mamba": f"mamba install -c bioconda -c conda-forge {' '.join(still_missing_before_exec)}",
                     "conda": f"conda install -c bioconda -c conda-forge {' '.join(still_missing_before_exec)}",
@@ -933,12 +892,10 @@ def execute_custom_tool(tool_name: str, arguments_json: str = "{}") -> str:
                         f"sudo apt-get install {' '.join(still_missing_before_exec)}"
                     )
 
-                # Enhance error message with install instructions
                 if result.get("status") == "error":
                     result["install_instructions"] = install_instructions
                     result["note"] = "Please install the missing dependencies and try again."
 
-        # Record usage
         registry.record_usage(tool_name)
 
         return json.dumps(
@@ -954,7 +911,6 @@ def execute_custom_tool(tool_name: str, arguments_json: str = "{}") -> str:
         logger.error(f"Tool execution failed: {e}")
         error_msg = str(e)
 
-        # Check if error is related to missing dependencies
         try:
             registry = get_registry()
             tool_def = registry.get_tool(tool_name)

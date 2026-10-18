@@ -19,7 +19,6 @@ from langchain_core.tools import tool
 
 logger = logging.getLogger(__name__)
 
-# Constants
 ALPHAFOLD_DB_API = "https://alphafold.ebi.ac.uk/api"
 PDB_RCSB_API = "https://data.rcsb.org/rest/v1"
 PDB_SEARCH_API = "https://search.rcsb.org/rcsbsearch/v2/query"
@@ -42,7 +41,6 @@ def fetch_alphafold_structure(uniprot_id: str) -> str:
         JSON string with structure data, PDB URL, and confidence metrics
     """
     try:
-        # Get AlphaFold DB entry
         url = f"{ALPHAFOLD_DB_API}/prediction/{uniprot_id}"
         response = requests.get(url, timeout=30)
 
@@ -59,7 +57,6 @@ def fetch_alphafold_structure(uniprot_id: str) -> str:
                 {"status": "error", "message": f"No AlphaFold prediction found for {uniprot_id}"}
             )
 
-        # Get the latest entry (v4 preferred)
         entry = entries[0] if isinstance(entries, list) else entries
 
         result = {
@@ -107,7 +104,6 @@ def fetch_pdb_structure(pdb_id: str) -> str:
         JSON string with structure metadata and download URLs
     """
     try:
-        # Get structure summary
         url = f"{PDB_RCSB_API}/core/entry/{pdb_id}"
         response = requests.get(url, timeout=30)
 
@@ -117,7 +113,6 @@ def fetch_pdb_structure(pdb_id: str) -> str:
         response.raise_for_status()
         entry = response.json()
 
-        # Extract key information
         struct_info = entry.get("struct", {})
         exptl = entry.get("exptl", [{}])[0] if entry.get("exptl") else {}
         refine = entry.get("refine", [{}])[0] if entry.get("refine") else {}
@@ -163,7 +158,6 @@ def search_pdb_complexes(uniprot_id: str, limit: int = 10) -> str:
         JSON string with list of PDB complexes containing the target
     """
     try:
-        # RCSB search query for complexes
         query = {
             "query": {
                 "type": "group",
@@ -262,7 +256,6 @@ def get_pdb_polymer_entities(pdb_id: str) -> str:
 
         entry = response.json()
 
-        # Get polymer entities
         polymer_entities = []
         entity_ids = entry.get("rcsb_entry_container_identifiers", {}).get("polymer_entity_ids", [])
 
@@ -273,7 +266,6 @@ def get_pdb_polymer_entities(pdb_id: str) -> str:
             if entity_resp.status_code == 200:
                 entity_data = entity_resp.json()
 
-                # Get UniProt references
                 uniprot_refs = []
                 ref_ids = entity_data.get("rcsb_polymer_entity_container_identifiers", {}).get(
                     "reference_sequence_identifiers", []
@@ -342,7 +334,6 @@ def download_structure_file(
     try:
         from pathlib import Path
 
-        # Determine source and construct URL
         if pdb_id:
             if file_format == "pdb":
                 url = f"https://files.rcsb.org/download/{pdb_id}.pdb"
@@ -367,10 +358,8 @@ def download_structure_file(
                 {"status": "error", "message": "Must provide either pdb_id, uniprot_id, or url"}
             )
 
-        # Download the file
         response = requests.get(url, timeout=60)
 
-        # If PDB fails with 404, try CIF format
         if response.status_code == 404 and file_format == "pdb":
             logger.info("PDB not found, trying CIF format")
             if pdb_id:
@@ -383,7 +372,6 @@ def download_structure_file(
 
         response.raise_for_status()
 
-        # Save to output directory
         output_path = Path(output_dir)
         output_path.mkdir(parents=True, exist_ok=True)
         output_file = output_path / filename
@@ -433,7 +421,6 @@ def analyze_interface_contacts(
     try:
         from pathlib import Path
 
-        # Check if BioPython is available
         try:
             from Bio.PDB import MMCIFParser, NeighborSearch, PDBParser
         except ImportError:
@@ -450,7 +437,6 @@ def analyze_interface_contacts(
                 {"status": "error", "message": f"Structure file not found: {structure_path}"}
             )
 
-        # Parse structure
         parser: PDBParser | MMCIFParser
         if path.suffix.lower() in [".cif", ".mmcif"]:
             parser = MMCIFParser(QUIET=True)
@@ -466,14 +452,11 @@ def analyze_interface_contacts(
                 {"status": "error", "message": f"Chain(s) not found. Available chains: {available}"}
             )
 
-        # Get atoms from both chains
         chain1_atoms = list(model[chain1].get_atoms())
         chain2_atoms = list(model[chain2].get_atoms())
 
-        # Build neighbor search for chain2
         ns = NeighborSearch(chain2_atoms)
 
-        # Find interface residues
         interface_residues_chain1 = set()
         interface_residues_chain2 = set()
         contacts = []
@@ -487,20 +470,16 @@ def analyze_interface_contacts(
                 interface_residues_chain1.add((res1.get_resname(), res1.id[1]))
                 interface_residues_chain2.add((res2.get_resname(), res2.id[1]))
 
-                # Record close contacts (< 4 Å)
                 dist = atom1 - atom2
                 if dist < 4.0:
                     contacts.append(
                         {
                             "atom1": f"{chain1}:{res1.get_resname()}{res1.id[1]}:{atom1.name}",
                             "atom2": f"{chain2}:{res2.get_resname()}{res2.id[1]}:{atom2.name}",
-                            "distance": round(
-                                float(dist), 2
-                            ),  # Convert numpy float to Python float
+                            "distance": round(float(dist), 2),
                         }
                     )
 
-        # Format interface residues
         chain1_interface = sorted(
             [{"residue": r[0], "position": r[1]} for r in interface_residues_chain1],
             key=lambda x: x["position"],
@@ -522,7 +501,7 @@ def analyze_interface_contacts(
                 "interface_residues_chain2": chain2_interface,
                 "interface_size_chain1": len(chain1_interface),
                 "interface_size_chain2": len(chain2_interface),
-                "close_contacts": contacts[:50],  # Limit output
+                "close_contacts": contacts[:50],
                 "total_close_contacts": len(contacts),
             },
             indent=2,
@@ -560,10 +539,8 @@ def compute_interface_metrics(pae_json_path: str, chain1_range: str, chain2_rang
                 {"status": "error", "message": f"PAE file not found: {pae_json_path}"}
             )
 
-        # Load PAE matrix
         pae_data = json.loads(path.read_text())
 
-        # Handle different PAE formats
         if isinstance(pae_data, list):
             pae_matrix = np.array(pae_data[0].get("predicted_aligned_error", []))
         elif "predicted_aligned_error" in pae_data:
@@ -573,7 +550,6 @@ def compute_interface_metrics(pae_json_path: str, chain1_range: str, chain2_rang
         else:
             return json.dumps({"status": "error", "message": "Could not find PAE data in file"})
 
-        # Parse residue ranges
         def parse_range(range_str: str) -> tuple[int, int]:
             parts = range_str.split("-")
             return int(parts[0]) - 1, int(parts[1])  # 0-indexed
@@ -581,17 +557,14 @@ def compute_interface_metrics(pae_json_path: str, chain1_range: str, chain2_rang
         c1_start, c1_end = parse_range(chain1_range)
         c2_start, c2_end = parse_range(chain2_range)
 
-        # Extract interface PAE blocks
         # ipAE: PAE between chain1 and chain2
         interface_pae_1to2 = pae_matrix[c1_start:c1_end, c2_start:c2_end]
         interface_pae_2to1 = pae_matrix[c2_start:c2_end, c1_start:c1_end]
 
-        # Compute metrics
         ipae = (np.mean(interface_pae_1to2) + np.mean(interface_pae_2to1)) / 2
         ipae_min = min(np.min(interface_pae_1to2), np.min(interface_pae_2to1))
         ipae_max = max(np.max(interface_pae_1to2), np.max(interface_pae_2to1))
 
-        # Intra-chain PAE for reference
         chain1_pae = pae_matrix[c1_start:c1_end, c1_start:c1_end]
         chain2_pae = pae_matrix[c2_start:c2_end, c2_start:c2_end]
 
@@ -676,8 +649,7 @@ def run_esmfold(sequence: str, output_dir: str = "esmfold_output") -> str:
         from transformers import AutoTokenizer, EsmForProteinFolding
 
         device = "cuda" if cuda_is_usable() else "cpu"
-        # Pinned so predictions stay reproducible; an unpinned ref lets the Hub serve
-        # different weights later. Override only to deliberately move the pin.
+        # Pinned for reproducibility; an unpinned ref lets the Hub serve other weights later.
         revision = os.getenv("BIOAGENTS_ESMFOLD_REVISION", ESMFOLD_REVISION)
         tokenizer = AutoTokenizer.from_pretrained(  # nosec B615
             "facebook/esmfold_v1", revision=revision
@@ -688,11 +660,7 @@ def run_esmfold(sequence: str, output_dir: str = "esmfold_output") -> str:
         model.eval()
 
         if device == "cuda":
-            # ESMFold in full precision is ~13 GB of weights, which alone fills a 16 GB
-            # card and leaves nothing for the forward pass. These are the upstream
-            # optimisations — half precision for the language-model stem and chunked
-            # trunk attention — and the cast must happen BEFORE the transfer, otherwise
-            # the fp32 copy OOMs on the way to the device.
+            # fp32 ESMFold is ~13 GB and OOMs a 16 GB card; cast before the transfer, not after.
             model.esm = model.esm.half()
             torch.backends.cuda.matmul.allow_tf32 = True
             model.trunk.set_chunk_size(int(os.getenv("BIOAGENTS_ESMFOLD_CHUNK_SIZE", "64")))
@@ -717,10 +685,7 @@ def run_esmfold(sequence: str, output_dir: str = "esmfold_output") -> str:
             )
 
         pdb_text = model.output_to_pdb(outputs)[0]
-        # HuggingFace ESMFold emits pLDDT on a 0-1 scale, but every published
-        # confidence band (>90 very high, 70-90 confident, ...) is stated on the 0-100
-        # scale. Reporting the raw 0-1 value would read as "very low confidence" to
-        # anyone applying the standard thresholds, so it is normalised here.
+        # HF ESMFold emits pLDDT on 0-1; published confidence bands are 0-100, so rescale.
         plddt = outputs["plddt"][0, :, 1]
         if float(plddt.max()) <= 1.0:
             plddt = plddt * 100
@@ -789,32 +754,55 @@ def run_alphafold2(sequence: str, provider: AlphaFoldProvider = "Tamarind Bio") 
 
 
 @tool
-def run_boltz(sequence: str, provider: BoltzProvider = "Tamarind Bio") -> str:
-    """Predict biomolecular structures with Boltz-2 / BoltzGen via a hosted provider.
+def run_boltz(
+    sequence: str,
+    ligand_smiles: str = "",
+    output_dir: str = "cofold_output",
+    use_msa_server: bool = True,
+    predict_affinity: bool = False,
+    provider: BoltzProvider = "Tamarind Bio",
+) -> str:
+    """Co-fold a protein with an optional small-molecule ligand using Boltz-2 (locally).
 
-    Boltz is not installed locally and no hosted client is wired up in this deployment.
+    Runs Boltz-2 on this machine (boltz on PATH, the boltz module, or an isolated uvx
+    environment) — no API key is needed. Use it for "co-fold protein + SMILES" requests
+    instead of docking. The predicted complex is NOT in the crystal frame; superpose on
+    protein CA atoms before computing a ligand RMSD.
 
     Args:
-        sequence: Protein (or complex) sequence input.
-        provider: Hosted provider that would run the prediction.
+        sequence: Protein sequence in single-letter amino acid code (FASTA header allowed).
+        ligand_smiles: SMILES of the ligand to co-fold with the protein ("" = protein only).
+        output_dir: Directory for the Boltz input YAML, predictions and log.
+        use_msa_server: Fetch an MSA from the public ColabFold server (recommended).
+        predict_affinity: Also run the Boltz-2 affinity head for the ligand.
+        provider: Ignored for local runs; kept for backward compatibility.
 
     Returns:
-        status='error' explaining what is missing and which real tool to use instead.
+        JSON with status='success', predicted_complex (PDB path), all_models, Boltz
+        confidence scores (and affinity if requested), backend and runtime; or
+        status='error' (capability_unavailable) naming which backend is missing.
     """
-    from bioagents.tools.capability_reporting import capability_unavailable, check_modules
+    from bioagents.tools.cofold_tools import run_boltz_cofold
 
-    missing = check_modules(["boltz"])
-    return capability_unavailable(
-        "Boltz-2 / BoltzGen",
-        reason=(
-            f"Boltz is not installed locally (missing: {', '.join(missing)}) and no client "
-            f"for provider '{provider}' is wired up."
-        ),
-        how_to_enable="uv pip install boltz  (requires a working CUDA GPU)",
-        use_instead="run_esmfold for local structure prediction, or predict_complex_structure for complexes",
-        provider=provider,
-        sequence_length=len(sequence.strip()) if sequence else 0,
+    del provider  # hosted providers are not wired up; local Boltz is used
+    return run_boltz_cofold(
+        sequence,
+        ligand_smiles,
+        output_dir,
+        use_msa_server=use_msa_server,
+        predict_affinity=predict_affinity,
     )
+
+
+def _mark_cofold_availability() -> None:
+    """Hide run_boltz from agents when no local Boltz backend exists (see agent_manifest)."""
+    from bioagents.tools.capability_reporting import mark_tool_availability
+    from bioagents.tools.cofold_tools import cofold_available
+
+    mark_tool_availability(run_boltz, cofold_available())
+
+
+_mark_cofold_availability()
 
 
 @tool

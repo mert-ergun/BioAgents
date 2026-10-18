@@ -1,11 +1,6 @@
 """Declarative live-invocation table for every agent-callable tool.
 
-Each entry says how to really call a tool through ``tool.invoke(...)`` -- the
-exact interface an agent uses -- and how to tell a real result from a lie.
-
-Every tool in ``tests.tool_inventory.ALL_TOOLS`` must appear here, either with a
-runnable case or with an explicit ``skip_reason``. ``test_tool_callability.py``
-enforces that, so a tool can never be silently untested.
+Every tool in ``ALL_TOOLS`` must appear here with a case or an explicit ``skip_reason``.
 """
 
 from __future__ import annotations
@@ -15,8 +10,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
-# Markers that mean "this tool did not actually do the work", regardless of how
-# cheerful the rest of the string is.
+# Markers that mean the tool did not do the work, however cheerful the rest reads.
 GENERIC_FAILURE_MARKERS: tuple[str, ...] = (
     "Traceback (most recent call last)",
     "No module named",
@@ -27,16 +21,9 @@ GENERIC_FAILURE_MARKERS: tuple[str, ...] = (
 )
 
 
-#: Tools whose live invocation currently fails for a real, diagnosed reason.
-#: These are FINDINGS, not accepted behaviour: the live test stays red on
-#: purpose so the defect cannot be forgotten. Remove an entry once it is fixed.
+#: Tools whose live invocation fails for a real, diagnosed reason. These are FINDINGS,
+#: not accepted behaviour: the test stays red on purpose. Remove an entry once fixed.
 KNOWN_LIVE_FAILURES: dict[str, str] = {}
-#: Empty, and it should stay that way. The three original entries are fixed:
-#:  - create_heatmap: seaborn is now a declared dependency, and the tool accepts the
-#:    matrix/label key spellings an agent actually produces instead of raising KeyError.
-#:  - run_differential_expression: statsmodels is now a declared dependency.
-#:  - run_gene_set_enrichment: the default is the real Enrichr library name, and an
-#:    unknown library is rejected up front rather than returning a misleading empty list.
 
 
 @dataclass
@@ -102,11 +89,7 @@ def expect(
     predicate: Callable[[str], bool] | None = None,
     predicate_desc: str = "custom predicate",
 ) -> Checker:
-    """Build an assertion over a tool result.
-
-    The assertions are deliberately strict: a tool that returns an error string,
-    an empty payload, or a cheerful message with no data fails.
-    """
+    """Build a strict assertion: an error string, empty payload, or data-free message fails."""
 
     def _check(result: object) -> None:
         text = result if isinstance(result, str) else json.dumps(result, default=str)
@@ -136,11 +119,7 @@ def expect(
 
 
 def _file_written(*, min_bytes: int = 1) -> Checker:
-    """Assert the tool reported a path and that the file really exists on disk.
-
-    This is the anti-lie check for every download/write tool: a JSON
-    ``"status": "success"`` means nothing if no bytes landed anywhere.
-    """
+    """Assert the tool reported a path and that the file really exists on disk."""
 
     def _check(result: object) -> None:
         text = str(result)
@@ -175,10 +154,6 @@ def _extract_path(text: str) -> str:
     return ""
 
 
-# ---------------------------------------------------------------------------
-# Skip reasons, grouped so the audit report explains every untested tool.
-# ---------------------------------------------------------------------------
-
 SKIP_PHANTOM = (
     "known phantom tool: returns a hardcoded success string without doing work "
     "(see test_no_phantom_tools); a live assertion here would validate a lie"
@@ -207,12 +182,7 @@ def _hosted_model_skip(tool_name: str, label: str) -> LiveCase:
 
 
 def _rdkit_case(args: dict, check: Checker) -> LiveCase:
-    """RDKit tools run on the native RDKit Python library — always exercised live.
-
-    They used to shell out to an optional Node `rdkit-agent` CLI and were skipped
-    wholesale when it was absent, which hid that a missing CLI was being reported as a
-    chemically invalid molecule.
-    """
+    """RDKit tools run on the native RDKit Python library — always exercised live."""
     return LiveCase(args=args, check=check)
 
 
@@ -229,7 +199,6 @@ _META_CSV = "sample,condition\ns1,ctrl\ns2,ctrl\ns3,treat\ns4,treat\n"
 
 
 LIVE_CASES: dict[str, LiveCase] = {
-    # --- web tools -------------------------------------------------------
     "fetch_url_content": LiveCase(
         args={"url": "https://example.com"},
         check=expect(contains=("example domain",), min_length=50),
@@ -245,7 +214,6 @@ LIVE_CASES: dict[str, LiveCase] = {
         },
         check=_file_written(min_bytes=100),
     ),
-    # --- file tools ------------------------------------------------------
     "write_local_file": LiveCase(
         args=lambda ctx: {
             "file_path": ctx.path("written.txt"),
@@ -261,11 +229,14 @@ LIVE_CASES: dict[str, LiveCase] = {
         args=lambda ctx: {"path": str(ctx.workspace)},
         check=expect(min_length=2),
     ),
+    "check_file_exists": LiveCase(
+        args=lambda ctx: {"path": ctx.text_file("already_here.txt", "bioagents probe payload")},
+        check=expect(contains=('"exists": true',)),
+    ),
     "get_file_info": LiveCase(
         args=lambda ctx: {"file_path": ctx.text_file("info.txt", "x" * 100)},
         check=expect(contains_any=("size", "bytes"), min_length=10),
     ),
-    # --- literature tools -------------------------------------------------
     "search_pubmed": LiveCase(
         args={"query": "p53 tumor suppressor", "max_results": 3},
         check=expect(contains_any=("pmid", "title"), min_length=80),
@@ -282,7 +253,6 @@ LIVE_CASES: dict[str, LiveCase] = {
         args={"doi": "10.1038/nature12373"},
         check=expect(contains_any=("title", "author"), min_length=40),
     ),
-    # --- structural / protein design (real data paths) --------------------
     "fetch_pdb_structure": LiveCase(
         args={"pdb_id": "1CRN"},
         check=expect(contains_any=("crambin", "1crn"), min_length=100),
@@ -318,10 +288,7 @@ LIVE_CASES: dict[str, LiveCase] = {
     "predict_complex_structure": _skip(SKIP_GPU),
     "compute_binding_metrics": _skip(SKIP_NEEDS_PRIOR_RUN + " (predicted complex PDB)"),
     "rank_binder_designs": _skip(SKIP_NEEDS_PRIOR_RUN + " (binder design results dir)"),
-    # --- hosted-model tools (phantom today, real once implemented) --------
-    # Skip reasons are computed from the live source: while a tool is still a
-    # stub the reason says so, and once it is implemented the reason becomes the
-    # honest "needs a hosted provider key".
+    # Skip reason comes from the live source: "stub" while it is one, else "needs a key".
     **{
         name: _hosted_model_skip(name, label)
         for name, label in (
@@ -333,10 +300,7 @@ LIVE_CASES: dict[str, LiveCase] = {
             ("run_saprot", "SaProt"),
         )
     },
-    # --- locally-executed model tools -------------------------------------
-    # These run real computation on this machine, so they are exercised live rather
-    # than skipped as "hosted". Each must either produce a real result or report an
-    # honest failure; neither may return a success string for work that did not run.
+    # Local computation: exercised live, and may never report success without running.
     "run_esm2": LiveCase(
         args={"sequence": _PROBE_PEPTIDE},
         check=expect(
@@ -359,8 +323,7 @@ LIVE_CASES: dict[str, LiveCase] = {
     ),
     "run_rfdiffusion": LiveCase(
         args=lambda ctx: {"target_pdb": ctx.pdb_file("1CRN")},
-        # RFdiffusion's GPU dependencies are not installed here, so the honest
-        # outcome is a named capability_unavailable — never a fabricated backbone.
+        # GPU deps are absent here: expect capability_unavailable, not a backbone.
         check=expect(
             contains=("capability_unavailable", "performed_any_computation"),
             not_contains=("Backbone generated successfully",),
@@ -373,7 +336,6 @@ LIVE_CASES: dict[str, LiveCase] = {
         ),
     ),
     "run_esmfold": _skip(SKIP_GPU + " (facebook/esmfold_v1 is ~2.6GB and GPU-bound)"),
-    # --- ESM protein language models (local, tiny checkpoint) -------------
     "run_esm_embedding": LiveCase(
         args={"sequence": _PROBE_PEPTIDE, "model": "esm2-tiny"},
         check=expect(
@@ -414,7 +376,6 @@ LIVE_CASES: dict[str, LiveCase] = {
         ),
         slow=True,
     ),
-    # --- proteomics / analysis -------------------------------------------
     "fetch_uniprot_fasta": LiveCase(
         args={"protein_id": "P04637"},
         check=expect(contains=(">",), contains_any=("p53", "p04637"), min_length=100),
@@ -438,7 +399,6 @@ LIVE_CASES: dict[str, LiveCase] = {
         args={"fasta_sequence": _FASTA},
         check=expect(min_length=3),
     ),
-    # --- genomics ---------------------------------------------------------
     "reverse_complement": LiveCase(
         args={"sequence": "ATGCATGC"},
         check=expect(contains=("GCATGCAT",)),
@@ -456,7 +416,6 @@ LIVE_CASES: dict[str, LiveCase] = {
         check=expect(contains=("test",), min_length=10),
     ),
     "run_blast_search": _skip(SKIP_VERY_SLOW + " (NCBI BLAST queue)"),
-    # --- transcriptomics --------------------------------------------------
     "run_differential_expression": LiveCase(
         args=lambda ctx: {
             "counts_file": ctx.sandbox_file("probe_counts.csv", _COUNTS_CSV),
@@ -478,7 +437,6 @@ LIVE_CASES: dict[str, LiveCase] = {
         check=expect(min_length=20),
         slow=True,
     ),
-    # --- visualization ----------------------------------------------------
     "create_bar_chart": LiveCase(
         args={
             "data_json": '{"labels": ["a", "b"], "values": [1, 2]}',
@@ -513,7 +471,6 @@ LIVE_CASES: dict[str, LiveCase] = {
         check=expect(contains=("probe_volcano.png",), min_length=10),
         slow=True,
     ),
-    # --- docking ----------------------------------------------------------
     "prepare_receptor": LiveCase(
         args=lambda ctx: {
             "pdb_path": ctx.pdb_file("1CRN"),
@@ -541,7 +498,6 @@ LIVE_CASES: dict[str, LiveCase] = {
         slow=True,
     ),
     "analyze_docking_results": _skip(SKIP_NEEDS_PRIOR_RUN + " (docked pose file)"),
-    # --- shell / environment ---------------------------------------------
     "run_shell_command": LiveCase(
         args={"command": "echo bioagents_probe_ok"},
         check=expect(contains=("bioagents_probe_ok",)),
@@ -554,7 +510,6 @@ LIVE_CASES: dict[str, LiveCase] = {
     "get_system_info": LiveCase(args={}, check=expect(contains=("python_version",), min_length=10)),
     "create_virtual_environment": _skip(SKIP_MUTATES_ENV + " (creates a venv on disk)"),
     "install_requirements": _skip(SKIP_MUTATES_ENV),
-    # --- git --------------------------------------------------------------
     "git_clone_repo": LiveCase(
         args=lambda ctx: {
             "repo_url": "https://github.com/octocat/Hello-World.git",
@@ -572,7 +527,6 @@ LIVE_CASES: dict[str, LiveCase] = {
         check=expect(contains=("probe readme",)),
     ),
     "git_checkout_branch": _skip(SKIP_NEEDS_PRIOR_RUN + " and mutates a git worktree"),
-    # --- PDF / paperqa ----------------------------------------------------
     "fetch_webpage_as_pdf_text": LiveCase(
         args={"url": "https://example.com"},
         check=expect(contains_any=("example", "domain"), min_length=30),
@@ -583,7 +537,6 @@ LIVE_CASES: dict[str, LiveCase] = {
         check=expect(contains=("bioagents probe pdf",), min_length=10),
     ),
     "search_local_papers_with_paperqa": _skip(SKIP_API_KEY + " (paper-qa needs an LLM)"),
-    # --- tool universe ----------------------------------------------------
     "tool_universe_find_tools": LiveCase(
         args={"description": "protein structure", "limit": 3},
         check=expect(contains=("result",), min_length=100),
@@ -593,7 +546,6 @@ LIVE_CASES: dict[str, LiveCase] = {
         "needs a concrete ToolUniverse tool name + valid provider arguments; "
         "discovery path is covered by tool_universe_find_tools"
     ),
-    # --- tool builder -----------------------------------------------------
     "extract_tools_from_text": _skip(
         SKIP_API_KEY + " (LLM-backed extraction; note it raises ValueError out of invoke() "
         "instead of returning an error string when the key is missing)"

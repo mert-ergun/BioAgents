@@ -12,6 +12,7 @@ from langgraph.prebuilt import ToolNode
 
 from bioagents.limits import MAX_TOOL_OUTPUT_CHARS
 from bioagents.tools.tool_policy import ToolPolicy, get_default_policy
+from bioagents.tools.tool_retry import ainvoke_with_retry, invoke_with_retry
 
 logger = logging.getLogger(__name__)
 
@@ -91,22 +92,17 @@ class TruncatingToolRunnable(Runnable):
         self._max_chars = MAX_TOOL_OUTPUT_CHARS
 
     def invoke(self, input: Any, config: RunnableConfig | None = None, **kwargs: Any) -> Any:
-        out = self._inner.invoke(input, config, **kwargs)
+        out = invoke_with_retry(self._inner.invoke, input, config, **kwargs)
         return truncate_tool_messages_payload(out, self._max_chars)
 
     async def ainvoke(self, input: Any, config: RunnableConfig | None = None, **kwargs: Any) -> Any:
-        out = await self._inner.ainvoke(input, config, **kwargs)
+        out = await ainvoke_with_retry(self._inner.ainvoke, input, config, **kwargs)
         return truncate_tool_messages_payload(out, self._max_chars)
 
 
 def make_truncating_tool_node(tools: list) -> TruncatingToolRunnable:
     """Build a ToolNode that caps every tool result before it is merged into graph state."""
     return TruncatingToolRunnable(tools)
-
-
-# ---------------------------------------------------------------------------
-# Approval gate
-# ---------------------------------------------------------------------------
 
 
 class ApprovalToolRunnable(Runnable):
@@ -129,15 +125,10 @@ class ApprovalToolRunnable(Runnable):
         self._max_chars = MAX_TOOL_OUTPUT_CHARS
         self._policy = policy or get_default_policy()
 
-    # ------------------------------------------------------------------
-    # Core invoke
-    # ------------------------------------------------------------------
-
     def invoke(self, input: Any, config: RunnableConfig | None = None, **kwargs: Any) -> Any:
         """Execute tools with policy check and truncation."""
         messages = input.get("messages", []) if isinstance(input, dict) else []
 
-        # Pre-check: evaluate policy for each tool call in the last AI message
         last_msg = messages[-1] if messages else None
         if (
             isinstance(last_msg, AIMessage)
@@ -151,7 +142,6 @@ class ApprovalToolRunnable(Runnable):
                 policy_result = self._policy.evaluate(tool_name, tool_args)
 
                 if not policy_result.allowed:
-                    # Tool is blocked by policy
                     logger.warning(
                         "Policy blocked tool '%s': %s",
                         tool_name,
@@ -169,10 +159,7 @@ class ApprovalToolRunnable(Runnable):
                     return {"messages": [denial_msg]}
 
                 if policy_result.requires_approval:
-                    # Tool needs user approval — block it with a message that
-                    # includes the approval info so the frontend can show the
-                    # approval UI.  If the user approves, the tool is added to
-                    # the session approved list and the next retry will pass.
+                    # Block with the approval info so the frontend can show the approval UI.
                     request_id = str(uuid.uuid4())
                     logger.info(
                         "Tool '%s' requires approval (request_id=%s): %s",
@@ -194,8 +181,8 @@ class ApprovalToolRunnable(Runnable):
                     )
                     return {"messages": [denial_msg]}
 
-        # All checks passed — execute the tools normally
-        out = self._inner.invoke(input, config, **kwargs)
+        # Execute the tools, retrying transient failures so a blip is not the agent's answer.
+        out = invoke_with_retry(self._inner.invoke, input, config, **kwargs)
         return truncate_tool_messages_payload(out, self._max_chars)
 
     async def ainvoke(self, input: Any, config: RunnableConfig | None = None, **kwargs: Any) -> Any:
