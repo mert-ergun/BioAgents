@@ -135,15 +135,26 @@ class AgentStep:
     elapsed_ms: float
     messages: list[dict[str, Any]] = field(default_factory=list)
     routing_decision: str | None = None
+    #: Per-step code/observations/errors of a sub-agent that runs its own loop; one
+    #: graph step can hide dozens of these.
+    internal_steps: list[dict[str, Any]] = field(default_factory=list)
+    internal_summary: dict[str, Any] | None = None
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        data: dict[str, Any] = {
             "step": self.step,
             "agent": self.agent,
             "elapsed_ms": self.elapsed_ms,
             "messages": self.messages,
             "routing_decision": self.routing_decision,
         }
+        if self.internal_steps or self.internal_summary:
+            data["internal_step_count"] = len(
+                [s for s in self.internal_steps if s.get("type", "action") == "action"]
+            )
+            data["internal_summary"] = self.internal_summary
+            data["internal_steps"] = self.internal_steps
+        return data
 
 
 @dataclass
@@ -228,6 +239,18 @@ class RunResult:
     judge_breakdown: JudgeBreakdown | None = None
     agent_steps: list[AgentStep] = field(default_factory=list)
 
+    def subagent_internal_step_counts(self) -> dict[str, int]:
+        """Internal steps per sub-agent (e.g. the coder's smolagents steps) in this run.
+
+        ``total_steps`` counts graph steps only; one coder graph step can hide 50 steps.
+        """
+        counts: dict[str, int] = {}
+        for step in self.agent_steps:
+            n = len([s for s in step.internal_steps if s.get("type", "action") == "action"])
+            if n:
+                counts[step.agent] = counts.get(step.agent, 0) + n
+        return counts
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "use_case_id": self.use_case_id,
@@ -235,6 +258,7 @@ class RunResult:
             "prompt": self.prompt,
             "execution_time": self.execution_time,
             "total_steps": self.total_steps,
+            "subagent_internal_steps": self.subagent_internal_step_counts(),
             "workflow_completed": self.workflow_completed,
             "agent_flow": self.agent_flow,
             "agent_steps": [s.to_dict() for s in self.agent_steps],
@@ -264,8 +288,6 @@ class ExperimentRun:
     results: list[RunResult]
     started_at: datetime
     finished_at: datetime | None = None
-
-    # ---- aggregate helpers ----
 
     def mean_score(self) -> float | None:
         scored = [r.judge_score for r in self.results if r.judge_score is not None]

@@ -18,6 +18,7 @@ from bioagents.sandbox.coder_helpers import (
     build_task_with_output_dir,
     collect_code_agent_run_telemetry,
     extract_available_data,
+    extract_current_instruction,
     extract_original_query,
     format_coder_result,
 )
@@ -72,6 +73,18 @@ def create_ml_agent(
     return agent
 
 
+def _subagent_step_kwargs(agent: Any) -> dict[str, Any]:
+    """Internal smolagents steps, attached to the message so run logs can persist them."""
+    from bioagents.sandbox.coder_helpers import (
+        SUBAGENT_STEPS_KEY,
+        serialize_code_agent_steps,
+        summarize_code_agent_steps,
+    )
+
+    steps = serialize_code_agent_steps(agent)
+    return {SUBAGENT_STEPS_KEY: steps, "subagent_summary": summarize_code_agent_steps(steps)}
+
+
 def create_ml_node(agent: CodeAgent) -> Callable:
     """
     Create the ML Agent node function.
@@ -95,7 +108,12 @@ def create_ml_node(agent: CodeAgent) -> Callable:
         available_data = extract_available_data(messages)
         output_dir = state.get("output_dir")
 
-        task = build_task_with_output_dir(original_query, available_data, output_dir)
+        task = build_task_with_output_dir(
+            original_query,
+            available_data,
+            output_dir,
+            current_instruction=extract_current_instruction(messages),
+        )
 
         try:
             logger.info("Starting ML agent execution")
@@ -155,7 +173,13 @@ def create_ml_node(agent: CodeAgent) -> Callable:
                 "raw_output": content,
                 "tool_calls": [],
                 "error": None,
-                "messages": [AIMessage(content=content, name="ML")],
+                "messages": [
+                    AIMessage(
+                        content=content,
+                        name="ML",
+                        additional_kwargs=_subagent_step_kwargs(agent),
+                    )
+                ],
             }
 
         except Exception as e:
@@ -168,7 +192,13 @@ def create_ml_node(agent: CodeAgent) -> Callable:
                 "raw_output": "",
                 "tool_calls": [],
                 "error": error_msg,
-                "messages": [AIMessage(content=error_msg, name="ML")],
+                "messages": [
+                    AIMessage(
+                        content=error_msg,
+                        name="ML",
+                        additional_kwargs=_subagent_step_kwargs(agent),
+                    )
+                ],
             }
 
     return ml_node

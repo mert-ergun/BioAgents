@@ -3,10 +3,26 @@
 import json
 import logging
 import re
+from pathlib import Path
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 
 from bioagents.agents.helpers import get_message_content
+from bioagents.sandbox.coder_helpers import COMPLETION_MARKER
+
+
+def _env_int_local(name: str, default: int) -> int:
+    """Read a positive int from the environment, falling back on any bad value."""
+    import os
+
+    raw = os.getenv(name)
+    if raw is None or not raw.strip():
+        return default
+    try:
+        return int(raw)
+    except ValueError:
+        return default
+
 
 logger = logging.getLogger(__name__)
 
@@ -31,10 +47,22 @@ TOOL_MISSING_PATTERNS = [
 
 _CODE_AGENT_NAMES = frozenset({"Coder", "ML", "DL"})
 
+# An explicit declaration that the work is finished. The ML-training vocabulary below
+# is kept, but it alone never matched a bioinformatics run: a coder that ended with
+# "TASK COMPLETE" and a list of output files read as unfinished and was re-delegated.
 _TASK_COMPLETION_MARKERS = re.compile(
-    r"(METRIC:|Accuracy[:\s]+\d|Loss[:\s]+\d|Epoch\s+\d+/\d+"
+    r"(TASK\s+COMPLETED?\b|ANALYSIS\s+COMPLETE\b|WORKFLOW\s+COMPLETE\b"
+    r"|PIPELINE\s+COMPLETE\b|ALL\s+STEPS\s+COMPLETED?\b"
+    r"|METRIC:|Accuracy[:\s]+\d|Loss[:\s]+\d|Epoch\s+\d+/\d+"
     r"|training complete|evaluation accuracy|successfully trained"
     r"|model trained|F1[:\s]+\d|AUC[:\s]+\d|precision[:\s]+\d|recall[:\s]+\d)",
+    re.IGNORECASE,
+)
+
+# Negations that make an apparent completion claim the opposite of one.
+_NOT_COMPLETE = re.compile(
+    r"\b(not|never|could ?n.t|cannot|unable to|failed to|without)\s+"
+    r"(fully\s+|yet\s+)?(complete|finish)",
     re.IGNORECASE,
 )
 
@@ -62,12 +90,20 @@ def check_code_agent_task_completed(messages) -> tuple[bool, str]:
     if name not in _CODE_AGENT_NAMES:
         return False, ""
     content = get_message_content(last)
+
+    # The coder stamps this when smolagents actually delivered a final answer, which is
+    # a fact about the run rather than a guess from the prose.
+    if COMPLETION_MARKER in content:
+        return True, (f"Code agent '{name}' delivered its final answer; the task is complete.")
+
     if len(content.strip()) < 200:
+        return False, ""
+    if _NOT_COMPLETE.search(content):
         return False, ""
     if _TASK_COMPLETION_MARKERS.search(content):
         return True, (
-            f"Code agent '{name}' produced output with execution metrics "
-            "(accuracy/loss/training results), indicating the task is complete."
+            f"Code agent '{name}' reported the task complete and produced substantive "
+            "output, so it must not be delegated again."
         )
     return False, ""
 
@@ -141,6 +177,12 @@ def check_coder_should_force_finish(messages) -> tuple[bool, str]:
         return True, (
             "Code agent could not import a required library (missing shared object / module); "
             "terminating workflow to avoid an execution loop."
+        )
+    if "[CODER_STATUS: sandbox_unrecoverable]" in content:
+        # Kernel is gone and cannot be rebuilt; re-delegating only produces more 404s.
+        return True, (
+            "Code agent lost its execution sandbox and could not recover it; "
+            "terminating workflow rather than re-running code that cannot execute."
         )
     return False, ""
 
@@ -252,9 +294,7 @@ def check_for_repeated_routing(messages) -> tuple[bool, str]:
                     sig = content[:200]
                     agent_content_sigs.setdefault(agent_name, []).append(sig)
 
-    # The Research agent legitimately produces 3 named AIMessages in a single pass:
-    #   1. initial sub-task dispatch, 2. continue after first tool results, 3. merger output.
-    # Only flag as a loop after 5+ appearances (1 full pass + 1 re-route still allowed).
+    # Research legitimately emits 3 named AIMessages per pass, so flag only at 5+.
     AGENT_APPEARANCE_LOOP_THRESHOLD = 5
     candidates = [
         (agent, count)
@@ -262,18 +302,13 @@ def check_for_repeated_routing(messages) -> tuple[bool, str]:
         if count >= AGENT_APPEARANCE_LOOP_THRESHOLD
     ]
 
-    # Also detect content-based loops: an agent returning near-identical
-    # content multiple times is a strong signal it's stuck.
     for agent_name, sigs in agent_content_sigs.items():
         if len(sigs) >= 3 and agent_name not in {c[0] for c in candidates}:
             unique = set(sigs)
             if len(unique) <= len(sigs) // 2:
                 candidates.append((agent_name, len(sigs)))
 
-    # Detect tool-call pattern loops even when AIMessages have no name.
-    # Specifically: if the recent window contains many tool_universe_find_tools
-    # calls but zero tool_universe_call_tool calls, the research sub-agents are
-    # stuck in a search loop that the per-agent name check would miss.
+    # Many find_tools calls with zero call_tool means sub-agents are stuck searching.
     find_tools_calls = 0
     call_tool_calls = 0
     for msg in messages[-30:]:
@@ -284,10 +319,7 @@ def check_for_repeated_routing(messages) -> tuple[bool, str]:
                 find_tools_calls += 1
             elif name == "tool_universe_call_tool":
                 call_tool_calls += 1
-    # The research agent runs up to 4 sub-tasks in parallel, each making 1-2
-    # tool_universe_find_tools calls before a tool_universe_call_tool call.
-    # Worst case before any actual execution: 4 sub-agents x 2 rounds = 8 searches.
-    # Only flag as a loop if we exceed that budget with zero executions.
+    # 4 sub-agents x 2 search rounds = 8; beyond that with no execution is a loop.
     if find_tools_calls >= 9 and call_tool_calls == 0:
         logger.warning(
             "Tool-call loop detected: %d tool_universe_find_tools calls with 0 "
@@ -299,8 +331,7 @@ def check_for_repeated_routing(messages) -> tuple[bool, str]:
     if not candidates:
         return False, ""
 
-    # Prefer the strongest signal (highest count). On ties, deprioritize synthesis/meta
-    # agents so we break "work" loops (Analysis/Research) instead of oscillating with Report.
+    # Highest count wins; on ties deprioritize synthesis agents to break work loops.
     def _loop_sort_key(item: tuple[str, int]) -> tuple:
         name, cnt = item
         deprior = 1 if name in ("Report", "Summary", "Supervisor") else 0
@@ -394,14 +425,12 @@ def check_tool_builder_execution_success(messages) -> tuple[bool, str]:
     Returns:
         Tuple of (execution_success, tool_name)
     """
-    # First check if execution success was already marked (to avoid re-detection)
     for msg in reversed(messages[-5:]):
         if isinstance(msg, SystemMessage) or (
             hasattr(msg, "__class__") and msg.__class__.__name__ == "SystemMessage"
         ):
             content = get_message_content(msg)
             if "[EXECUTION_SUCCESS]" in content or "ToolBuilder successfully executed" in content:
-                # Extract tool name from the message if available
                 tool_match = re.search(r"tool '([\w_]+)'", content)
                 if tool_match:
                     tool_name = tool_match.group(1)
@@ -409,8 +438,7 @@ def check_tool_builder_execution_success(messages) -> tuple[bool, str]:
                     return True, tool_name
                 return True, ""
 
-    # Check for ToolMessage with execution success format
-    # Format: {"status": "success", "tool": "...", "result": {...}}
+    # Execution success shape: {"status": "success", "tool": ..., "result": {...}}
     for msg in reversed(messages[-10:]):
         if isinstance(msg, ToolMessage) or (
             hasattr(msg, "__class__") and msg.__class__.__name__ == "ToolMessage"
@@ -418,7 +446,6 @@ def check_tool_builder_execution_success(messages) -> tuple[bool, str]:
             content = get_message_content(msg)
             try:
                 result = json.loads(content)
-                # Check for execution success format (has "tool" and "result" keys)
                 if result.get("status") == "success" and "tool" in result and "result" in result:
                     tool_name = result.get("tool")
                     logger.info(f"Detected tool execution success from ToolMessage: {tool_name}")
@@ -426,14 +453,12 @@ def check_tool_builder_execution_success(messages) -> tuple[bool, str]:
             except (json.JSONDecodeError, AttributeError, TypeError):
                 pass
 
-    # Also check AIMessage from ToolBuilder for execution success patterns
     for msg in reversed(messages[-5:]):
         agent_name = getattr(msg, "name", "")
         if agent_name == "ToolBuilder":
             content = get_message_content(msg)
             content_lower = content.lower()
 
-            # Patterns indicating successful tool execution (not creation)
             execution_patterns = [
                 r"successfully performed.*analysis",
                 r"successfully.*executed.*tool",
@@ -447,7 +472,6 @@ def check_tool_builder_execution_success(messages) -> tuple[bool, str]:
 
             for pattern in execution_patterns:
                 if re.search(pattern, content_lower):
-                    # Try to extract tool name
                     tool_match = re.search(
                         r"tool.*['\"`]([\w_]+)['\"`]|['\"`]([\w_]+)['\"`].*tool",
                         content_lower,
@@ -458,7 +482,6 @@ def check_tool_builder_execution_success(messages) -> tuple[bool, str]:
                             f"Detected tool execution success from pattern '{pattern}': {tool_name}"
                         )
                         return True, tool_name
-                    # If pattern matches but no tool name, still return success
                     logger.info(f"Detected tool execution success from pattern '{pattern}'")
                     return True, ""
 
@@ -478,23 +501,18 @@ def check_tool_builder_success(messages) -> tuple[bool, str]:
     Returns:
         Tuple of (tool_created, tool_name)
     """
-    # First, quick check for structured JSON responses (no LLM call needed)
     for msg in reversed(messages[-10:]):
-        # Check if it's a ToolMessage (tool call result)
         if isinstance(msg, ToolMessage) or (
             hasattr(msg, "__class__") and msg.__class__.__name__ == "ToolMessage"
         ):
             content = get_message_content(msg)
             try:
-                # Try to parse as JSON (tool responses are JSON)
                 result = json.loads(content)
                 if result.get("status") == "success":
-                    # Check for tool_name in JSON
                     if "tool_name" in result:
                         tool_name = result.get("tool_name")
                         logger.info(f"Detected tool success from ToolMessage: {tool_name}")
                         return True, tool_name
-                    # Also check message text for validated successfully pattern
                     message = result.get("message", "")
                     if "validated successfully" in message.lower():
                         tool_name_match = re.search(
@@ -507,11 +525,9 @@ def check_tool_builder_success(messages) -> tuple[bool, str]:
                             )
                             return True, tool_name
             except (json.JSONDecodeError, AttributeError, TypeError):
-                # Not JSON, continue checking
                 pass
 
-    # If no structured response found, use lightweight LLM call
-    # Only check last 5 messages to minimize tokens
+    # Fallback: lightweight LLM call over the last 5 messages to keep tokens low.
     recent_messages = messages[-5:]
     if not recent_messages:
         return False, ""
@@ -522,10 +538,8 @@ def check_tool_builder_success(messages) -> tuple[bool, str]:
 
         from bioagents.llms.llm_provider import get_llm
 
-        # Lightweight LLM model (use same as supervisor for consistency)
         llm = get_llm(prompt_name="supervisor")
 
-        # Create a simple prompt - only ask about ToolBuilder success
         class ToolBuilderSuccessResponse(BaseModel):
             """Response indicating if ToolBuilder successfully created a tool."""
 
@@ -550,13 +564,11 @@ def check_tool_builder_success(messages) -> tuple[bool, str]:
             ]
         )
 
-        # Extract only ToolBuilder-related messages to minimize tokens
         tool_builder_context = []
         for msg in recent_messages:
             agent_name = getattr(msg, "name", "")
             if agent_name == "ToolBuilder":
                 content = get_message_content(msg)
-                # Truncate long messages to save tokens (keep first 500 chars)
                 if len(content) > 500:
                     content = content[:500] + "..."
                 tool_builder_context.append(f"[ToolBuilder]: {content}")
@@ -566,7 +578,6 @@ def check_tool_builder_success(messages) -> tuple[bool, str]:
 
         context_text = "\n".join(tool_builder_context)
 
-        # Make lightweight LLM call
         chain = prompt | llm.with_structured_output(ToolBuilderSuccessResponse)
         result = chain.invoke({"context": context_text})
 
@@ -578,7 +589,6 @@ def check_tool_builder_success(messages) -> tuple[bool, str]:
         logger.warning(
             f"LLM-based tool success check failed: {e}, falling back to pattern matching"
         )
-        # Fallback to pattern matching if LLM call fails
         return _check_tool_builder_success_patterns(messages)
 
     return False, ""
@@ -610,7 +620,6 @@ def _check_tool_builder_success_patterns(messages) -> tuple[bool, str]:
         agent_name = getattr(msg, "name", "")
 
         if agent_name == "ToolBuilder":
-            # Check for JSON in content
             if '"status": "success"' in content and '"tool_name"' in content:
                 try:
                     json_match = re.search(
@@ -624,16 +633,13 @@ def _check_tool_builder_success_patterns(messages) -> tuple[bool, str]:
                 except Exception:  # nosec B110
                     pass
 
-            # Check for validated successfully message (even without tool_name in JSON)
             if '"status": "success"' in content and "validated successfully" in content.lower():
-                # Try to extract tool name from message text
                 tool_name_match = re.search(r"Tool '([^']+)' validated successfully", content)
                 if tool_name_match:
                     tool_name = tool_name_match.group(1)
                     logger.info(f"Detected tool validation success: {tool_name}")
                     return True, tool_name
 
-            # Check for success patterns
             for pattern in success_patterns:
                 if re.search(pattern, content.lower()):
                     tool_match = re.search(r"tool.*['\"`]([\w_]+)['\"`]", content.lower())
@@ -657,7 +663,7 @@ def get_all_created_tools(messages) -> list[str]:
     """
     created_tools = []
 
-    for msg in reversed(messages[-20:]):  # Check last 20 messages
+    for msg in reversed(messages[-20:]):
         if isinstance(msg, ToolMessage) or (
             hasattr(msg, "__class__") and msg.__class__.__name__ == "ToolMessage"
         ):
@@ -719,7 +725,6 @@ def check_for_engagement_request(messages) -> tuple[bool, dict | None]:
             if isinstance(data, dict) and "type" in data and "question" in data:
                 return True, data
         except json.JSONDecodeError:
-            # Try to find JSON block after the marker
             json_match = re.search(r"\{[^{}]+\}", json_text, re.DOTALL)
             if json_match:
                 try:
@@ -755,11 +760,9 @@ def check_query_ambiguity(messages) -> str | None:
 
     original_lower = original.lower().strip()
 
-    # Too short / vague
     if len(original_lower) < 10:
         return "Query is too vague to route. Please provide more details about what you need."
 
-    # Check for common ambiguous patterns
     ambiguous_patterns = [
         (
             r"^analyze\s+(?:this|a|the)\s+protein$",
@@ -797,3 +800,219 @@ def extract_original_query(messages) -> str | None:
             content = msg.content
             return str(content) if content is not None else None
     return None
+
+
+# Files that say nothing about what work is already done.
+_WORKSPACE_IGNORED = {".git", "__pycache__", ".ipynb_checkpoints", ".cache", "node_modules"}
+
+# Small text artifacts worth previewing so the supervisor sees already-computed results.
+_PREVIEWABLE_SUFFIXES = {".json", ".csv", ".txt", ".md", ".fasta", ".tsv", ".yaml", ".yml"}
+
+
+def _preview_file(path, max_chars: int = 180) -> str:
+    try:
+        with Path(path).open(encoding="utf-8", errors="replace") as handle:
+            text = handle.read(max_chars + 1)
+    except OSError:
+        return ""
+    text = " ".join(text.split())
+    return text[:max_chars] + ("…" if len(text) > max_chars else "")
+
+
+def describe_workspace_artifacts(
+    workspace_dir=None, max_files: int = 40, preview_max_bytes: int = 4096
+) -> str:
+    """List what already exists in the shared workspace, for the supervisor's context.
+
+    The supervisor routed from the message history alone, so files that earlier steps
+    had already produced were invisible to it: a run that had written 100 molecules to
+    disk was told to build the whole pipeline again from scratch, because nothing in the
+    conversation said the file was there. Routing needs the state of the workspace, not
+    just the transcript.
+
+    Returns an empty string when the workspace cannot be read or holds nothing — the
+    supervisor must keep routing either way.
+    """
+    try:
+        if workspace_dir is None:
+            from bioagents.sandbox.sandbox_manager import get_sandbox
+
+            workspace_dir = get_sandbox().workdir
+        root = Path(workspace_dir)
+        if not root.is_dir():
+            return ""
+
+        entries = []
+        for path in sorted(root.rglob("*")):
+            if not path.is_file():
+                continue
+            if any(part in _WORKSPACE_IGNORED or part.startswith(".") for part in path.parts):
+                continue
+            try:
+                size = path.stat().st_size
+            except OSError:
+                continue
+            entries.append((path, size))
+
+        if not entries:
+            return ""
+
+        entries.sort(key=lambda item: item[0].stat().st_mtime, reverse=True)
+        shown = entries[:max_files]
+
+        lines = [
+            "[WORKSPACE ARTIFACTS — files that already exist in the shared workspace]",
+            "These were produced by earlier steps of THIS run and are readable by every "
+            "agent at the path shown. Before routing work, check whether what you need "
+            "is already here: reuse the file and route only the remaining steps. Do not "
+            "rebuild a pipeline whose outputs are already on disk, and do not ask an "
+            "agent to re-download data that is listed below.",
+            "",
+        ]
+        for path, size in shown:
+            rel = path.relative_to(root)
+            line = f"- {rel} ({size:,} bytes)"
+            if path.suffix.lower() in _PREVIEWABLE_SUFFIXES and size <= preview_max_bytes:
+                preview = _preview_file(path)
+                if preview:
+                    line += f" — {preview}"
+            lines.append(line)
+
+        if len(entries) > len(shown):
+            lines.append(f"- … and {len(entries) - len(shown)} more files")
+
+        return "\n".join(lines)
+    except Exception:  # pragma: no cover - routing must survive a workspace failure
+        logger.debug("Could not describe workspace artifacts for the supervisor.")
+        return ""
+
+
+# The coder writes Python from scratch: slowest and least reproducible, so cap its turns.
+MAX_CODER_ROUTES = max(1, _env_int_local("BIOAGENTS_MAX_CODER_ROUTES", 2))
+
+CODE_AGENTS = frozenset({"coder", "ml", "dl"})
+
+# Words that genuinely call for writing code rather than calling a tool.
+_CODE_TASK_HINTS = (
+    "write a script",
+    "write python",
+    "custom script",
+    "implement an algorithm",
+    "simulation",
+    "train a model",
+    "fine-tune",
+    "custom analysis",
+    # No dedicated tool exists for these, so the coder is the right destination.
+    "t-sne",
+    "tsne",
+    "umap",
+    "pca",
+    "cluster",
+    "dimensionality reduction",
+    "rmsd",
+)
+
+
+def count_code_agent_routes(messages) -> int:
+    """How many times a code-writing agent has already answered in this run."""
+    total = 0
+    for msg in messages:
+        name = str(getattr(msg, "name", "") or "").lower()
+        if isinstance(msg, AIMessage) and name in {"coder", "ml", "dl"}:
+            total += 1
+    return total
+
+
+# Capability phrasings that share no word with the tool name (e.g. "ECFP4 fingerprints").
+_CAPABILITY_ALIASES: tuple[tuple[str, str], ...] = (
+    (r"\becfp\d*\b|\bmorgan\b|\bfingerprint", "compute_molecular_fingerprint"),
+    (r"\bqed\b|\bsa[ _-]?score\b|\bdruglike|\blipinski\b", "compute_molecular_descriptors"),
+    (r"\bdescriptor|\blogp\b|\btpsa\b|molecular weight", "compute_molecular_descriptors"),
+    (r"\btanimoto\b|similar(ity)? (search|molecules)", "search_similar_molecules_tool"),
+    (r"\bsubstructure\b|\bsmarts\b", "search_substructure"),
+    (r"\bblast\b|homolog|sequence identity", "run_blast_search"),
+    (r"co-?fold|predict the complex|complex structure", "run_boltz"),
+    (r"\bdock(ing)?\b|binding affinity|virtual screen", "run_docking"),
+    (
+        r"\besm\b|saturation (mutagenesis|scan)|variant effect|deep mutational",
+        "saturation_scan_esm",
+    ),
+    (r"\bplot\b|\bchart\b|\bheatmap\b|\bfigure\b|visuali[sz]", "create_scatter_plot"),
+)
+
+
+def _agent_holding(tool_name: str, inventory: dict, member_set: set) -> str | None:
+    for agent, names in inventory.items():
+        if agent in member_set and tool_name in names:
+            return str(agent)
+    return None
+
+
+def suggest_specialist_for_task(task_text: str, members) -> str | None:
+    """Find a tool-holding specialist whose tools match the task wording.
+
+    Routing to the coder is only justified when nothing else can do the work, so this
+    answers the prior question: does an agent already hold a tool for this?
+    """
+    text = (task_text or "").lower()
+    if not text.strip():
+        return None
+
+    try:
+        from bioagents.tools.agent_manifest import agent_tool_names
+
+        inventory = agent_tool_names()
+    except Exception:  # pragma: no cover - routing must survive a manifest failure
+        return None
+
+    member_set = {str(m).lower() for m in members}
+
+    for pattern, tool_name in _CAPABILITY_ALIASES:
+        if re.search(pattern, text):
+            holder = _agent_holding(tool_name, inventory, member_set)
+            if holder:
+                return holder
+
+    best_agent, best_score = None, 0
+    for agent, names in inventory.items():
+        if agent not in member_set:
+            continue
+        score = 0
+        for tool_name in names:
+            # Require a full match; partial overlap misroutes (parse_fasta_file vs "parse the PDB").
+            words = [w for w in tool_name.lower().split("_") if len(w) > 3]
+            if words and all(w in text for w in words):
+                score += 1
+        if score > best_score:
+            best_agent, best_score = agent, score
+
+    return best_agent if best_score > 0 else None
+
+
+def check_coder_routing_guard(messages, members, task_text: str = "") -> tuple[str | None, str]:
+    """Redirect a code-agent route when a specialist or existing results can serve.
+
+    Returns ``(replacement_agent, reason)``; ``(None, "")`` leaves the routing alone.
+    """
+    text = (task_text or "").lower()
+    if any(hint in text for hint in _CODE_TASK_HINTS):
+        return None, ""
+
+    used = count_code_agent_routes(messages)
+    if used >= MAX_CODER_ROUTES:
+        target = "report" if "report" in members else None
+        if target:
+            return target, (
+                f"Code agents have already run {used} times in this workflow "
+                f"(limit {MAX_CODER_ROUTES}). Reporting what has actually been produced "
+                "instead of writing more code."
+            )
+
+    specialist = suggest_specialist_for_task(task_text, members)
+    if specialist and specialist not in CODE_AGENTS:
+        return specialist, (
+            f"Agent '{specialist}' already holds tools matching this task, so it runs "
+            "directly instead of the coder writing an implementation from scratch."
+        )
+
+    return None, ""

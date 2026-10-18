@@ -136,7 +136,6 @@ def _detect_consecutive_duplicate_calls(messages: list, agent_name: str) -> tupl
     if not call_hashes:
         return False, ""
 
-    # Check for consecutive identical calls
     consecutive = 1
     for i in range(1, len(call_hashes)):
         if call_hashes[i] == call_hashes[0]:
@@ -187,13 +186,74 @@ def _extract_best_agent_content(messages: list, agent_name: str) -> str:
     return best[:4000] if best else ""
 
 
+#: State channels an agent node may write. Anything else LangGraph discards in silence.
+STATE_CHANNELS: frozenset[str] = frozenset(
+    {
+        "messages",
+        "next",
+        "reasoning",
+        "output_dir",
+        "references",
+        "failed_agents",
+        "loop_escape_tried",
+        "iteration_count",
+        "error_log",
+        "tool_usage_log",
+    }
+)
+
+
+def ensure_result_is_visible(result, name):
+    """Guarantee an agent's work reaches the supervisor as a message.
+
+    LangGraph applies only the keys that are declared state channels and drops the rest
+    without raising. A node returning just ``data``/``raw_output``/``error`` therefore
+    vanished completely: the supervisor saw no reply, assumed the agent had not run, and
+    re-delegated the same task until the workflow timed out — losing results the agent
+    had already computed. Anything carried on a non-channel key is rebuilt into a
+    message here so a finished task can never read as a missing one.
+    """
+    from langchain_core.messages import AIMessage
+
+    if not isinstance(result, dict):
+        return result
+    if result.get("messages"):
+        return result
+
+    carried = {k: v for k, v in result.items() if k not in STATE_CHANNELS and v}
+    error = result.get("error")
+    raw = result.get("raw_output")
+
+    text = ""
+    if isinstance(raw, str) and raw.strip():
+        text = raw.strip()
+    elif error:
+        text = f"[AGENT_ERROR] {name} failed: {error}"
+    elif carried:
+        text = f"[AGENT_RESULT] {name} returned data without a summary: {carried}"
+
+    if not text:
+        if any(k in STATE_CHANNELS for k in result):
+            return result
+        text = (
+            f"[NO_OUTPUT] Agent '{name}' returned no usable result. "
+            f"Do not re-delegate the same task to '{name}'."
+        )
+
+    logger.error(
+        "Agent '%s' returned no messages; its output would have been dropped. Keys: %s",
+        name,
+        sorted(result),
+    )
+    return {**result, "messages": [AIMessage(content=text[:8000], name=name)]}
+
+
 def agent_node(state, agent, name):
     """Wrapper for agent nodes that adds agent identification and ACE tracking."""
     from langchain_core.messages import AIMessage
 
     from bioagents.limits import MAX_AGENT_TOOL_ROUNDS, MAX_TU_TOOL_CALLS_PER_AGENT
 
-    # Check for consecutive duplicate tool calls (loop detection)
     is_loop, loop_desc = _detect_consecutive_duplicate_calls(state.get("messages", []), name)
     if is_loop:
         logger.warning("Loop detected for agent '%s': %s", name, loop_desc)
@@ -203,12 +263,8 @@ def agent_node(state, agent, name):
         )
         return {"messages": [error_msg]}
 
-    # Enforce the per-agent tool-round budget. The agent -> tools -> agent cycle is
-    # otherwise unbounded: an agent can keep calling tools forever without ever handing
-    # control back, so the supervisor's loop detection and re-routing never get to run
-    # and one specialist consumes the entire workflow step budget. Checked here rather
-    # than on the conditional edge so the agent stops with a clean message instead of
-    # leaving pending tool_calls that have no matching tool results.
+    # Checked here, not on the conditional edge, so the agent stops with a clean message
+    # instead of pending tool_calls that have no matching results.
     tool_rounds = count_agent_tool_rounds(state.get("messages", []), name)
     if tool_rounds >= MAX_AGENT_TOOL_ROUNDS:
         logger.warning(
@@ -231,7 +287,6 @@ def agent_node(state, agent, name):
         )
         return {"messages": [error_msg]}
 
-    # Check for excessive tool_universe_call_tool usage
     tu_count = _count_tu_tool_calls(state.get("messages", []), name)
     if tu_count >= MAX_TU_TOOL_CALLS_PER_AGENT:
         logger.warning(
@@ -266,6 +321,8 @@ def agent_node(state, agent, name):
             return {"messages": [error_msg], "next": "supervisor"}
         raise
 
+    result = ensure_result_is_visible(result, name)
+
     if result.get("messages"):
         for msg in result["messages"]:
             msg.name = name
@@ -281,9 +338,7 @@ def agent_node(state, agent, name):
     return result
 
 
-# Node name -> the display name stamped onto that agent's messages. Message-history
-# checks (loop detection, tool-round budgets) match on the display name, so this is the
-# single source of truth linking the two.
+# Loop detection and tool-round budgets match on the display name, so these must agree.
 AGENT_DISPLAY_NAMES: dict[str, str] = {
     "supervisor": "Supervisor",
     "research": "Research",
@@ -429,9 +484,7 @@ def create_graph(
             context. When provided, it is appended to every tool-using agent's tool
             list and corresponding tool node so agents can pull prior-turn details.
     """
-    # ---- tool lists ----
-    # Built from the single agent→tool manifest so the wiring, the supervisor's view of
-    # each agent's capabilities, and the UI catalogue can never drift apart.
+    # One manifest keeps the wiring, the supervisor's view and the UI catalogue in step.
     agent_tools = build_agent_tool_map(session_context_tool)
 
     research_tools = agent_tools["research"]
@@ -456,7 +509,6 @@ def create_graph(
 
     _tu_tools = [tool_universe_find_tools, tool_universe_call_tool]
 
-    # ---- create agents ----
     research_agent = create_research_agent(research_tools)
     analysis_agent = create_analysis_agent(analysis_tools_list)
     report_agent = create_report_agent()
@@ -516,10 +568,8 @@ def create_graph(
     visualization_tool_node = make_approval_tool_node(viz_tools, policy=active_policy)
     docking_tool_node = make_approval_tool_node(docking_tools, policy=active_policy)
 
-    # ---- build graph ----
     workflow = StateGraph(AgentState)
 
-    # add all agent nodes
     workflow.add_node("supervisor", partial(agent_node, agent=supervisor_agent, name="Supervisor"))
     workflow.add_node("research", partial(agent_node, agent=research_agent, name="Research"))
     workflow.add_node("analysis", partial(agent_node, agent=analysis_agent, name="Analysis"))
@@ -582,7 +632,6 @@ def create_graph(
         "visualization", partial(agent_node, agent=visualization_agent, name="Visualization")
     )
 
-    # add tool nodes
     workflow.add_node("research_tools", research_tool_node)
     workflow.add_node("analysis_tools", analysis_tool_node)
     workflow.add_node("tool_builder_tools", tool_builder_tool_node)
@@ -602,15 +651,8 @@ def create_graph(
     workflow.add_node("visualization_tools", visualization_tool_node)
     workflow.add_node("docking_tools", docking_tool_node)
 
-    # ---- entry point ----
     workflow.set_entry_point("supervisor")
 
-    # ---- user_input node: pauses via LangGraph interrupt() for human input ----
-    # When the supervisor routes here, the node extracts engagement data from
-    # state and calls interrupt(). The stream pauses, the server sends the
-    # engagement request to the frontend, collects the response, then resumes
-    # the graph with Command(resume=response). The response becomes the return
-    # value of interrupt(), and the node returns it as a HumanMessage.
     def user_input_node(state):
         import json
         import os
@@ -618,9 +660,6 @@ def create_graph(
         messages = state.get("messages", [])
         engagement_data = None
 
-        # First: look for an explicit ENGAGEMENT_PENDING marker (set by
-        # supervisor when an agent requests user input or when the LLM
-        # routing decides user_input is needed).
         for msg in reversed(messages[-5:]):
             content = getattr(msg, "content", "")
             if not isinstance(content, str):
@@ -637,9 +676,7 @@ def create_graph(
                     }
                 break
 
-        # Fallback: if no ENGAGEMENT_PENDING marker was found, build a
-        # contextual question from the supervisor's most recent task
-        # description and the original user query.
+        # No marker: build a question from the last task and the original query.
         if engagement_data is None:
             context_hint = ""
             original_query = ""
@@ -651,7 +688,6 @@ def create_graph(
             for msg in reversed(messages[-10:]):
                 content = getattr(msg, "content", "")
                 if isinstance(msg, HumanMessage) and "[SUPERVISOR TASK]" in str(content):
-                    # Extract the task description after the prefix
                     task = str(content).replace("[SUPERVISOR TASK]", "").strip()
                     context_hint = task[:300]
                     break
@@ -678,9 +714,7 @@ def create_graph(
 
         response = interrupt(payload)
 
-        # --- SECURITY INTERVENTION ---
         if payload.get("type") == "api_key_request":
-            # Extract the raw key from the frontend response
             api_key = response.get("content", "") if isinstance(response, dict) else response
             env_var_name = payload.get("env_var", "API_KEY")
 
@@ -695,7 +729,6 @@ def create_graph(
                     )
                 ]
             }
-        # --------------------------------------------------
 
         response_text = ""
         if isinstance(response, dict):
@@ -714,7 +747,6 @@ def create_graph(
     workflow.add_node("user_input", user_input_node)
     workflow.add_edge("user_input", "supervisor")
 
-    # ---- supervisor routing ----
     routing_map = {m: m for m in ALL_MEMBERS}
     routing_map["summary"] = "summary"
     workflow.add_conditional_edges("supervisor", route_supervisor, routing_map)

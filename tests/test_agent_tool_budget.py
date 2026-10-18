@@ -1,11 +1,4 @@
-"""Guards the per-agent tool-round budget.
-
-Regression context: in benchmark run task1_undirected the DataAcquisition agent looped
-`agent -> tools -> agent` 23 times, calling write_local_file 21 times to hand-roll work
-it had no execution tool for. It never returned to the supervisor, so none of the
-supervisor's loop detection ran and the workflow died at the 50-step cap. The budget
-below forces control back so the supervisor can re-route.
-"""
+"""Guards the per-agent tool-round budget that forces control back to the supervisor."""
 
 from __future__ import annotations
 

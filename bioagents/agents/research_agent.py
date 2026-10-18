@@ -56,8 +56,7 @@ RESEARCH_AGENT_MEMORY_PROMPT = (
     "Use only shared memory and your tools.\n\n" + RESEARCH_AGENT_SYSTEM_PROMPT
 )
 
-# Maximum number of tool-result rounds a sub-agent is allowed before being
-# forced to synthesise with what it has.
+# Rounds of tool results a sub-agent gets before being forced to synthesise.
 MAX_SUB_AGENT_TOOL_ROUNDS = 1
 
 
@@ -140,7 +139,6 @@ def create_research_agent(tools: list):
 
     tool_names: list[str] = [resolve_tool_name(t) for t in tools]
 
-    # Build tools_dict for execute_agent_with_tools (shared memory path)
     tools_dict = {}
     for tool in tools:
         if isinstance(tool, BaseTool):
@@ -150,7 +148,6 @@ def create_research_agent(tools: list):
 
     logger.info(f"Research agent tools: {list(tools_dict.keys())}")
 
-    # Track how many parallel tool-result rounds we've done (per invocation).
     _parallel_round = 0
 
     def research_node(state: dict) -> dict:
@@ -184,14 +181,11 @@ def create_research_agent(tools: list):
                     "messages": [AIMessage(content="No messages to process")],
                 }
 
-            # ── Parallel sub-agent path (from develop) ──────────────────────
-            # If the last message is a ToolMessage we are mid-execution;
-            # delegate to the parallel continuation handler.
+            # Mid-execution (last message is a ToolMessage): hand off to the continuation handler.
             last_message = messages[-1] if messages else None
 
             if isinstance(last_message, ToolMessage):
                 result = _handle_tool_message(messages, llm_with_tools, tool_names)
-                # Wrap parallel-path AIMessage result into shared-memory format
                 return _wrap_parallel_result(result)
 
             if (
@@ -199,10 +193,7 @@ def create_research_agent(tools: list):
                 and getattr(last_message, "name", None) == "Research"
                 and not getattr(last_message, "tool_calls", None)
             ):
-                # Check if this is a continuation after tool execution (not a true loop).
-                # If the second-to-last message is a ToolMessage, we're in a
-                # post-tool-return state where the agent previously produced a
-                # final merged result — forward it rather than discarding it.
+                # A ToolMessage two back means a post-tool continuation, not a loop; forward it.
                 prior_message = messages[-2] if len(messages) >= 2 else None
                 if isinstance(prior_message, ToolMessage):
                     logger.info("Research Agent: Returning merged result after tool execution.")
@@ -223,12 +214,18 @@ def create_research_agent(tools: list):
                     "raw_output": "",
                     "tool_calls": [],
                     "error": None,
+                    "messages": [
+                        AIMessage(
+                            content=(
+                                "[LOOP_DETECTED] Research already answered this task and has "
+                                "nothing to add. The supervisor should route elsewhere or finish."
+                            )
+                        )
+                    ],
                 }
 
-            # ── Decompose & parallel phase ───────────────────────────────────
             original_request = _extract_original_request(messages)
 
-            # Reset round counter for fresh invocations.
             _parallel_round = 0
 
             logger.info("Research Agent: Entering Decompose & Parallel Phase")
@@ -301,9 +298,8 @@ def create_research_agent(tools: list):
                 "raw_output": str(e),
                 "tool_calls": [],
                 "error": str(e),
+                "messages": [AIMessage(content=f"[AGENT_ERROR] Research failed: {e}")],
             }
-
-    # ── Internal helpers ─────────────────────────────────────────────────────
 
     def _extract_original_request(messages: list) -> str:
         """Pull the first non-supervisor HumanMessage as the original request."""
@@ -434,7 +430,6 @@ def create_research_agent(tools: list):
 
             original_request = _extract_original_request(messages)
 
-            # Build data context for sub-agent continuation
             already_fetched = _extract_fetched_data_summary(messages)
 
             def run_sub_agent_continue(i, sub_task):
@@ -515,11 +510,9 @@ def create_research_agent(tools: list):
         all_tool_calls = []
         combined_content = "Research Phase - Sub-agent findings:\n"
         needs_more_tools = False
-        # Sub-tasks that yielded neither tool calls nor content. These must be surfaced to
-        # the merger explicitly, otherwise it fills the gap with a plausible narrative.
+        # Unproductive sub-tasks must reach the merger, or it fills the gap with a narrative.
         unproductive_subtasks: list[str] = []
 
-        # Deduplicate tool calls across sub-agents
         seen_signatures: set[str] = set()
 
         # Also track signatures already executed in prior rounds (from message history)
@@ -542,7 +535,6 @@ def create_research_agent(tools: list):
             sub_agent_tools = getattr(resp, "tool_calls", [])
 
             if sub_agent_tools:
-                # Filter out ToolUniverse calls if they've been consistently failing
                 filtered_tools = []
                 for tc in sub_agent_tools:
                     tc_name = tc.get("name", "")
@@ -555,7 +547,6 @@ def create_research_agent(tools: list):
                         )
                         continue
 
-                    # Deduplicate: skip tool calls already seen
                     sig = _tool_call_signature(tc)
                     if sig in seen_signatures:
                         logger.info(
@@ -615,7 +606,6 @@ def create_research_agent(tools: list):
                 + "".join(f"- {t}\n" for t in unproductive_subtasks)
             )
 
-        # Force merge if we've exceeded the round cap
         if _parallel_round > MAX_SUB_AGENT_TOOL_ROUNDS:
             logger.info(
                 "Research Agent: Reached max parallel rounds (%d). Forcing merge.",
