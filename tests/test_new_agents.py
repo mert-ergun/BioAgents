@@ -4,10 +4,6 @@ from unittest.mock import Mock, patch
 
 from langchain_core.messages import AIMessage, HumanMessage
 
-# ---------------------------------------------------------------------------
-# Helpers shared across agent tests
-# ---------------------------------------------------------------------------
-
 
 def _make_mock_llm(with_tools=True):
     """Create a mock LLM that returns a non-empty AIMessage."""
@@ -20,11 +16,6 @@ def _make_mock_llm(with_tools=True):
 
 def _make_state(content="Test query"):
     return {"messages": [HumanMessage(content=content)]}
-
-
-# =========================================================================
-# 1. Literature Agent  (tools: get_literature_tools)
-# =========================================================================
 
 
 class TestLiteratureAgent:
@@ -71,11 +62,6 @@ class TestLiteratureAgent:
         assert llm.invoke.call_count == 2
 
 
-# =========================================================================
-# 2. Web Browser Agent  (tools: get_web_tools)
-# =========================================================================
-
-
 class TestWebBrowserAgent:
     @patch("bioagents.agents.web_browser_agent.get_llm")
     @patch("bioagents.agents.web_browser_agent.get_web_tools")
@@ -111,11 +97,6 @@ class TestWebBrowserAgent:
 
         result = create_web_browser_agent()(_make_state())
         assert result["messages"][0].content == "OK"
-
-
-# =========================================================================
-# 3. Paper Replication Agent  (tools: get_web_tools + get_git_tools)
-# =========================================================================
 
 
 class TestPaperReplicationAgent:
@@ -161,11 +142,6 @@ class TestPaperReplicationAgent:
         assert result["messages"][0].content == "Done"
 
 
-# =========================================================================
-# 4. Data Acquisition Agent  (tools: get_web_tools + get_file_tools)
-# =========================================================================
-
-
 class TestDataAcquisitionAgent:
     @patch("bioagents.agents.data_acquisition_agent.get_llm")
     @patch("bioagents.agents.data_acquisition_agent.get_file_tools")
@@ -209,11 +185,6 @@ class TestDataAcquisitionAgent:
         assert result["messages"][0].content == "Got data"
 
 
-# =========================================================================
-# 5. Genomics Agent  (tools: get_genomics_tools)
-# =========================================================================
-
-
 class TestGenomicsAgent:
     @patch("bioagents.agents.genomics_agent.get_llm")
     @patch("bioagents.agents.genomics_agent.get_genomics_tools")
@@ -249,11 +220,6 @@ class TestGenomicsAgent:
 
         result = create_genomics_agent()(_make_state())
         assert result["messages"][0].content == "Aligned"
-
-
-# =========================================================================
-# 6. Transcriptomics Agent  (tools: get_transcriptomics_tools)
-# =========================================================================
 
 
 class TestTranscriptomicsAgent:
@@ -293,11 +259,6 @@ class TestTranscriptomicsAgent:
         assert result["messages"][0].content == "DE done"
 
 
-# =========================================================================
-# 7. Structural Biology Agent  (tools: get_structural_tools)
-# =========================================================================
-
-
 class TestStructuralBiologyAgent:
     @patch("bioagents.agents.structural_biology_agent.get_llm")
     @patch("bioagents.agents.structural_biology_agent.get_structural_tools")
@@ -335,11 +296,6 @@ class TestStructuralBiologyAgent:
         assert result["messages"][0].content == "Structure predicted"
 
 
-# =========================================================================
-# 8. Phylogenetics Agent  (tools: get_genomics_tools)
-# =========================================================================
-
-
 class TestPhylogeneticsAgent:
     @patch("bioagents.agents.phylogenetics_agent.get_llm")
     @patch("bioagents.agents.phylogenetics_agent.get_genomics_tools")
@@ -375,11 +331,6 @@ class TestPhylogeneticsAgent:
 
         result = create_phylogenetics_agent()(_make_state())
         assert result["messages"][0].content == "Tree built"
-
-
-# =========================================================================
-# 9. Docking Agent  (no tools — uses invoke_with_retry)
-# =========================================================================
 
 
 class TestDockingAgent:
@@ -427,11 +378,6 @@ class TestDockingAgent:
         assert result["messages"][0].content != ""
 
 
-# =========================================================================
-# 10. Planner Agent  (no tools — uses invoke_with_retry)
-# =========================================================================
-
-
 class TestPlannerAgent:
     @patch("bioagents.agents.planner_agent.get_llm")
     def test_create_agent_returns_callable(self, mock_llm):
@@ -463,11 +409,6 @@ class TestPlannerAgent:
         assert result["messages"][0].content == "Plan ready"
 
 
-# =========================================================================
-# 11. Tool Validator Agent  (no tools — uses invoke_with_retry)
-# =========================================================================
-
-
 class TestToolValidatorAgent:
     @patch("bioagents.agents.tool_validator_agent.get_llm")
     def test_create_agent_returns_callable(self, mock_llm):
@@ -497,11 +438,6 @@ class TestToolValidatorAgent:
 
         result = create_tool_validator_agent()(_make_state())
         assert result["messages"][0].content == "Valid"
-
-
-# =========================================================================
-# 12. Tool Discovery Agent  (tools: get_tool_builder_tools)
-# =========================================================================
 
 
 class TestToolDiscoveryAgent:
@@ -541,11 +477,6 @@ class TestToolDiscoveryAgent:
         assert result["messages"][0].content == "Found tools"
 
 
-# =========================================================================
-# 13. Prompt Optimizer Agent  (no tools — uses invoke_with_retry)
-# =========================================================================
-
-
 class TestPromptOptimizerAgent:
     @patch("bioagents.agents.prompt_optimizer_agent.get_llm")
     def test_create_agent_returns_callable(self, mock_llm):
@@ -575,11 +506,6 @@ class TestPromptOptimizerAgent:
 
         result = create_prompt_optimizer_agent()(_make_state())
         assert result["messages"][0].content == "Optimized"
-
-
-# =========================================================================
-# 14. Result Checker Agent  (no tools — uses invoke_with_retry)
-# =========================================================================
 
 
 class TestResultCheckerAgent:
@@ -624,11 +550,6 @@ class TestResultCheckerAgent:
         assert result["messages"][0].content != ""
 
 
-# =========================================================================
-# 15. Shell Agent  (tools: get_shell_tools)
-# =========================================================================
-
-
 class TestShellAgent:
     @patch("bioagents.agents.shell_agent.get_llm")
     @patch("bioagents.agents.shell_agent.get_shell_tools")
@@ -664,11 +585,6 @@ class TestShellAgent:
 
         result = create_shell_agent()(_make_state())
         assert result["messages"][0].content == "Executed"
-
-
-# =========================================================================
-# 16. Git Agent  (tools: get_git_tools)
-# =========================================================================
 
 
 class TestGitAgent:
@@ -708,11 +624,6 @@ class TestGitAgent:
         assert result["messages"][0].content == "Cloned"
 
 
-# =========================================================================
-# 17. Environment Agent  (tools: get_environment_tools)
-# =========================================================================
-
-
 class TestEnvironmentAgent:
     @patch("bioagents.agents.environment_agent.get_llm")
     @patch("bioagents.agents.environment_agent.get_environment_tools")
@@ -748,11 +659,6 @@ class TestEnvironmentAgent:
 
         result = create_environment_agent()(_make_state())
         assert result["messages"][0].content == "Env ready"
-
-
-# =========================================================================
-# 18. Visualization Agent  (tools: get_visualization_tools)
-# =========================================================================
 
 
 class TestVisualizationAgent:

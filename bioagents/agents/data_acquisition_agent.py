@@ -39,7 +39,19 @@ DATA_ACQUISITION_AGENT_PROMPT = (
     "in place is a SUCCESSFUL outcome for you — it is not a failure, and it is far more "
     "useful than scripts that never ran.\n\n"
     "If you find yourself calling write_local_file repeatedly, you have left your scope. "
-    "Stop and hand back to the supervisor."
+    "Stop and hand back to the supervisor.\n\n"
+    "## Do not redo work that is already done\n"
+    "Before downloading or writing anything, call check_file_exists (or "
+    "list_local_directory) on the target path. Another agent in this same run may have "
+    "already produced it. If it exists, report that path and move on — re-downloading "
+    "wastes the run and risks replacing a good file with a worse one.\n"
+    "write_local_file does NOT overwrite by default: if the path is taken it saves a new "
+    "version (results.csv -> results_v2.csv) and tells you so. When you get that reply, "
+    "stop and inspect the existing file instead of producing more versions. Only pass "
+    "overwrite=True once you have confirmed the existing file is wrong, and say why.\n"
+    "A missing-directory reply ('exists': false) means the path is wrong or nothing has "
+    "been created there yet — it does not mean an earlier agent failed. Check the "
+    "workspace root before concluding that previous work is gone."
 )
 
 

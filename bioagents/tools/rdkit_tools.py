@@ -78,11 +78,6 @@ def _format_error(error: Exception) -> str:
     )
 
 
-# ============================================================================
-# VALIDATION TOOLS
-# ============================================================================
-
-
 @tool
 def validate_smiles(smiles: str) -> str:
     """
@@ -148,11 +143,6 @@ def validate_reaction(reactants: list[str], products: list[str]) -> str:
         return _format_error(e)
 
 
-# ============================================================================
-# REPAIR TOOLS
-# ============================================================================
-
-
 @tool
 def repair_invalid_smiles(input_str: str) -> str:
     """
@@ -177,11 +167,6 @@ def repair_invalid_smiles(input_str: str) -> str:
     except Exception as e:
         logger.error(f"Error repairing SMILES '{input_str}': {e}")
         return _format_error(e)
-
-
-# ============================================================================
-# CONVERSION TOOLS
-# ============================================================================
 
 
 @tool
@@ -215,11 +200,6 @@ def convert_chemical_notation(
         return _format_error(e)
 
 
-# ============================================================================
-# DESCRIPTOR TOOLS
-# ============================================================================
-
-
 @tool
 def compute_molecular_descriptors(
     smiles_list: str,
@@ -250,13 +230,11 @@ def compute_molecular_descriptors(
         - Specific fields: compute_molecular_descriptors("CCO", fields="MW,logP")
     """
     try:
-        # Parse SMILES list (comma-separated)
         if isinstance(smiles_list, str):
             smiles_array = [s.strip() for s in smiles_list.split(",") if s.strip()]
         else:
             smiles_array = smiles_list
 
-        # Parse fields
         fields_list = None
         if fields:
             fields_list = [f.strip() for f in fields.split(",") if f.strip()]
@@ -266,11 +244,6 @@ def compute_molecular_descriptors(
     except Exception as e:
         logger.error(f"Error computing descriptors: {e}")
         return _format_error(e)
-
-
-# ============================================================================
-# SIMILARITY & FILTERING TOOLS
-# ============================================================================
 
 
 @tool
@@ -358,11 +331,6 @@ def filter_by_descriptor_constraints(
         return _format_error(e)
 
 
-# ============================================================================
-# FUNCTIONAL GROUP & SUBSTRUCTURE TOOLS
-# ============================================================================
-
-
 @tool
 def detect_functional_groups_tool(smiles: str) -> str:
     """
@@ -411,11 +379,6 @@ def search_substructure(smiles: str, smarts_pattern: str) -> str:
         return _format_error(e)
 
 
-# ============================================================================
-# RING & STEREOCHEMISTRY TOOLS
-# ============================================================================
-
-
 @tool
 def analyze_ring_systems(smiles: str) -> str:
     """
@@ -462,11 +425,6 @@ def analyze_stereochemistry(smiles: str) -> str:
     except Exception as e:
         logger.error(f"Error analyzing stereochemistry: {e}")
         return _format_error(e)
-
-
-# ============================================================================
-# ATOM MAPPING TOOLS
-# ============================================================================
 
 
 @tool
@@ -553,11 +511,6 @@ def validate_atom_mapping(smirks: str) -> str:
         return _format_error(e)
 
 
-# ============================================================================
-# FINGERPRINTING TOOLS
-# ============================================================================
-
-
 @tool
 def compute_molecular_fingerprint(
     smiles: str,
@@ -585,11 +538,6 @@ def compute_molecular_fingerprint(
     except Exception as e:
         logger.error(f"Error computing fingerprint: {e}")
         return _format_error(e)
-
-
-# ============================================================================
-# REACTION TOOLS (with WASM handling)
-# ============================================================================
 
 
 @tool
@@ -621,11 +569,6 @@ def apply_chemical_reaction(smirks: str, reactants: str) -> str:
         return _format_error(e)
 
 
-# ============================================================================
-# MOLECULAR EDITING TOOLS
-# ============================================================================
-
-
 @tool
 def edit_molecule_structure(smiles: str, operation: str) -> str:
     """
@@ -653,11 +596,6 @@ def edit_molecule_structure(smiles: str, operation: str) -> str:
     except Exception as e:
         logger.error(f"Error editing molecule: {e}")
         return _format_error(e)
-
-
-# ============================================================================
-# VISUALIZATION TOOLS
-# ============================================================================
 
 
 @tool
@@ -715,11 +653,6 @@ def draw_molecule_svg(
         return _format_error(e)
 
 
-# ============================================================================
-# BATCH ANALYSIS TOOLS
-# ============================================================================
-
-
 @tool
 def compute_dataset_statistics(smiles_list: str) -> str:
     """
@@ -740,11 +673,6 @@ def compute_dataset_statistics(smiles_list: str) -> str:
     except Exception as e:
         logger.error(f"Error computing dataset statistics: {e}")
         return _format_error(e)
-
-
-# ============================================================================
-# TOOL COLLECTION FUNCTIONS
-# ============================================================================
 
 
 def get_rdkit_validation_tools() -> list:

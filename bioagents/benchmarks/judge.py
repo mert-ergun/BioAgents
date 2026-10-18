@@ -13,11 +13,6 @@ from bioagents.benchmarks.use_case_models import JudgeBreakdown, RunResult, UseC
 logger = logging.getLogger(__name__)
 
 
-# ---------------------------------------------------------------------------
-# Pydantic models for structured LLM output
-# ---------------------------------------------------------------------------
-
-
 class DimensionScore(BaseModel):
     """Score and reasoning for a single evaluation dimension."""
 
@@ -60,10 +55,6 @@ class JudgeEvaluation(BaseModel):
     )
 
 
-# ---------------------------------------------------------------------------
-# Prompt template
-# ---------------------------------------------------------------------------
-
 _JUDGE_SYSTEM_PROMPT = """\
 You are an expert evaluator for a multi-agent bioinformatics AI system called BioAgents.
 
@@ -98,11 +89,6 @@ _JUDGE_HUMAN_PROMPT = """\
 
 Evaluate the response across all four dimensions and provide an overall score.
 """
-
-
-# ---------------------------------------------------------------------------
-# Public API
-# ---------------------------------------------------------------------------
 
 
 def judge_run_result(
@@ -202,14 +188,12 @@ def heuristic_score(use_case: UseCase, result: RunResult) -> tuple[float, str, J
     score = 0.0
     notes: list[str] = []
 
-    # Base score for completion
     if result.workflow_completed:
         score += 2.0
         notes.append("Workflow completed.")
     else:
         notes.append(f"Workflow did NOT complete ({result.failure_mode.value}).")
 
-    # Expected agents
     if use_case.expected_agents:
         found = [a for a in use_case.expected_agents if a in result.agent_flow]
         ratio = len(found) / len(use_case.expected_agents)
@@ -218,7 +202,6 @@ def heuristic_score(use_case: UseCase, result: RunResult) -> tuple[float, str, J
             f"Agent coverage: {len(found)}/{len(use_case.expected_agents)} expected agents found."
         )
 
-    # Expected tools
     actual_tools = {tc.tool_name for tc in result.tool_calls}
     if use_case.expected_tools:
         found_tools = [t for t in use_case.expected_tools if t in actual_tools]
@@ -228,7 +211,6 @@ def heuristic_score(use_case: UseCase, result: RunResult) -> tuple[float, str, J
             f"Tool coverage: {len(found_tools)}/{len(use_case.expected_tools)} expected tools used."
         )
 
-    # Output quality proxy (length)
     output_len = len(result.raw_output or "")
     if output_len > 500:
         score += 1.0
@@ -246,11 +228,6 @@ def heuristic_score(use_case: UseCase, result: RunResult) -> tuple[float, str, J
     )
     reasoning = " ".join(notes)
     return score, reasoning, breakdown
-
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
 
 
 def _build_criteria_section(use_case: UseCase) -> str:

@@ -26,7 +26,6 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Default directory for custom tools
 DEFAULT_TOOLS_DIR = Path(__file__).parent / "custom_tools"
 
 
@@ -65,24 +64,20 @@ class ToolDefinition:
     return_type: str  # e.g., "string", "dict", "DataFrame"
     return_description: str
 
-    # Source information
     source_paper: str | None = None  # DOI or bioRxiv ID
     source_url: str | None = None  # GitHub, documentation URL
     source_software: str | None = None  # Original software name
 
-    # Implementation details
     code: str = ""  # Python code for the tool wrapper
     dependencies: list[str] = field(default_factory=list)  # pip packages
     system_dependencies: list[str] = field(default_factory=list)  # apt packages
 
-    # Metadata
     created_at: str = field(default_factory=lambda: datetime.now().isoformat())
     updated_at: str = field(default_factory=lambda: datetime.now().isoformat())
     version: str = "1.0.0"
     validated: bool = False
     validation_error: str | None = None
 
-    # Usage statistics
     usage_count: int = 0
     last_used: str | None = None
 
@@ -233,7 +228,6 @@ class ToolRegistry:
                 logger.warning(f"Tool '{definition.name}' already exists")
                 return False
 
-            # Save the Python code to a file
             if definition.code:
                 code_path = self._get_code_path(definition.name)
                 try:
@@ -243,7 +237,6 @@ class ToolRegistry:
                     logger.error(f"Failed to save tool code: {e}")
                     return False
 
-            # Update registry
             definition.updated_at = datetime.now().isoformat()
             self._registry[definition.name] = definition
             self._save_registry()
@@ -264,12 +257,10 @@ class ToolRegistry:
             if name not in self._registry:
                 return False
 
-            # Remove code file
             code_path = self._get_code_path(name)
             if code_path.exists():
                 code_path.unlink()
 
-            # Remove from registry
             del self._registry[name]
             if name in self._loaded_modules:
                 del self._loaded_modules[name]
@@ -327,7 +318,6 @@ class ToolRegistry:
         scored_tools: list[tuple[ToolDefinition, float]] = []
 
         for tool in self._registry.values():
-            # Score based on keyword overlap
             text = f"{tool.name} {tool.description} {tool.category}".lower()
             text_tokens = set(text.split())
 
@@ -336,7 +326,6 @@ class ToolRegistry:
                 score = overlap / len(query_tokens)
                 scored_tools.append((tool, score))
 
-        # Sort by score descending
         scored_tools.sort(key=lambda x: x[1], reverse=True)
         return scored_tools[:limit]
 
@@ -355,7 +344,6 @@ class ToolRegistry:
         Returns:
             The callable tool function, or None if load failed
         """
-        # Clear cache if force_reload is requested
         if force_reload and name in self._loaded_modules:
             module_name = f"bioagents_custom_tool_{name}"
             if module_name in sys.modules:
@@ -379,10 +367,8 @@ class ToolRegistry:
             return None
 
         try:
-            # Create a unique module name
             module_name = f"bioagents_custom_tool_{name}"
 
-            # Clear existing module from sys.modules if it exists (force reload)
             if module_name in sys.modules:
                 del sys.modules[module_name]
 
@@ -400,7 +386,6 @@ class ToolRegistry:
             func = getattr(module, func_name, None)
 
             if func is None:
-                # Try to find any callable
                 for attr_name in dir(module):
                     if not attr_name.startswith("_"):
                         attr = getattr(module, attr_name)
@@ -428,7 +413,6 @@ class ToolRegistry:
             return False
 
         try:
-            # Try to load the function - force reload to ensure we get latest version
             func = self.load_tool_function(name, force_reload=True)
             if func is None:
                 tool.validated = False
@@ -436,7 +420,6 @@ class ToolRegistry:
                 self._save_registry()
                 return False
 
-            # Optionally run with test args
             # Skip test execution for "Any" return type as it can cause instantiation errors
             if test_args is not None and tool.return_type.lower() != "any":
                 try:
@@ -446,7 +429,6 @@ class ToolRegistry:
                     logger.warning(
                         f"Test execution failed for tool '{name}': {test_error}. Validation continues."
                     )
-                    # Still mark as validated if function loads correctly
 
             tool.validated = True
             tool.validation_error = None
@@ -516,7 +498,6 @@ class ToolRegistry:
         return "\n".join(lines)
 
 
-# Global registry instance
 _registry: ToolRegistry | None = None
 
 

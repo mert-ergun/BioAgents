@@ -2,10 +2,7 @@ import re
 from pathlib import Path
 from typing import Any
 
-# NumPy for distance calculation
 import numpy as np
-
-# Biopython imports
 from Bio.PDB import PDBList, PDBParser
 from Bio.PDB.MMCIFParser import MMCIFParser
 from Bio.PDB.PDBExceptions import PDBConstructionException
@@ -72,19 +69,15 @@ def analyze_pdb_chain(
             "Both 'residue1_spec' and 'residue2_spec' must be provided for distance calculation."
         )
 
-    # Initialize PDBList to download PDB files
     pdbl = PDBList()
     try:
-        # Attempt to download PDB file. By default, it downloads to current directory.
-        # We'll try to find it in the current directory or a 'pdb' subdirectory.
+        # PDBList downloads into the cwd or a 'pdb' subdirectory.
         pdb_file_path = pdbl.retrieve_pdb_file(pdb_id, pdir=".", file_format="pdb")
         if not Path(pdb_file_path).exists():
-            # Try .cif format if .pdb fails
             pdb_file_path = pdbl.retrieve_pdb_file(pdb_id, pdir=".", file_format="cif")
             if not Path(pdb_file_path).exists():
                 raise RuntimeError(f"Could not download PDB or CIF file for {pdb_id}.")
 
-        # Determine parser based on file extension
         parser: PDBParser | MMCIFParser
         if pdb_file_path.endswith(".pdb"):
             parser = PDBParser(QUIET=True)
@@ -122,13 +115,11 @@ def analyze_pdb_chain(
                     res_name = residue.get_resname()
                     res_num = res_id[1]
 
-                    # Count VAL and TRP alpha carbons
                     if res_name == "VAL" and "CA" in residue:
                         val_count += 1
                     elif res_name == "TRP" and "CA" in residue:
                         trp_count += 1
 
-                    # Find alpha carbons for specified residues for distance calculation
                     if (
                         target_res1_name
                         and target_res1_num
@@ -168,7 +159,6 @@ def analyze_pdb_chain(
             f"Could not find both specified residues ({residue1_spec}, {residue2_spec}) in chain {chain_id}."
         )
 
-    # Clean up downloaded PDB file
     if pdb_file_path and Path(pdb_file_path).exists():
         Path(pdb_file_path).unlink()
         # Also remove the directory if it's empty and was created by PDBList

@@ -15,9 +15,6 @@ from bioagents.tools.rdkit_tools import (
     validate_smiles,
 )
 
-# These used to be skipped whenever the Node `rdkit-agent` CLI was absent, which was
-# always. The tools now run on the RDKit Python library, so the suite executes.
-
 
 class TestValidatorAgent:
     """Test RdkitValidator agent."""
@@ -45,7 +42,6 @@ class TestValidatorAgent:
         assert report["allow_proceeding"] is True
         issues = [i for i in report["issues"] if i["severity"] != "info"]
         if issues:
-            # Should have repair suggestion
             assert issues[0]["repair_suggestion"] is not None or issues[0]["is_valid"] is True
 
 
@@ -54,14 +50,11 @@ class TestWorkflowIntegration:
 
     def test_protein_design_workflow_with_validation(self):
         """Simulate protein design workflow with chemistry validation."""
-        # User provides compounds
         compounds = ["CCO", "c1ccccc1", "CC(=O)Oc1ccccc1C(=O)O"]
 
-        # Step 1: Validate
         validation = validate_smiles_batch(compounds)
         assert validation["allow_proceeding"] is True
 
-        # Step 2: Compute descriptors (drug design filtering)
         valid_smiles = ",".join(validation["validated_inputs"])
         descriptors = compute_molecular_descriptors.invoke({"smiles_list": valid_smiles})
         data = json.loads(descriptors)
@@ -69,17 +62,14 @@ class TestWorkflowIntegration:
 
     def test_drug_discovery_workflow_lipinski_filter(self):
         """Simulate drug discovery with Lipinski filtering."""
-        # Drug-like molecules dataset
         compounds = "CCO,CC(=O)Oc1ccccc1C(=O)O,c1ccccc1,CC(C)Cc1ccc(cc1)C(C)C(O)=O"
 
-        # Step 1: Filter by Lipinski's Rule of Five
         filtered = filter_by_descriptor_constraints.invoke(
             {"smiles_list": compounds, "apply_lipinski": True}
         )
         data = json.loads(filtered)
         assert data["success"] is True
 
-        # Step 2: Validate remaining compounds
         if data["data"]["filtered_smiles"]:
             valid = validate_smiles_batch(data["data"]["filtered_smiles"])
             assert len(valid["validated_inputs"]) > 0
@@ -92,7 +82,6 @@ class TestToolCollection:
         """Test that all rdkit tools are accessible."""
         tools = get_all_rdkit_tools()
         assert len(tools) > 0
-        # Should have tools from multiple categories
         assert any("validate" in str(t.name) for t in tools)
         assert any("descriptor" in str(t.name).lower() for t in tools)
         assert any("filter" in str(t.name).lower() for t in tools)
@@ -103,7 +92,6 @@ class TestBatchProcessing:
 
     def test_descriptor_batch_processing(self):
         """Test batch descriptor computation for medium-sized dataset."""
-        # Medium batch: 50 molecules
         smiles_list = [
             "CCO",
             "c1ccccc1",
@@ -142,7 +130,6 @@ class TestErrorHandling:
         """Test handling of malformed SMILES."""
         result = validate_smiles.invoke({"smiles": ""})  # Empty SMILES
         data = json.loads(result)
-        # Should return error gracefully, not crash
         assert "success" in data
 
     def test_invalid_filter_constraints(self):
@@ -156,7 +143,6 @@ class TestErrorHandling:
             }
         )
         data = json.loads(result)
-        # Should handle gracefully
         assert "success" in data or "error" in data
 
 

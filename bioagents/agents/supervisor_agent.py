@@ -12,7 +12,9 @@ from pydantic import BaseModel, Field
 
 from bioagents.agents.helpers import extract_best_content, get_message_content
 from bioagents.agents.supervisor_helpers import (
+    CODE_AGENTS,
     check_code_agent_task_completed,
+    check_coder_routing_guard,
     check_coder_should_force_finish,
     check_finish_if_code_agent_substantive_repeat,
     check_for_empty_response_loop,
@@ -23,6 +25,7 @@ from bioagents.agents.supervisor_helpers import (
     check_query_ambiguity,
     check_tool_builder_execution_success,
     check_tool_builder_success,
+    describe_workspace_artifacts,
     extract_original_query,
     extract_steering_messages,
     get_all_created_tools,
@@ -138,7 +141,6 @@ def create_supervisor_agent(members: list[str]):
         """
         messages = state["messages"]
 
-        # Check for engagement requests from agents (they need user input)
         has_engagement, engagement_data = check_for_engagement_request(messages)
         if has_engagement and engagement_data is not None:
             engagement_id = str(uuid.uuid4())[:8]
@@ -158,7 +160,6 @@ def create_supervisor_agent(members: list[str]):
                 "messages": [engagement_marker],
             }
 
-        # Check if initial query is too ambiguous — ask clarification before routing
         ambiguity = check_query_ambiguity(messages)
         if ambiguity:
             engagement_id = str(uuid.uuid4())[:8]
@@ -180,8 +181,7 @@ def create_supervisor_agent(members: list[str]):
                 "messages": [clarification_marker],
             }
 
-        # FIRST: Check for tool builder execution success (only if not already handled)
-        # Skip if SystemMessage already exists (already handled, let normal LLM routing decide next step)
+        # Skip if a SystemMessage already handled it and let normal routing continue.
         execution_already_handled = any(
             isinstance(msg, SystemMessage)
             or (hasattr(msg, "__class__") and msg.__class__.__name__ == "SystemMessage")
@@ -190,7 +190,6 @@ def create_supervisor_agent(members: list[str]):
         )
 
         if not execution_already_handled:
-            # Only check for execution success if we haven't already handled it
             execution_success, exec_tool_name = check_tool_builder_execution_success(messages)
             if execution_success:
                 logger.info(
@@ -271,12 +270,7 @@ def create_supervisor_agent(members: list[str]):
                 and "report" in members
             ):
                 alternative = "report"
-            elif (
-                empty_agent.lower() != "coder"
-                and "coder" not in failed_agents
-                and "coder" in members
-            ):
-                alternative = "coder"
+            # Deliberately no coder fallback: an empty response says nothing about needing code.
 
             if alternative:
                 logger.info(
@@ -390,13 +384,14 @@ def create_supervisor_agent(members: list[str]):
             loop_escape_tried: dict[str, list[str]] = dict(state.get("loop_escape_tried") or {})
             tried_for_agent = list(loop_escape_tried.get(looping_lower, []))
 
+            # Escape to another specialist first; a routing loop is not evidence code is needed.
             _DATA_AGENTS = {"web_browser", "data_acquisition", "literature"}
             if looping_lower in _DATA_AGENTS:
-                escape_order = ["data_acquisition", "coder", "literature", "report", "research"]
+                escape_order = ["data_acquisition", "literature", "research", "report", "coder"]
             elif looping_lower == "research":
-                escape_order = ["analysis", "coder", "report", "data_acquisition"]
+                escape_order = ["data_acquisition", "analysis", "report", "coder"]
             else:
-                escape_order = ["analysis", "coder", "data_acquisition", "research", "report"]
+                escape_order = ["analysis", "data_acquisition", "research", "report", "coder"]
 
             alternatives = [
                 m
@@ -459,7 +454,6 @@ def create_supervisor_agent(members: list[str]):
                     "messages": [],
                 }
 
-        # Before normal routing, check if research already failed—avoid re-sending
         research_failed, research_fail_reason = check_for_research_failure(messages)
 
         # Detect if planner just responded — prevent routing back to planner
@@ -472,18 +466,19 @@ def create_supervisor_agent(members: list[str]):
                 if isinstance(msg, HumanMessage) and "[SUPERVISOR TASK]" in str(msg.content):
                     break
 
-        # Window messages for the routing LLM to avoid slow calls on large histories.
-        # Keep the first message (user query) and the last 12 messages (recent context).
+        # Window history for the routing LLM: the user query plus the last 12 messages.
         routing_messages = messages[:1] + messages[-12:] if len(messages) > 14 else messages
 
-        # Tell the supervisor which concrete tools each specialist holds. Without this it
-        # routes from prose descriptions alone and can hand a task to an agent that has
-        # no tool capable of doing it — which then comes back as a narrative, not a result.
+        # Without concrete tool names the supervisor routes from prose and picks incapable agents.
         inventory = _agent_tool_inventory()
         if inventory:
             routing_messages = [SystemMessage(content=inventory), *list(routing_messages)]
 
-        # Inject steering directives so the LLM respects real-time user guidance.
+        # Without this, completed work that lives only in a file is re-commissioned from scratch.
+        artifacts = describe_workspace_artifacts()
+        if artifacts:
+            routing_messages = [SystemMessage(content=artifacts), *list(routing_messages)]
+
         steering_texts = extract_steering_messages(messages)
         if steering_texts:
             steering_context = SystemMessage(
@@ -494,7 +489,6 @@ def create_supervisor_agent(members: list[str]):
             )
             routing_messages = [steering_context, *list(routing_messages)]
 
-        # Normal LLM-based routing
         result = supervisor_chain.invoke({"messages": routing_messages})
         if result is None:
             logger.warning(
@@ -519,7 +513,11 @@ def create_supervisor_agent(members: list[str]):
             }
 
         if research_failed and result.next_agent == "research":
-            alt = "coder" if "coder" in members else "report"
+            # Research failing means the data was not fetched, not that code is needed.
+            alt = next(
+                (m for m in ("data_acquisition", "literature", "web_browser") if m in members),
+                "report",
+            )
             logger.warning(
                 "Supervisor: Research already failed; overriding routing from "
                 "'research' to '%s'. Reason: %s",
@@ -529,11 +527,10 @@ def create_supervisor_agent(members: list[str]):
             result.next_agent = alt
 
         if planner_just_responded and result.next_agent == "planner":
-            for candidate in ("research", "data_acquisition", "coder", "report"):
+            for candidate in ("research", "data_acquisition", "report"):
                 if candidate in members:
                     result.next_agent = candidate
                     break
-            # Extract original user query so the execution agent knows what to do
             original_query = ""
             for msg in messages:
                 if isinstance(msg, HumanMessage) and "[SUPERVISOR TASK]" not in str(msg.content):
@@ -550,11 +547,24 @@ def create_supervisor_agent(members: list[str]):
                 result.next_agent,
             )
 
+        # The model over-routes to the code agents; redirect when a specialist has matching tools.
+        if result.next_agent in CODE_AGENTS:
+            replacement, guard_reason = check_coder_routing_guard(
+                messages, members, result.task_for_agent or result.reasoning
+            )
+            if replacement and replacement in members:
+                logger.info(
+                    "Supervisor: redirecting '%s' -> '%s'. %s",
+                    result.next_agent,
+                    replacement,
+                    guard_reason,
+                )
+                result.reasoning = f"{guard_reason} (was routed to {result.next_agent})"
+                result.next_agent = replacement
+
         handoff_messages: list[BaseMessage] = []
         if result.next_agent != "FINISH" and result.task_for_agent:
-            # When routing to user_input via LLM decision, create a proper
-            # ENGAGEMENT_PENDING marker so the user_input_node can formulate
-            # a contextual question for the user.
+            # Build the ENGAGEMENT_PENDING marker so user_input_node can form the question.
             if result.next_agent == "user_input":
                 engagement_id = str(uuid.uuid4())[:8]
                 engagement_data = {

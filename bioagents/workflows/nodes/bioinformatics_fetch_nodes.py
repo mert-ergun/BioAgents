@@ -298,11 +298,14 @@ class ChemblMoleculeByInchikeyNode(WorkflowNode):
         key = str(inputs["inchi_key"]).strip().upper()
         if len(key) < 14:
             return {"summary": "Provide full Standard InChI Key (27 chars)", "record": {}}
-        url = f"https://www.ebi.ac.uk/chembl/api/data/molecule.json?molecule_structures__standard_inchi_key={key}&limit=1"
+        # Retried via the shared client: an unretried 500 was reported as "no ChEMBL molecule".
+        from bioagents.tools.chembl_client import ChemblClient
+
         try:
-            r = requests.get(url, timeout=self._timeout, headers={"Accept": "application/json"})
-            r.raise_for_status()
-            data = r.json()
+            data = ChemblClient(read_timeout=self._timeout).get_json(
+                "molecule.json",
+                {"molecule_structures__standard_inchi_key": key, "limit": 1},
+            )
         except Exception as exc:
             return {"summary": f"ChEMBL error: {exc!s}", "record": {}}
         mols = data.get("molecules") or []

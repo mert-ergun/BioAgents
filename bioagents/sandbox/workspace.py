@@ -85,5 +85,12 @@ def describe_shared_workspace(workspace_dir: str | Path) -> str:
         "- Always report file paths relative to the project root, never as absolute host "
         "paths — an absolute host path does not exist inside the code sandbox.\n"
         "- Before reporting that a file is missing, list the directory to check: another "
-        "agent may have saved it under a different name."
+        "agent may have saved it under a different name.\n"
+        "- Before downloading, computing or writing an artifact, check whether it is "
+        "already there (check_file_exists, or list the directory). An earlier step in "
+        "this same run may have produced it; redoing it wastes the run and can replace "
+        "a good result with a worse one.\n"
+        "- Never overwrite an existing artifact by default. Writing the same filename "
+        "again saves a new version alongside it instead; only force a replacement when "
+        "you have established that the existing file is wrong."
     )

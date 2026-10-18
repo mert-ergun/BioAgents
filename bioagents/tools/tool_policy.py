@@ -14,18 +14,10 @@ from typing import Any, Literal
 
 logger = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------------
-# Configuration (env-tunable)
-# ---------------------------------------------------------------------------
 
 _STRICTNESS = os.getenv("BIOAGENTS_TOOL_POLICY_STRICTNESS", "moderate").lower()
 _EXTRA_CATS_RAW = os.getenv("BIOAGENTS_TOOL_POLICY_EXTRA_CATEGORIES", "")
 _EXTRA_CATS = frozenset(c.strip().lower() for c in _EXTRA_CATS_RAW.split(",") if c.strip())
-
-
-# ---------------------------------------------------------------------------
-# Data classes
-# ---------------------------------------------------------------------------
 
 
 @dataclass(frozen=True)
@@ -49,11 +41,6 @@ class ToolPolicyStats:
     filtered_at_discovery: int = 0
 
 
-# ---------------------------------------------------------------------------
-# Category and keyword definitions
-# ---------------------------------------------------------------------------
-
-# ToolUniverse section names that are relevant to BioAgents
 BIO_RELEVANT_SECTIONS: frozenset[str] = frozenset(
     {
         "bioinformatics",
@@ -82,7 +69,6 @@ BIO_RELEVANT_SECTIONS: frozenset[str] = frozenset(
     }
 )
 
-# Keywords in tool names that indicate bio-relevance
 BIO_KEYWORDS_IN_NAME: frozenset[str] = frozenset(
     {
         "protein",
@@ -126,7 +112,6 @@ BIO_KEYWORDS_IN_NAME: frozenset[str] = frozenset(
     }
 )
 
-# Keywords that clearly indicate unrelated tools
 UNRELATED_KEYWORDS: frozenset[str] = frozenset(
     {
         "earthquake",
@@ -160,7 +145,6 @@ UNRELATED_KEYWORDS: frozenset[str] = frozenset(
     }
 )
 
-# Tool name patterns suggesting API key requirement
 API_KEY_PATTERNS: list[re.Pattern[str]] = [
     re.compile(p, re.IGNORECASE)
     for p in [
@@ -179,7 +163,6 @@ API_KEY_PATTERNS: list[re.Pattern[str]] = [
     ]
 ]
 
-# Known services that require API keys
 API_KEY_SERVICES: frozenset[str] = frozenset(
     {
         "Google",
@@ -196,7 +179,6 @@ API_KEY_SERVICES: frozenset[str] = frozenset(
     }
 )
 
-# Tools that are always safe (local computation or search-only)
 ALWAYS_SAFE_TOOLS: frozenset[str] = frozenset(
     {
         "fetch_uniprot_fasta",
@@ -218,11 +200,6 @@ TOOL_UNIVERSE_SAFE_TOOLS: frozenset[str] = frozenset(
         "tool_universe_find_tools",
     }
 )
-
-
-# ---------------------------------------------------------------------------
-# ToolPolicy
-# ---------------------------------------------------------------------------
 
 
 class ToolPolicy:
@@ -250,10 +227,6 @@ class ToolPolicy:
         self.stats = stats or ToolPolicyStats()
         self._approved_this_session: set[str] = set()
 
-    # ------------------------------------------------------------------
-    # Core evaluation
-    # ------------------------------------------------------------------
-
     def evaluate(
         self,
         tool_name: str,
@@ -279,7 +252,6 @@ class ToolPolicy:
 
         tool_name = tool_name.strip()
 
-        # 1. Always-safe tools pass through
         if tool_name in ALWAYS_SAFE_TOOLS:
             self.stats.auto_approved += 1
             return ToolPolicyResult(
@@ -290,8 +262,7 @@ class ToolPolicy:
                 risk_level="none",
             )
 
-        # 1b. ToolUniverse discovery tools — always allowed but errors are
-        #     handled internally by the wrapper (falls back to catalog).
+        # Errors are handled inside the wrapper, which falls back to the static catalog.
         if tool_name in TOOL_UNIVERSE_SAFE_TOOLS:
             self.stats.auto_approved += 1
             return ToolPolicyResult(
@@ -302,7 +273,6 @@ class ToolPolicy:
                 risk_level="none",
             )
 
-        # 2. Previously approved in this session
         if tool_name in self._approved_this_session:
             self.stats.auto_approved += 1
             return ToolPolicyResult(
@@ -313,7 +283,6 @@ class ToolPolicy:
                 risk_level="none",
             )
 
-        # 3. Check if tool requires API key
         requires_api_key = self._detect_api_key_requirement(tool_name)
         if requires_api_key:
             key_available = self._check_api_key_available(tool_name)
@@ -326,8 +295,7 @@ class ToolPolicy:
                     category="api_key_missing",
                     risk_level="high",
                 )
-            # Key is available but tool still needs approval (it hits external services).
-            # user_approved is incremented later when mark_approved() is called.
+            # Still needs approval even with a key: the tool reaches external services.
             return ToolPolicyResult(
                 allowed=True,
                 reason="External API tool — API key available",
@@ -336,7 +304,6 @@ class ToolPolicy:
                 risk_level="medium",
             )
 
-        # 4. Relevance check (only in strict and moderate modes)
         if self.strictness != "permissive":
             relevance = self._assess_relevance(tool_name)
 
@@ -359,7 +326,6 @@ class ToolPolicy:
                         category="related",
                         risk_level="low",
                     )
-                # "core" passes through
                 self.stats.auto_approved += 1
                 return ToolPolicyResult(
                     allowed=True,
@@ -369,7 +335,6 @@ class ToolPolicy:
                     risk_level="none",
                 )
 
-            # moderate mode
             if relevance == "unrelated":
                 self.stats.blocked += 1
                 return ToolPolicyResult(
@@ -380,7 +345,6 @@ class ToolPolicy:
                     risk_level="high",
                 )
 
-        # Permissive mode or moderate with non-unrelated tool
         self.stats.auto_approved += 1
         return ToolPolicyResult(
             allowed=True,
@@ -389,10 +353,6 @@ class ToolPolicy:
             category="approved",
             risk_level="none",
         )
-
-    # ------------------------------------------------------------------
-    # Discovery filtering
-    # ------------------------------------------------------------------
 
     def filter_find_results(
         self, tools: list[dict[str, Any]], limit: int = 5
@@ -413,19 +373,16 @@ class ToolPolicy:
             section = tool_entry.get("section", "")
             description = tool_entry.get("description", "")
 
-            # Check if tool name contains unrelated keywords
             name_lower = name.lower()
             section_lower = section.lower()
 
             is_unrelated = False
 
-            # Check against unrelated keywords
             for kw in UNRELATED_KEYWORDS:
                 if kw in name_lower or kw in section_lower:
                     is_unrelated = True
                     break
 
-            # In strict mode, also check description
             if self.strictness == "strict" and not is_unrelated:
                 relevance = self._assess_relevance(name, description)
                 if relevance == "unrelated":
@@ -445,10 +402,6 @@ class ToolPolicy:
 
         return filtered
 
-    # ------------------------------------------------------------------
-    # Session management
-    # ------------------------------------------------------------------
-
     def mark_approved(self, tool_name: str) -> None:
         """Mark a tool as approved for the rest of this session."""
         self._approved_this_session.add(tool_name)
@@ -458,10 +411,6 @@ class ToolPolicy:
         """Reset session-specific state (approved tools, stats)."""
         self._approved_this_session.clear()
         self.stats = ToolPolicyStats()
-
-    # ------------------------------------------------------------------
-    # Internal helpers
-    # ------------------------------------------------------------------
 
     def _detect_api_key_requirement(self, tool_name: str) -> bool:
         """Heuristic: does this tool likely need an API key?"""
@@ -486,7 +435,6 @@ class ToolPolicy:
             return bool(self.available_api_keys & {"OPENAI_API_KEY"})
         if service == "Anthropic":
             return bool(self.available_api_keys & {"ANTHROPIC_API_KEY"})
-        # Generic: if any key with the service name exists
         return any(service.upper() in k.upper() for k in self.available_api_keys)
 
     def _extract_service_name(self, tool_name: str) -> str:
@@ -494,7 +442,6 @@ class ToolPolicy:
         for service in API_KEY_SERVICES:
             if service.lower() in tool_name.lower():
                 return service
-        # Try pattern matching
         for pattern in API_KEY_PATTERNS:
             m = pattern.search(tool_name)
             if m:
@@ -514,17 +461,14 @@ class ToolPolicy:
         name_lower = tool_name.lower()
         desc_lower = description.lower()
 
-        # Check for clearly unrelated
         for kw in UNRELATED_KEYWORDS:
             if kw in name_lower:
                 return "unrelated"
 
-        # Check for core bio keywords in name
         for kw in BIO_KEYWORDS_IN_NAME:
             if kw in name_lower:
                 return "core"
 
-        # Check description if available
         if desc_lower:
             for kw in BIO_KEYWORDS_IN_NAME:
                 if kw in desc_lower:
@@ -533,13 +477,8 @@ class ToolPolicy:
                 if kw in desc_lower:
                     return "unrelated"
 
-        # Default: in moderate mode, ambiguous tools are "related"
         return "related"
 
-
-# ---------------------------------------------------------------------------
-# Module-level singleton (used by default)
-# ---------------------------------------------------------------------------
 
 DEFAULT_POLICY = ToolPolicy()
 

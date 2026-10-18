@@ -113,7 +113,6 @@ class TestDashboardEndpoint:
     def test_dashboard_with_activity(
         self, client: TestClient, auth_headers: dict[str, str], app: FastAPI
     ) -> None:
-        # Access the db through the module-level _db
         from frontend import admin_routes
 
         db = admin_routes._db
@@ -185,11 +184,6 @@ class TestStatsEndpoints:
         resp = client.get("/api/admin/stats/providers", headers=auth_headers)
         assert resp.status_code == 200
         assert "providers" in resp.json()
-
-
-# ------------------------------------------------------------------
-# New endpoint tests (6 new routes + enhanced session detail)
-# ------------------------------------------------------------------
 
 
 class TestToolEventsEndpoint:
@@ -578,7 +572,6 @@ class TestEnhancedSessionDetail:
         assert resp.status_code == 200
         data = resp.json()
 
-        # Session detail now includes all event types
         assert "tool_events" in data
         assert "decisions" in data
         assert "artifacts" in data
@@ -598,14 +591,11 @@ class TestExpiredToken:
 
         from frontend import admin_auth
 
-        # Save original password
         original_password = admin_auth.ADMIN_PASSWORD
 
-        # Monkey-patch to control time
         real_time = time_mod.time
         fake_now = real_time()
 
-        # Create token at current time
         token = admin_auth.create_admin_token(original_password)
 
         # Simulate token being 25 hours old (past 24h expiry)

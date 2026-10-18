@@ -509,7 +509,6 @@ def execute_ml_code(
                 else:
                     output += f"✗ Execution failed with exit code {exit_code}\n\n"
 
-                # If both stdout and stderr are empty, show combined logs
                 if not stdout.strip() and not stderr.strip() and combined_logs.strip():
                     output += "COMBINED OUTPUT:\n" + "-" * 60 + "\n"
                     output += combined_logs + "\n"

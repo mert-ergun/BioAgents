@@ -21,7 +21,6 @@ class TestRateLimiter:
         """Test acquiring requests within the rate limit."""
         limiter = RateLimiter(max_requests=5, time_window=1.0)
 
-        # Should allow up to max_requests without blocking
         for _ in range(5):
             limiter.acquire()
 
@@ -31,30 +30,25 @@ class TestRateLimiter:
         """Test that acquire blocks when rate limit is reached."""
         limiter = RateLimiter(max_requests=3, time_window=1.0)
 
-        # Fill up the rate limiter
         for _ in range(3):
             limiter.acquire()
 
-        # The next request should block until the time window passes
         start_time = time.time()
         limiter.acquire()
         elapsed_time = time.time() - start_time
 
-        # Should have waited close to 1 second
         assert elapsed_time >= 0.9  # Allow some tolerance
 
     def test_get_stats(self):
         """Test getting rate limiter statistics."""
         limiter = RateLimiter(max_requests=10, time_window=60.0)
 
-        # Initially, no requests
         stats = limiter.get_stats()
         assert stats["current_requests"] == 0
         assert stats["max_requests"] == 10
         assert stats["time_window"] == 60.0
         assert stats["requests_remaining"] == 10
 
-        # After some requests
         for _ in range(3):
             limiter.acquire()
 
@@ -69,7 +63,6 @@ class TestRateLimiter:
         def make_request():
             limiter.acquire()
 
-        # Make requests from multiple threads
         with ThreadPoolExecutor(max_workers=5) as executor:
             futures = [executor.submit(make_request) for _ in range(10)]
             for future in futures:
@@ -99,13 +92,11 @@ class TestRateLimitedLLM:
         limiter = RateLimiter(max_requests=2, time_window=1.0)
         rate_limited_llm = RateLimitedLLM(mock_llm, limiter)
 
-        # First two calls should succeed quickly
         rate_limited_llm.invoke("test1")
         rate_limited_llm.invoke("test2")
 
         assert mock_llm.invoke.call_count == 2
 
-        # Third call should be delayed
         start_time = time.time()
         rate_limited_llm.invoke("test3")
         elapsed_time = time.time() - start_time
@@ -120,7 +111,6 @@ class TestRateLimitedLLM:
 
         rate_limited_llm = RateLimitedLLM(mock_llm, rate_limiter=None)
 
-        # Should invoke without any delay
         result = rate_limited_llm.invoke("test")
         assert result == "response"
         mock_llm.invoke.assert_called_once_with("test")
@@ -155,7 +145,6 @@ class TestRateLimitedLLM:
         result = rate_limited_llm.with_structured_output(schema)
 
         mock_llm.with_structured_output.assert_called_once()
-        # Check that it returns a rate-limited runnable
         assert hasattr(result, "_runnable")
         assert hasattr(result, "_rate_limiter")
 
@@ -167,10 +156,8 @@ class TestRateLimitedLLM:
 
         rate_limited_llm = RateLimitedLLM(mock_llm, None)
 
-        # Attribute access should be delegated
         assert rate_limited_llm.some_attribute == "test_value"
 
-        # Method calls should be delegated
         result = rate_limited_llm.some_method("arg")
         assert result == "method_result"
         mock_llm.some_method.assert_called_once_with("arg")

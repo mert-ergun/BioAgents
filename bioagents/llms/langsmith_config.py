@@ -113,7 +113,6 @@ def get_langsmith_config() -> dict[str, Any]:
     if not is_valid:
         raise ValueError(error_msg)
 
-    # Set environment variables for LangChain to pick up
     # LangChain automatically reads these when creating tracers
     api_key = get_langsmith_api_key()
     if api_key:
@@ -127,7 +126,6 @@ def get_langsmith_config() -> dict[str, Any]:
     if endpoint:
         os.environ["LANGCHAIN_ENDPOINT"] = endpoint
 
-    # Return config dict for LangGraph
     # LangGraph will automatically use LangChainTracer when LANGCHAIN_TRACING_V2 is set
     return {
         "configurable": {
@@ -157,7 +155,6 @@ def get_langsmith_callbacks() -> list[LangChainTracer] | None:
         warnings.warn(error_msg, UserWarning, stacklevel=2)
         return None
 
-    # Create tracer with explicit configuration
     tracer = LangChainTracer(
         project_name=get_langsmith_project(),
     )
@@ -183,7 +180,6 @@ def setup_langsmith_environment() -> None:
     if not is_valid:
         raise ValueError(error_msg)
 
-    # Ensure environment variables are set for LangChain auto-detection
     api_key = get_langsmith_api_key()
     if api_key:
         os.environ["LANGCHAIN_API_KEY"] = api_key
@@ -200,7 +196,6 @@ def setup_langsmith_environment() -> None:
         os.environ["LANGCHAIN_ENDPOINT"] = endpoint
         os.environ["LANGSMITH_ENDPOINT"] = endpoint
 
-    # Enable tracing v2
     os.environ["LANGCHAIN_TRACING_V2"] = "true"
 
     print(f"✓ LangSmith monitoring enabled (project: {project})")

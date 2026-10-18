@@ -16,32 +16,20 @@ _FINAL_RESEARCH_JSON = (
 def _build_mock_llm_for_sub_agent_flow(
     bound_llm, decomposer_content="1. Search for relevant data\n2. Analyze results"
 ):
-    """
-    Build a get_llm mock that handles the sub-agent architecture.
-
-    get_llm is called with different prompt_name values:
-      - "research" -> returns llm that has .bind_tools() (main agent)
-      - "research_decomposer" -> returns decomposer LLM
-      - "research_merger" -> returns merger LLM (when sub-agents finish without tools)
-
-    Returns a mock get_llm function.
-    """
+    """Build a get_llm mock that dispatches on prompt_name for the sub-agent flow."""
     calls = {"count": 0}
 
     def mock_get_llm(prompt_name=None, **kwargs):
         calls["count"] += 1
         if prompt_name == "research_decomposer":
-            # Decomposer: returns numbered list for parse_sub_tasks
             mock_decomposer = Mock()
             mock_decomposer.invoke = Mock(return_value=Mock(content=decomposer_content))
             return mock_decomposer
         elif prompt_name == "research_merger":
-            # Merger: returns final synthesis
             mock_merger = Mock()
             mock_merger.invoke = Mock(return_value=AIMessage(content=_FINAL_RESEARCH_JSON))
             return mock_merger
         else:
-            # Default: "research" or any other — return the base LLM with bind_tools
             return _mock_llm_with_bind_tools(bound_llm)
 
     return mock_get_llm
@@ -90,12 +78,7 @@ class TestResearchAgentInvocation:
 
     @patch("bioagents.agents.research_agent.get_llm")
     def test_research_agent_basic_invoke(self, mock_get_llm):
-        """Test basic invocation of the research agent.
-
-        In the sub-agent architecture, get_llm is called multiple times:
-        research (main), research_decomposer (decompose), and sub-agent LLM calls.
-        The sub-agents return AIMessages via create_retry_response.
-        """
+        """Test basic invocation of the research agent."""
         # The bound LLM is used by sub-agents via create_retry_response
         mock_bound_llm = Mock()
         sub_agent_response = AIMessage(content="Found relevant research data")
@@ -124,7 +107,6 @@ class TestResearchAgentInvocation:
         state = {"messages": [HumanMessage(content="Search for p53 cancer papers")]}
         result = agent(state)
 
-        # The new architecture returns shared-memory-compatible dict
         assert "messages" in result
         assert "data" in result
         assert "tool_calls" in result
@@ -148,7 +130,6 @@ class TestResearchAgentInvocation:
         state = {"messages": [HumanMessage(content="Test")]}
         agent(state)
 
-        # Check that invoke was called with messages that include system message
         call_args = mock_bound_llm.invoke.call_args[0][0]
         assert len(call_args) >= 2  # System message + user message
         assert isinstance(call_args[0], SystemMessage)
@@ -200,14 +181,9 @@ class TestResearchAgentToolCalls:
 
     @patch("bioagents.agents.research_agent.get_llm")
     def test_research_agent_literature_search_tool_call(self, mock_get_llm):
-        """Test research agent making literature search tool call.
-
-        In sub-agent architecture, the sub-agent LLM response includes tool_calls.
-        These get aggregated and the combined AIMessage with tool_calls is returned.
-        """
+        """Test research agent making literature search tool call."""
         mock_bound_llm = Mock()
 
-        # Sub-agent returns a response with tool_calls
         sub_agent_response = AIMessage(
             content="Searching PubMed for articles",
             tool_calls=[
@@ -347,7 +323,6 @@ class TestResearchAgentLiteratureSearch:
         """Test complete PubMed search workflow."""
         mock_bound_llm = Mock()
 
-        # Sub-agent returns tool calls on first invoke
         responses = [
             # First invoke: sub-agent wants to find tools
             AIMessage(
@@ -398,7 +373,6 @@ class TestResearchAgentLiteratureSearch:
         ]
         agent = create_research_agent(tools)
 
-        # First call
         state1 = {"messages": [HumanMessage(content="Search PubMed for CRISPR")]}
         result1 = agent(state1)
         assert "tool_universe_find_tools" in result1["tool_calls"]
@@ -521,7 +495,6 @@ class TestResearchAgentIntegration:
         """Test complete literature search scenario from start to finish."""
         mock_bound_llm = Mock()
 
-        # Sub-agent returns tool calls
         sub_agent_response = AIMessage(
             content="Found 15 relevant papers on CRISPR gene editing",
             tool_calls=[

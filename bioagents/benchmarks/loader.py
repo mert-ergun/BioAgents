@@ -27,7 +27,6 @@ def _fix_yaml_indentation(content: str) -> str:
         line = lines[i]
         stripped = line.strip()
 
-        # Skip empty lines and comments
         if not stripped or (stripped.startswith("#") and ":" not in stripped):
             fixed_lines.append(line)
             i += 1
@@ -35,11 +34,7 @@ def _fix_yaml_indentation(content: str) -> str:
 
         current_indent = len(line) - len(line.lstrip())
 
-        # Check if this is a key-value pair
         if ":" in stripped and not stripped.startswith("-"):
-            # This is a key
-            # Find the correct parent indent from stack
-            # Pop stack until we find a parent with less indent
             while indent_stack and indent_stack[-1] >= current_indent:
                 indent_stack.pop()
 
@@ -47,19 +42,15 @@ def _fix_yaml_indentation(content: str) -> str:
             if indent_stack:
                 expected_indent = indent_stack[-1] + 2
                 if current_indent != expected_indent and current_indent < expected_indent:
-                    # Fix the indent
                     line = " " * expected_indent + stripped
                     current_indent = expected_indent
 
-            # Push this key's indent to stack
             indent_stack.append(current_indent)
             fixed_lines.append(line)
             i += 1
             continue
 
-        # Check if this is a list item
         if stripped.startswith("- "):
-            # Find parent indent
             while indent_stack and indent_stack[-1] >= current_indent:
                 indent_stack.pop()
 
@@ -70,7 +61,6 @@ def _fix_yaml_indentation(content: str) -> str:
                     line = " " * expected_indent + stripped
                     current_indent = expected_indent
 
-            # Push list item indent (for nested fields)
             indent_stack.append(current_indent)
             fixed_lines.append(line)
             i += 1
@@ -115,7 +105,6 @@ def load_stella_tasks(tasks_file: str | Path) -> list[STELLATask]:
     with tasks_file.open("r", encoding="utf-8") as f:
         content = f.read()
 
-    # Find all task separators
     task_markers = list(re.finditer(r"^# Task \d+:", content, flags=re.MULTILINE))
 
     if not task_markers:
@@ -124,15 +113,11 @@ def load_stella_tasks(tasks_file: str | Path) -> list[STELLATask]:
 
     tasks = []
 
-    # Extract each task section
     for i, marker in enumerate(task_markers):
-        # Get the start position (after the marker)
         start_pos = marker.end()
 
-        # Get the end position (start of next marker, or end of file)
         end_pos = task_markers[i + 1].start() if i + 1 < len(task_markers) else len(content)
 
-        # Extract the section
         section = content[start_pos:end_pos]
 
         # Remove separator lines (# =============================================================================)
@@ -141,12 +126,10 @@ def load_stella_tasks(tasks_file: str | Path) -> list[STELLATask]:
         if not section:
             continue
 
-        # Find the start of YAML content (first field like "task_name:")
         lines = section.split("\n")
         yaml_start = -1
         for j, line in enumerate(lines):
             stripped = line.strip()
-            # Look for YAML key (task_name:)
             if stripped.startswith("task_name:"):
                 yaml_start = j
                 break
@@ -156,7 +139,6 @@ def load_stella_tasks(tasks_file: str | Path) -> list[STELLATask]:
             logger.debug(f"No task_name found in section {i + 1}")
             continue
 
-        # Extract YAML content from task_name to end of section
         yaml_content = "\n".join(lines[yaml_start:])
 
         # Clean up: remove comment-only lines but keep inline comments and valid YAML
@@ -171,10 +153,8 @@ def load_stella_tasks(tasks_file: str | Path) -> list[STELLATask]:
 
         yaml_content = "\n".join(cleaned_lines)
 
-        # Fix common YAML indentation issues before parsing
         yaml_content = _fix_yaml_indentation(yaml_content)
 
-        # Try to parse as YAML
         try:
             task_data = yaml.safe_load(yaml_content)
             if task_data and isinstance(task_data, dict) and "task_name" in task_data:

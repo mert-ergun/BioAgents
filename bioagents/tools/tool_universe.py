@@ -15,15 +15,98 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     from typing import ClassVar
 
+import importlib
 from dataclasses import dataclass
 from pathlib import Path
 from threading import Lock
 
 from langchain_core.tools import tool
 
+from bioagents.limits import BLAST_CELL_BUDGET_SEC, BLAST_TIMEOUT_SEC
 from bioagents.tools.tool_policy import ToolPolicy, get_default_policy
 
 logger = logging.getLogger(__name__)
+
+# Most tools are HTTP lookups; this stops a hung one from holding an agent.
+_DEFAULT_TOOL_BUDGET_SEC = 30.0
+
+# Long-running tools, matched against the lowercased name; longest match wins. At the
+# default 30 s these reported a timeout as a service failure.
+_TOOL_BUDGETS_SEC: tuple[tuple[str, float], ...] = (
+    ("vina", 1800.0),
+    ("dock", 1800.0),
+    ("chembl", 300.0),
+)
+
+_LONG_RUNNING_TOOL_MARKERS = ("blast",)
+
+# Tools served by a local implementation instead: ToolUniverse's BLAST uses qblast,
+# which polls indefinitely and has no rate-limit backoff.
+_OVERRIDDEN_TOOLS: dict[str, tuple[str, str]] = {
+    "BLAST_protein_search": ("bioagents.tools.genomics_tools", "blast_protein_search_compat"),
+    "BLAST_nucleotide_search": ("bioagents.tools.genomics_tools", "blast_protein_search_compat"),
+}
+
+
+def _timeout_report(tool_name: str, seconds: float, arguments: dict[str, Any]) -> str:
+    """Report a timeout together with any files the tool had already written.
+
+    Declaring "partial results unavailable" while the tool's output files were already
+    on disk sent the agent off to redo the work, and the rerun overwrote a good result
+    with a failing one. The directory is listed before anything is claimed about it.
+    """
+    produced: list[str] = []
+    for key in ("out_dir", "output_dir", "outdir", "workdir"):
+        raw = arguments.get(key)
+        if not raw:
+            continue
+        try:
+            from bioagents.tools.workspace_paths import resolve_existing_path
+
+            found = resolve_existing_path(str(raw))
+        except Exception:
+            found = None
+        if found is None or not found.is_dir():
+            continue
+        for item in sorted(found.iterdir()):
+            try:
+                if item.is_file() and item.stat().st_size > 0:
+                    produced.append(f"{item.name} ({item.stat().st_size:,} bytes)")
+            except OSError:
+                continue
+
+    message = f"Tool '{tool_name}' timed out after {seconds:.0f}s."
+    if produced:
+        return (
+            f"{message} It had already written these files, which may be complete — "
+            f"inspect them before running anything again: {', '.join(produced[:25])}"
+        )
+    return f"{message} No output files were found, so nothing was produced."
+
+
+def _tool_time_budget(tool_name: str | None) -> float:
+    """Seconds one ToolUniverse call may take, by tool."""
+    if not tool_name:
+        return _DEFAULT_TOOL_BUDGET_SEC
+
+    lowered = tool_name.lower()
+    if any(marker in lowered for marker in _LONG_RUNNING_TOOL_MARKERS):
+        # Inside the coder sandbox the cell is killed at 300 s, so a 1200 s budget would
+        # take the kernel down with it and lose the RID. Stay under the cell's limit.
+        try:
+            from bioagents.tools.genomics_tools import _in_sandbox_cell
+
+            if _in_sandbox_cell():
+                return BLAST_CELL_BUDGET_SEC
+        except Exception as exc:
+            logger.debug("Could not determine whether BLAST runs in a cell: %s", exc)
+        return BLAST_TIMEOUT_SEC + 60.0
+
+    matches = [(len(marker), budget) for marker, budget in _TOOL_BUDGETS_SEC if marker in lowered]
+    if matches:
+        return max(matches)[1]
+    return _DEFAULT_TOOL_BUDGET_SEC
+
 
 try:  # pragma: no cover - optional dependency
     from tooluniverse import ToolUniverse as _ToolUniverse
@@ -157,10 +240,6 @@ class ToolUniverseWrapper:
         self._default_finder = os.getenv("BIOAGENTS_TOOL_UNIVERSE_FINDER", "keyword").lower()
         self._policy = policy or get_default_policy()
 
-    # ------------------------------------------------------------------
-    # Custom tool registry integration
-    # ------------------------------------------------------------------
-
     @staticmethod
     def _search_custom_registry(query: str, limit: int = 5) -> list[dict[str, Any]]:
         """Search the local custom tool registry and return results in SDK format."""
@@ -214,18 +293,22 @@ class ToolUniverseWrapper:
 
             from bioagents.llms.timeout_llm import _workflow_deadline
 
-            hard_cap: int | float = 30
+            hard_cap: int | float = _tool_time_budget(tool_name)
             if _workflow_deadline is not None:
                 remaining = _workflow_deadline - time.monotonic()
                 hard_cap = max(5, min(hard_cap, remaining - 10))
 
-            with ThreadPoolExecutor(max_workers=1) as pool:
+            # Not a `with` block: shutdown(wait=True) would block past the timeout.
+            pool = ThreadPoolExecutor(max_workers=1)
+            try:
                 fut = pool.submit(func, **arguments)
                 try:
                     result = fut.result(timeout=hard_cap)
                 except FuturesTimeout:
                     logger.warning("Custom tool '%s' timed out after %.0fs", tool_name, hard_cap)
-                    result = f"Tool '{tool_name}' timed out after {hard_cap:.0f}s — partial results unavailable."
+                    result = _timeout_report(tool_name, hard_cap, arguments)
+            finally:
+                pool.shutdown(wait=False)
 
             registry.record_usage(tool_name)
             return True, result
@@ -262,7 +345,7 @@ class ToolUniverseWrapper:
         return self._client
 
     @staticmethod
-    def _resolve_result(result: Any) -> Any:
+    def _resolve_result(result: Any, timeout_sec: float | None = None) -> Any:
         """Await the result if the SDK returned a coroutine instead of a value.
 
         The ToolUniverse SDK may delegate to ``_run_async`` internally.  When
@@ -276,10 +359,14 @@ class ToolUniverseWrapper:
             asyncio.get_running_loop()
         except RuntimeError:
             return asyncio.run(result)  # type: ignore[arg-type]
-        # Already inside an event loop (e.g. Jupyter kernel) — offload to a
-        # background thread so we can call asyncio.run() without conflict.
-        with ThreadPoolExecutor(max_workers=1) as pool:
-            return pool.submit(asyncio.run, result).result(timeout=60)  # type: ignore[arg-type]
+        # Inside an event loop (e.g. Jupyter): offload so asyncio.run() can be called.
+        # Not a `with` block: its shutdown(wait=True) would block past the timeout.
+        pool = ThreadPoolExecutor(max_workers=1)
+        try:
+            future: Any = pool.submit(asyncio.run, result)  # type: ignore[arg-type]
+            return future.result(timeout=timeout_sec or _tool_time_budget(None))
+        finally:
+            pool.shutdown(wait=False)
 
     @staticmethod
     def _format_response(payload: Any) -> str:
@@ -448,7 +535,7 @@ class ToolUniverseWrapper:
                         "return_call_result": True,
                     },
                 }
-                result = self._resolve_result(client.run(payload))
+                result = self._resolve_result(client.run(payload), _DEFAULT_TOOL_BUDGET_SEC)
                 normalized = self._normalize_find_tools_sdk_result(result)
             except Exception as exc:
                 logger.warning(
@@ -458,7 +545,6 @@ class ToolUniverseWrapper:
                 normalized = None
 
             if normalized is not None:
-                # Merge: custom tools first, then SDK results (deduplicated)
                 seen_names = {h["name"] for h in custom_hits}
                 merged = list(custom_hits)
                 for tool_entry in normalized:
@@ -466,7 +552,6 @@ class ToolUniverseWrapper:
                         merged.append(tool_entry)
                 merged = merged[:limit]
 
-                # Apply policy filter to remove unrelated tools
                 merged = self._policy.filter_find_results(merged, limit=limit)
 
                 return self._format_response(
@@ -481,7 +566,6 @@ class ToolUniverseWrapper:
             # SDK failed — fall through to catalog fallback
 
         fallback_hits = self._catalog.search(description, limit)
-        # Merge custom tools with fallback catalog
         seen_names = {h["name"] for h in custom_hits}
         merged = list(custom_hits)
         for hit in fallback_hits:
@@ -489,7 +573,6 @@ class ToolUniverseWrapper:
                 merged.append(hit)
         merged = merged[:limit]
 
-        # Apply policy filter to catalog fallback results too
         merged = self._policy.filter_find_results(merged, limit=limit)
 
         return self._format_response(
@@ -512,7 +595,6 @@ class ToolUniverseWrapper:
         """
         parsed_args = self._parse_arguments(arguments)
 
-        # --- Policy gate ---
         policy_result = self._policy.evaluate(tool_name, parsed_args)
         if not policy_result.allowed:
             logger.warning("Tool policy blocked tool '%s': %s", tool_name, policy_result.reason)
@@ -528,10 +610,7 @@ class ToolUniverseWrapper:
                 }
             )
 
-        # If policy requires approval, note it in the response metadata.
-        # The actual approval gate is handled at the tool-node level (see
-        # truncating_tool_node.py) which can pause execution for user input.
-        # Here we just flag it so the caller knows.
+        # Flag only; the gate that can pause for input is in truncating_tool_node.py.
         if policy_result.requires_approval:
             logger.info(
                 "Tool '%s' requires approval (risk: %s): %s",
@@ -540,19 +619,29 @@ class ToolUniverseWrapper:
                 policy_result.reason,
             )
 
-        # Try custom registry first
+        override = _OVERRIDDEN_TOOLS.get(tool_name)
+        if override is not None:
+            module_name, attr = override
+            try:
+                func = getattr(importlib.import_module(module_name), attr)
+                return self._format_response(
+                    {"tool": tool_name, "result": func(**parsed_args), "implementation": "local"}
+                )
+            except Exception as exc:
+                logger.warning("Local override for '%s' failed: %s", tool_name, exc)
+                return self._format_response({"tool": tool_name, "error": str(exc)})
+
         found, result = self._execute_custom_tool(tool_name, parsed_args)
         if found:
             return self._format_response({"tool": tool_name, "result": result})
 
-        # Fall back to ToolUniverse SDK
         try:
             client = self._ensure_client()
             payload = {
                 "name": tool_name,
                 "arguments": parsed_args,
             }
-            result = self._resolve_result(client.run(payload))
+            result = self._resolve_result(client.run(payload), _tool_time_budget(tool_name))
         except Exception as exc:
             logger.warning("ToolUniverse SDK execution failed for '%s': %s", tool_name, exc)
             return self._format_response(

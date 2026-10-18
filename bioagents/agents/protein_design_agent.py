@@ -79,7 +79,6 @@ def create_protein_design_agent(tools):
     llm_with_tools = llm.bind_tools(tools)
     tool_names = [t.name for t in tools]
 
-    # Convert tools list to dict for executor
     tools_dict = {}
     for tool in tools:
         if isinstance(tool, BaseTool):

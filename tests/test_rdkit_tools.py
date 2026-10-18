@@ -1,9 +1,4 @@
-"""Unit tests for the RDKit chemistry tools.
-
-These used to be skipped wholesale because they required a Node.js `rdkit-agent`
-CLI that was never installed. The tools now run on the RDKit Python library, so the
-suite executes for real.
-"""
+"""Unit tests for the RDKit chemistry tools."""
 
 import json
 
@@ -44,7 +39,6 @@ class TestValidationTools:
         result = validate_smiles.invoke({"smiles": "InvalidSMILES"})
         data = json.loads(result)
         assert data["success"] is True
-        # Should have validation result (may be invalid)
         assert "data" in data
 
     def test_validate_smirks(self):
@@ -62,7 +56,6 @@ class TestRepairTools:
         result = repair_invalid_smiles.invoke({"input_str": "C1CC"})
         data = json.loads(result)
         assert data["success"] is True
-        # Should have repair strategy
         assert "data" in data
 
 
@@ -123,8 +116,7 @@ class TestSimilarityAndFilterTools:
     def test_similarity_threshold_excludes_weak_matches(self):
         """A strict threshold must return nothing rather than a best-effort match.
 
-        Benzene/toluene Tanimoto over Morgan(2) is ~0.27, so a 0.5 cutoff legitimately
-        excludes every target here. Returning an empty hit list is the correct answer.
+        Benzene/toluene Tanimoto over Morgan(2) is ~0.27, so a 0.5 cutoff excludes all.
         """
         result = search_similar_molecules_tool.invoke(
             {

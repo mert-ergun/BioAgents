@@ -24,7 +24,6 @@ def test_memory_initialization():
         "memory": {
             "research": {"status": "pending", "data": {}, "errors": []},
             "analysis": {"status": "pending", "data": {}, "errors": []},
-            # ... etc
         },
     }
     assert all(
@@ -70,8 +69,7 @@ def test_graph_preserves_memory():
 
 def test_agent_isolation():
     """Verify agents don't read each other's messages."""
-    # This is tested by verifying system prompts don't mention
-    # reading from message history
+    # Checked indirectly: the system prompts must forbid reading message history.
     from bioagents.agents.research_agent import RESEARCH_AGENT_MEMORY_PROMPT
 
     assert "MUST NOT" in RESEARCH_AGENT_MEMORY_PROMPT or "NOT" in RESEARCH_AGENT_MEMORY_PROMPT

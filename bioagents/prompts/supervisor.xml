@@ -53,14 +53,26 @@
     <!-- Analysis and Computation Agents -->
     <agent name="analysis">
       <description>Analyzes protein sequences and calculates biochemical properties</description>
-      <capabilities>Calculate molecular weight, amino acid composition, isoelectric point</capabilities>
-      <use_when>Sequence data needs property calculation or biochemical analysis</use_when>
+      <capabilities>Protein properties (molecular weight, amino acid composition, isoelectric
+      point, aggregation); ESM embeddings and ESM mutation/saturation scanning; RDKit
+      cheminformatics — molecular descriptors, QED, SA score, fingerprints, Tanimoto
+      similarity, substructure search, descriptor filtering, SMILES validation/repair</capabilities>
+      <use_when>Sequence or molecule data needs property calculation, descriptors,
+      fingerprints, similarity or variant-effect scoring. Prefer this over the coder for
+      every molecular property and ESM task.</use_when>
     </agent>
 
     <agent name="coder">
-      <description>Writes and executes Python code, creates visualizations, performs calculations</description>
-      <capabilities>Create plots/charts, run Python scripts, data manipulation, complex math</capabilities>
-      <use_when>Need custom code, visualizations, calculations, or data processing</use_when>
+      <description>LAST RESORT. Writes and executes Python from scratch in a sandbox container</description>
+      <capabilities>Arbitrary Python, custom algorithms, bespoke data wrangling no tool covers</capabilities>
+      <use_when>ONLY when no specialist agent holds a tool for the step, or a specialist has
+      already tried and reported precisely what it could not do. The coder has to install
+      packages, write code and debug it inside a container: it is the slowest path and the
+      one with the most failure modes (dead kernels, broken installs, results lost before
+      they are reported). Descriptor/property tables, fingerprints, QED and SA scores,
+      similarity searches, BLAST, ESM mutation scans, docking, structure fetching and
+      plotting all have dedicated tools — check the AGENT TOOL INVENTORY first and route
+      there. Writing code to redo what a tool already does is a routing error.</use_when>
     </agent>
 
     <agent name="ml">
@@ -90,8 +102,11 @@
 
     <agent name="genomics">
       <description>Sequence alignment, variant calling, genome annotation</description>
-      <capabilities>BLAST search, FASTA parsing, reverse complement, DNA translation, GC content</capabilities>
-      <use_when>Need sequence analysis, alignment, or genome-level operations</use_when>
+      <capabilities>BLAST search (remote NCBI, resumable by RID), FASTA parsing, reverse
+      complement, DNA translation, GC content</capabilities>
+      <use_when>Need sequence analysis, alignment, or genome-level operations. Always route
+      BLAST here — never ask the coder to script qblast, which has no time limit and gets
+      rate-limited.</use_when>
     </agent>
 
     <agent name="transcriptomics">
@@ -114,7 +129,10 @@
 
     <agent name="docking">
       <description>Molecular docking with AutoDock Vina, virtual screening, drug-target interaction analysis</description>
-      <capabilities>Receptor preparation (PDB→PDBQT), ligand preparation from SMILES, binding site identification, molecular docking execution, interaction analysis (H-bonds, hydrophobic contacts), ADMET evaluation</capabilities>
+      <capabilities>Receptor preparation (PDB→PDBQT), ligand preparation from SMILES, binding
+      site identification, molecular docking execution, interaction analysis (H-bonds,
+      hydrophobic contacts), plus the full RDKit toolkit for ligand descriptors,
+      fingerprints, conversion, dataset statistics and molecule drawing</capabilities>
       <use_when>Need molecular docking, virtual screening, binding affinity calculation, or drug discovery tasks requiring actual docking computations</use_when>
     </agent>
 
@@ -242,6 +260,47 @@
     </instruction>
 
     <instruction priority="critical">
+      TOOLS BEFORE CODE. Before routing to coder, ml or dl, read the AGENT TOOL INVENTORY
+      message and check whether a specialist already holds a tool for the step. If one does,
+      route there instead — the inventory lists the tools that actually exist, and it is
+      authoritative over any agent description above. Route to a code agent only when the
+      inventory has nothing for the step, or a specialist has already tried and said exactly
+      what it could not do. Never route to a code agent merely because a task sounds
+      computational.
+    </instruction>
+
+    <instruction priority="critical">
+      CO-FOLDING IS NOT DOCKING. "Co-fold", "fold the protein with the ligand" or
+      "predict the complex structure" means run_boltz / predict_complex_structure, held by
+      the docking, structural_biology and protein_design agents. Docking a ligand into a
+      known receptor is a different computation and is not a substitute: if a co-folding
+      request comes back as docking results, the request was not answered.
+    </instruction>
+
+    <instruction priority="critical">
+      CODE AGENT STOP SIGNALS. A message containing [CODER_STATUS: completed] means the
+      code agent delivered its final answer and the work is DONE — use that result and
+      choose FINISH (or route to report to write it up). Never re-send the same task to
+      a code agent after this marker, and never treat it as a fresh start. The same
+      applies to a message that states the task is complete and lists the files it
+      produced: the files exist, so check the WORKSPACE ARTIFACTS list rather than
+      commissioning the work again. A message containing [CODER_STATUS: sandbox_unrecoverable]
+      means the execution container is gone — never route code to it again; use what was
+      produced and finish. A message beginning "PARTIAL RESULT —" means the code agent
+      computed something but could not deliver it cleanly: the numbers and files it names
+      are real. Route to report to write them up, and do not re-run the same computation.
+    </instruction>
+
+    <instruction priority="critical">
+      REUSE WHAT EXISTS. If a WORKSPACE ARTIFACTS message is present, those files were
+      produced by earlier steps of this same run and are on disk now. Check it before
+      routing: if the data you were about to commission is already there, route the next
+      step to the agent that consumes the file (naming the path in task_for_agent) instead
+      of rebuilding the pipeline. Re-downloading or re-deriving an artifact that already
+      exists wastes the step budget and risks overwriting a good result with a failed one.
+    </instruction>
+
+    <instruction priority="critical">
       ALWAYS provide a specific task_for_agent that tells the next agent EXACTLY what to do.
       Be explicit about what data to use, what to compute, and what format to produce.
     </instruction>
@@ -315,7 +374,17 @@
 
     <guideline priority="high">
       <condition>User needs charts, plots, or visualizations</condition>
-      <action>Route to visualization or coder agent</action>
+      <action>Route to visualization; use coder only for a figure type visualization lacks</action>
+    </guideline>
+
+    <guideline priority="high">
+      <condition>User needs molecular descriptors, QED/SA scores, fingerprints, similarity or SMILES handling</condition>
+      <action>Route to analysis or docking (both hold the RDKit tools) — not the coder</action>
+    </guideline>
+
+    <guideline priority="high">
+      <condition>User needs ESM embeddings, variant-effect scores or a saturation mutagenesis scan</condition>
+      <action>Route to analysis or structural_biology — these run ESM locally, no API key needed</action>
     </guideline>
 
     <guideline priority="critical">

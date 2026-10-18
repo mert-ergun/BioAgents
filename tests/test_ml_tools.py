@@ -127,7 +127,6 @@ def test_design_ml_pipeline_multiple_features():
     assert "outcome" in result
 
 
-# Skip Docker-dependent tests if Docker is not available
 def check_docker_available():
     """Check if Docker is available."""
     try:

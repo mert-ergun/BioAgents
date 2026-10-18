@@ -26,11 +26,6 @@ logger = logging.getLogger(__name__)
 DEFAULT_RUNS_DIR = Path(__file__).parent.parent.parent / "experiment_runs"
 
 
-# ---------------------------------------------------------------------------
-# Main entry point
-# ---------------------------------------------------------------------------
-
-
 def run_experiment(
     use_cases: list[UseCase],
     config: ExperimentConfig | None = None,
@@ -78,20 +73,14 @@ def run_experiment(
         len(use_cases),
     )
 
-    # Apply prompt overrides for this run (context-var approach, Option A)
     if config.system_prompt_overrides:
         set_experiment_prompt_overrides(config.system_prompt_overrides)
         logger.info("Prompt overrides active: %s", list(config.system_prompt_overrides.keys()))
     else:
         set_experiment_prompt_overrides(None)
 
-    # The workflow deadline in timeout_llm.py dynamically shrinks per-LLM
-    # timeouts as the experiment budget depletes, so we don't need to
-    # statically cap AGENT_LLM_INVOKE_TIMEOUT_SEC.  Capping it too low causes
-    # cascading failures: agents near the deadline get sub-60s timeouts and
-    # can't complete a single LLM call.
-
-    # Build graph once for the entire experiment (re-use across use cases)
+    # AGENT_LLM_INVOKE_TIMEOUT_SEC is deliberately not capped here: the workflow deadline
+    # already shrinks per-call timeouts, and a static cap starves agents near the deadline.
     graph = create_graph()
 
     results: list[RunResult] = []
@@ -124,7 +113,6 @@ def run_experiment(
                 failure_mode=FailureMode.EXCEPTION,
             )
 
-        # Judge
         if not skip_judge:
             try:
                 if judge_llm is not None:
@@ -157,7 +145,6 @@ def run_experiment(
             result.failure_mode.value,
         )
 
-    # Clear prompt overrides after run
     set_experiment_prompt_overrides(None)
 
     finished_at = datetime.now(tz=UTC)
@@ -182,11 +169,6 @@ def run_experiment(
     )
 
     return experiment_run
-
-
-# ---------------------------------------------------------------------------
-# Persistence helpers
-# ---------------------------------------------------------------------------
 
 
 def _persist_run(run: ExperimentRun, runs_dir: str | Path | None) -> Path:

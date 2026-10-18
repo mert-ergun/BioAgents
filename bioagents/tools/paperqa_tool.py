@@ -1,13 +1,9 @@
-# Increase recursion limit to prevent PDF parsing crashes
-# sys.setrecursionlimit(10000)
-
 import argparse
 import os
 
 from dotenv import load_dotenv
 from paperqa import Settings, ask
 
-# Force load .env
 load_dotenv(override=True)
 
 

@@ -22,7 +22,6 @@ from bioagents.graph import create_graph
 logger = logging.getLogger(__name__)
 
 
-# ANSI color codes for terminal output
 class Colors:
     """ANSI color codes for terminal output."""
 
@@ -30,7 +29,6 @@ class Colors:
     BOLD = "\033[1m"
     DIM = "\033[2m"
 
-    # Agent colors
     SUPERVISOR = "\033[95m"  # Magenta
     RESEARCH = "\033[94m"  # Blue
     ANALYSIS = "\033[96m"  # Cyan
@@ -40,13 +38,11 @@ class Colors:
     CRITIC = "\033[91m"  # Red
     CODER = "\033[93m"  # Yellow
 
-    # Status colors
     SUCCESS = "\033[92m"  # Green
     WARNING = "\033[93m"  # Yellow
     ERROR = "\033[91m"  # Red
     INFO = "\033[94m"  # Blue
 
-    # Node type colors
     TOOLS = "\033[90m"  # Dark gray
     END = "\033[92m"  # Green
 
@@ -106,7 +102,6 @@ def run_benchmark_task(
     if graph is None:
         graph = create_graph()
 
-    # Convert task to query string
     query = task.to_query_string()
     initial_state = {"messages": [HumanMessage(content=query)]}
 
@@ -127,9 +122,7 @@ def run_benchmark_task(
             print(f"{Colors.BOLD}EXECUTION TRACE{Colors.RESET}")
             print(f"{Colors.BOLD}{'─' * 100}{Colors.RESET}\n")
 
-        # Stream through workflow to track progress and accumulate state
         for step_output in graph.stream(initial_state, {"recursion_limit": max_steps}):
-            # Check timeout
             elapsed = time.time() - start_time
             if elapsed > timeout:
                 error_message = f"Timeout after {timeout}s (elapsed: {elapsed:.1f}s)"
@@ -137,7 +130,6 @@ def run_benchmark_task(
                 logger.warning(f"Workflow timeout at step {total_steps}")
                 break
 
-            # Check if we're stuck on a single node (no progress for >60s)
             node_elapsed = time.time() - last_node_time
             if node_elapsed > 60 and total_steps > 0:
                 logger.warning(
@@ -153,7 +145,6 @@ def run_benchmark_task(
             last_node_time = time.time()
             node_state = step_output[node_name]
 
-            # Save state that has messages
             if node_state.get("messages"):
                 last_state_with_messages = {
                     k: (v.copy() if isinstance(v, list) else v) for k, v in node_state.items()
@@ -163,14 +154,12 @@ def run_benchmark_task(
 
             agent_flow.append(node_name)
 
-            # Print colored step trace
             if show_trace:
                 color = _get_agent_color(node_name)
                 print(
                     f"  {Colors.BOLD}Step {total_steps}:{Colors.RESET} {color}{Colors.BOLD}{node_name.upper()}{Colors.RESET}"
                 )
 
-                # Show supervisor routing decisions
                 if node_name == "supervisor" and "next" in node_state:
                     next_agent = node_state.get("next", "FINISH")
                     reasoning = node_state.get("reasoning", "")
@@ -187,17 +176,13 @@ def run_benchmark_task(
                         )
                         print(f"{Colors.DIM}{reasoning_wrapped}{Colors.RESET}")
 
-                # Show tool execution
                 elif node_name.endswith("_tools"):
                     print(f"    {Colors.TOOLS}Executing tools...{Colors.RESET}")
-                    # Show tool calls and results if available
                     if "messages" in node_state:
-                        # Find tool calls and their corresponding results
                         tool_calls_found = []
                         tool_results_found = []
 
                         for msg in node_state["messages"]:
-                            # Find AIMessage with tool_calls
                             if hasattr(msg, "tool_calls") and msg.tool_calls:
                                 for call in msg.tool_calls:
                                     tool_name = call.get("name", "unknown")
@@ -207,7 +192,6 @@ def run_benchmark_task(
                                         {"name": tool_name, "id": tool_id, "args": tool_args}
                                     )
 
-                            # Find ToolMessage (tool results)
                             if isinstance(msg, ToolMessage):
                                 tool_result_id = getattr(msg, "tool_call_id", None)
                                 tool_result_content = getattr(msg, "content", "")
@@ -215,12 +199,10 @@ def run_benchmark_task(
                                     {"id": tool_result_id, "content": tool_result_content}
                                 )
 
-                        # Show tool calls with arguments
-                        for tool_call in tool_calls_found[-3:]:  # Show last 3 tool calls
+                        for tool_call in tool_calls_found[-3:]:
                             tool_name = tool_call["name"]
                             tool_args = tool_call["args"]
 
-                            # Format arguments (truncate if too long)
                             args_str = str(tool_args)
                             if len(args_str) > 150:
                                 args_str = args_str[:150] + "..."
@@ -229,13 +211,11 @@ def run_benchmark_task(
                             if tool_args:
                                 print(f"        {Colors.DIM}Args: {args_str}{Colors.RESET}")
 
-                            # Find corresponding result
                             tool_id = tool_call.get("id")
                             if tool_id:
                                 for result in tool_results_found:
                                     if result["id"] == tool_id:
                                         result_content = str(result["content"])
-                                        # Truncate result if too long
                                         if len(result_content) > 200:
                                             result_content = result_content[:200] + "..."
                                         print(
@@ -243,16 +223,13 @@ def run_benchmark_task(
                                         )
                                         break
 
-                # Show agent processing
                 elif node_name != "supervisor" and not node_name.endswith("_tools"):
                     agent_color = _get_agent_color(node_name)
                     print(f"    {agent_color}Processing...{Colors.RESET}")
-                    # Special note for coder agent (it can take a long time)
                     if node_name == "coder":
                         print(
                             f"    {Colors.DIM}Note: Coder agent executes code in Jupyter kernel - this may take a while...{Colors.RESET}"
                         )
-                    # Show message preview if available
                     if node_state.get("messages"):
                         last_msg = node_state["messages"][-1]
                         if hasattr(last_msg, "content"):
@@ -261,14 +238,12 @@ def run_benchmark_task(
                                 preview = content[:100] + "..." if len(content) > 100 else content
                                 print(f"    {Colors.DIM}{preview}{Colors.RESET}")
 
-            # Log progress periodically
             msg_count = len(node_state.get("messages", [])) if "messages" in node_state else 0
             if total_steps % 10 == 0:
                 logger.info(
                     f"Task progress: {total_steps} steps, {elapsed:.1f}s elapsed, {msg_count} messages"
                 )
 
-            # Safety: Stop if too many steps
             if total_steps >= max_steps:
                 error_message = f"Stopped after {max_steps} steps (likely stuck)"
                 if show_trace:
@@ -279,11 +254,9 @@ def run_benchmark_task(
 
         execution_time = time.time() - start_time
 
-        # Extract final messages
         if last_state_with_messages and "messages" in last_state_with_messages:
             messages = last_state_with_messages["messages"]
 
-            # Check if workflow completed (reached END)
             if agent_flow and agent_flow[-1] == "__end__":
                 workflow_completed = True
             elif total_steps >= max_steps:
@@ -292,28 +265,24 @@ def run_benchmark_task(
             else:
                 workflow_completed = True
 
-            # Extract text content from messages
-            for msg in messages[-10:]:  # Last 10 messages
+            for msg in messages[-10:]:
                 content = getattr(msg, "content", "")
                 if content:
                     if isinstance(content, str):
                         final_messages.append(content)
                     elif isinstance(content, list):
-                        # Handle list of dicts (e.g., [{"type": "text", "text": "..."}])
                         for item in content:
                             if isinstance(item, dict) and "text" in item:
                                 final_messages.append(item["text"])
                             elif isinstance(item, str):
                                 final_messages.append(item)
 
-            # Get raw output (last message content)
             if messages:
                 last_msg = messages[-1]
                 content = getattr(last_msg, "content", "")
                 if isinstance(content, str):
                     raw_output = content
                 elif isinstance(content, list):
-                    # Extract text from list
                     text_parts = []
                     for item in content:
                         if isinstance(item, dict) and "text" in item:
@@ -322,14 +291,12 @@ def run_benchmark_task(
                             text_parts.append(item)
                     raw_output = "\n".join(text_parts)
 
-        # Determine if workflow completed
-        # If we reached max_steps without naturally ending, consider it incomplete
+        # Reaching max_steps without a natural end counts as incomplete.
         if total_steps >= max_steps:
             workflow_completed = False
             if not error_message:
                 error_message = f"Reached max_steps limit ({max_steps})"
         elif not error_message and total_steps > 0:
-            # If we have steps and no error, consider it completed
             workflow_completed = True
 
     except Exception as e:
@@ -338,7 +305,6 @@ def run_benchmark_task(
         workflow_completed = False
         logger.error(f"Error executing task {task.task_name}: {e}", exc_info=True)
 
-    # Build workflow path string
     workflow_path = " → ".join(agent_flow[-15:]) if agent_flow else ""
 
     return BenchmarkResult(
@@ -356,11 +322,6 @@ def run_benchmark_task(
     )
 
 
-# ---------------------------------------------------------------------------
-# Modular use-case runner
-# ---------------------------------------------------------------------------
-
-
 def _extract_tool_calls_from_messages(messages: list) -> list[ToolCallRecord]:
     """
     Walk a list of LangChain messages and extract tool calls with results.
@@ -370,7 +331,6 @@ def _extract_tool_calls_from_messages(messages: list) -> list[ToolCallRecord]:
     """
     records: list[ToolCallRecord] = []
 
-    # Build a lookup of tool_call_id -> ToolMessage content
     tool_results: dict[str, str] = {}
     for msg in messages:
         if isinstance(msg, ToolMessage):
@@ -379,9 +339,8 @@ def _extract_tool_calls_from_messages(messages: list) -> list[ToolCallRecord]:
                 content = getattr(msg, "content", "")
                 if not isinstance(content, str):
                     content = str(content)
-                tool_results[tool_call_id] = content[:500]  # preview only
+                tool_results[tool_call_id] = content[:500]
 
-    # Walk AIMessages for tool_calls
     for msg in messages:
         tool_calls_attr = getattr(msg, "tool_calls", None)
         if not tool_calls_attr:
@@ -458,6 +417,22 @@ def _extract_token_usage_from_messages(messages: list) -> TokenUsage | None:
     )
 
 
+def _extract_subagent_steps(msg: Any) -> tuple[list[dict], dict | None]:
+    """Pull a sub-agent's internal step log off its message, if it attached one.
+
+    Code agents (coder / ML / DL) run a whole smolagents loop inside one graph step and
+    attach that loop's steps to their AIMessage ``additional_kwargs``.
+    """
+    from bioagents.sandbox.coder_helpers import SUBAGENT_STEPS_KEY
+
+    kwargs = getattr(msg, "additional_kwargs", None) or {}
+    steps = kwargs.get(SUBAGENT_STEPS_KEY) or []
+    summary = kwargs.get("subagent_summary")
+    if not isinstance(steps, list):
+        steps = []
+    return [s for s in steps if isinstance(s, dict)], summary if isinstance(summary, dict) else None
+
+
 def _derive_failure_mode(
     workflow_completed: bool,
     error_message: str | None,
@@ -522,8 +497,7 @@ def run_use_case(
     final_messages: list[str] = []
     raw_output: str | None = None
 
-    # Set a global deadline so LLM invokes auto-shrink their timeout when the
-    # workflow budget is nearly exhausted (prevents 47-second overshoot).
+    # Global deadline so LLM invokes shrink their timeout as the workflow budget runs out.
     from bioagents.llms.timeout_llm import set_workflow_deadline
 
     if timeout and timeout > 0:
@@ -546,12 +520,19 @@ def run_use_case(
             node_state = step_output[node_name]
             agent_flow.append(node_name)
 
-            # Capture per-step messages for agent_steps.
-            # This MUST happen before the timeout check so that even
-            # the final step's output (e.g. from the coder agent) is
-            # recorded when the timeout fires on the same iteration.
+            # Must run before the timeout check so the final step's output is still recorded.
             step_messages: list[dict] = []
+            internal_steps: list[dict] = []
+            internal_summary: dict | None = None
             if node_state is None:
+                # Node update carried no state channels; record the step anyway.
+                agent_steps.append(
+                    AgentStep(
+                        step=total_steps,
+                        agent=node_name,
+                        elapsed_ms=(time.time() - start_time) * 1000,
+                    )
+                )
                 continue
             for msg in node_state.get("messages", []):
                 all_messages.append(msg)
@@ -575,6 +556,11 @@ def run_use_case(
                 tool_call_id = getattr(msg, "tool_call_id", None)
                 if tool_call_id:
                     msg_dict["tool_call_id"] = tool_call_id
+                sub_steps, sub_summary = _extract_subagent_steps(msg)
+                if sub_steps:
+                    internal_steps.extend(sub_steps)
+                if sub_summary:
+                    internal_summary = sub_summary
                 step_messages.append(msg_dict)
 
             routing_decision = node_state.get("next") if node_name == "supervisor" else None
@@ -585,6 +571,8 @@ def run_use_case(
                     elapsed_ms=(time.time() - start_time) * 1000,
                     messages=step_messages,
                     routing_decision=str(routing_decision) if routing_decision else None,
+                    internal_steps=internal_steps,
+                    internal_summary=internal_summary,
                 )
             )
 
@@ -607,13 +595,11 @@ def run_use_case(
 
         execution_time = time.time() - start_time
 
-        # Determine completion
         if (agent_flow and agent_flow[-1] == "__end__") or (
             not timed_out and total_steps < max_steps and not error_message
         ):
             workflow_completed = True
 
-        # Extract final text messages (deduplicated, preserving order)
         seen_content: set[str] = set()
         for msg in all_messages[-15:]:
             content = getattr(msg, "content", "")

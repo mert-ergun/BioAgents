@@ -3,7 +3,7 @@
 import logging
 from typing import Any
 
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import AIMessage, HumanMessage
 from langchain_core.tools import BaseTool
 
 from bioagents.agents.agent_executor import execute_agent_with_tools, safe_json_output
@@ -59,7 +59,6 @@ def create_analysis_agent(tools: list):
     llm = get_llm(prompt_name="analysis")
     llm_with_tools = llm.bind_tools(tools)
 
-    # Convert tools list to dict
     tools_dict = {}
     for tool in tools:
         if isinstance(tool, BaseTool):
@@ -74,7 +73,6 @@ def create_analysis_agent(tools: list):
         try:
             messages = state.get("messages", [])
 
-            # Find user message
             user_message = None
             for m in messages:
                 if isinstance(m, HumanMessage):
@@ -84,7 +82,6 @@ def create_analysis_agent(tools: list):
             if user_message is None:
                 user_message = HumanMessage(content="Analyze the biological data.")
 
-            # Execute agent with tools
             raw_output, tool_calls_used, last_ai, exec_err = execute_agent_with_tools(
                 llm_with_tools=llm_with_tools,
                 system_prompt=ANALYSIS_AGENT_SYSTEM_PROMPT,
@@ -94,7 +91,6 @@ def create_analysis_agent(tools: list):
                 full_message_history=messages,
             )
 
-            # Parse JSON with fallback
             default_json = {
                 "sequence_properties": {
                     "length": 0,
@@ -112,14 +108,17 @@ def create_analysis_agent(tools: list):
 
             structured_data = safe_json_output(raw_output, default_json)
 
+            # Must always carry a message: a result on data/raw_output alone is not a
+            # state channel, so LangGraph drops it and the supervisor re-runs the task.
             out: dict[str, Any] = {
                 "data": structured_data,
                 "raw_output": raw_output,
                 "tool_calls": tool_calls_used,
                 "error": exec_err,
+                "messages": [last_ai]
+                if last_ai is not None
+                else [AIMessage(content=raw_output or f"[AGENT_ERROR] {exec_err}")],
             }
-            if last_ai is not None:
-                out["messages"] = [last_ai]
             return out
 
         except Exception as e:
@@ -142,6 +141,7 @@ def create_analysis_agent(tools: list):
                 "raw_output": str(e),
                 "tool_calls": [],
                 "error": str(e),
+                "messages": [AIMessage(content=f"[AGENT_ERROR] Analysis failed: {e}")],
             }
 
     return analysis_node

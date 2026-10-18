@@ -30,7 +30,6 @@ def load_evaluation_criteria(criteria_file: str | Path) -> dict[str, Any]:
     with criteria_file.open("r", encoding="utf-8") as f:
         content = f.read()
 
-    # Parse markdown to extract criteria (basic implementation)
     # In a full implementation, this would parse the structured markdown
     return {"content": content}
 
@@ -59,7 +58,6 @@ def evaluate_task_stella(
     """
     scores = STELLAEvaluationScore()
 
-    # Use LLM-based scoring if requested and available
     if use_llm_scoring and llm:
         try:
             scores = _evaluate_with_llm(result, llm, criteria)
@@ -67,8 +65,6 @@ def evaluate_task_stella(
             return scores
         except Exception as e:
             logger.warning(f"LLM evaluation failed, falling back to heuristic scores: {e}")
-
-    # Fallback to heuristic-based scoring
 
     # Technical Accuracy (0-5.0, 25% weight)
     # Based on workflow completion and error absence
@@ -83,7 +79,6 @@ def evaluate_task_stella(
     else:
         scores.technical_accuracy = 1.0  # Failed to complete
 
-    # Cap at 5.0
     scores.technical_accuracy = min(5.0, scores.technical_accuracy)
 
     # Domain Knowledge (0-5.0, 20% weight)
@@ -183,7 +178,6 @@ def _evaluate_with_llm(
     Returns:
         STELLAEvaluationScore with LLM-generated scores
     """
-    # Build evaluation context
     task_description = result.task.task_description or result.task.task_name
     task_type = result.task.task_type
     raw_output = (
@@ -195,12 +189,10 @@ def _evaluate_with_llm(
     error_message = result.error_message
     workflow_completed = result.workflow_completed
 
-    # Load criteria content if available
     criteria_content = ""
     if criteria and "content" in criteria:
         criteria_content = criteria["content"]
     else:
-        # Try to load from default location (relative to project root)
         # Path: bioagents/benchmarks/stella_evaluator.py -> benchmarks/STELLA/evaluation_criteria.md
         criteria_file = (
             Path(__file__).parent.parent.parent / "benchmarks" / "STELLA" / "evaluation_criteria.md"
@@ -211,7 +203,6 @@ def _evaluate_with_llm(
         else:
             logger.warning(f"Evaluation criteria file not found at {criteria_file}")
 
-    # Build comprehensive evaluation prompt
     evaluation_prompt = ChatPromptTemplate.from_messages(
         [
             (
@@ -296,7 +287,6 @@ Please evaluate this response according to the STELLA criteria and provide score
         ]
     )
 
-    # Prepare error section
     error_section = ""
     if error_message:
         error_section = f"Error Message: {error_message}\n"
@@ -309,7 +299,6 @@ Please evaluate this response according to the STELLA criteria and provide score
     )
     output_text = raw_output[:8000]  # Limit output length
 
-    # Get LLM evaluation
     try:
         chain = evaluation_prompt | llm.with_structured_output(STELLACompleteEvaluation)
         evaluation = chain.invoke(
@@ -327,7 +316,6 @@ Please evaluate this response according to the STELLA criteria and provide score
             }
         )
 
-        # Convert to STELLAEvaluationScore
         scores = STELLAEvaluationScore(
             technical_accuracy=max(0.0, min(5.0, evaluation.technical_accuracy.score)),
             domain_knowledge=max(0.0, min(5.0, evaluation.domain_knowledge.score)),

@@ -449,9 +449,7 @@ class PresetEntry:
         self.source_input_key = source_input_key
         self.options_help = options_help
         self.builder = builder
-        # source_spec: optional extended multi-source description used by
-        # drug-discovery scenarios. Each entry is a dict with keys:
-        #   node_id, input_key, label (human readable).
+        # source_spec entries: {node_id, input_key, label}, used by drug-discovery scenarios.
         self.source_spec = source_spec
         self.category = category
 

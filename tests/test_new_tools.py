@@ -3,10 +3,6 @@
 import json
 from unittest.mock import Mock, patch
 
-# =========================================================================
-# Shell Tools
-# =========================================================================
-
 
 class TestShellTools:
     def test_get_shell_tools_returns_list(self):
@@ -51,11 +47,6 @@ class TestShellTools:
         assert "hello" in result["stdout"]
 
 
-# =========================================================================
-# Git Tools
-# =========================================================================
-
-
 class TestGitTools:
     def test_get_git_tools_returns_list(self):
         from bioagents.tools.git_tools import get_git_tools
@@ -98,11 +89,6 @@ class TestGitTools:
         assert "Successfully cloned" in result
 
 
-# =========================================================================
-# Web Tools
-# =========================================================================
-
-
 class TestWebTools:
     def test_get_web_tools_returns_list(self):
         from bioagents.tools.web_tools import get_web_tools
@@ -143,11 +129,6 @@ class TestWebTools:
         assert "Hello World" in result
 
 
-# =========================================================================
-# Literature Tools
-# =========================================================================
-
-
 class TestLiteratureTools:
     def test_get_literature_tools_returns_list(self):
         from bioagents.tools.literature_tools import get_literature_tools
@@ -173,11 +154,6 @@ class TestLiteratureTools:
         assert "search_arxiv" in names
         assert "search_biorxiv" in names
         assert "fetch_paper_metadata" in names
-
-
-# =========================================================================
-# Genomics Tools
-# =========================================================================
 
 
 class TestGenomicsTools:
@@ -233,11 +209,6 @@ class TestGenomicsTools:
         assert result["total_length"] == 8
 
 
-# =========================================================================
-# Transcriptomics Tools
-# =========================================================================
-
-
 class TestTranscriptomicsTools:
     def test_get_transcriptomics_tools_returns_list(self):
         from bioagents.tools.transcriptomics_tools import get_transcriptomics_tools
@@ -262,11 +233,6 @@ class TestTranscriptomicsTools:
         assert "run_differential_expression" in names
         assert "run_gene_set_enrichment" in names
         assert "normalize_expression_data" in names
-
-
-# =========================================================================
-# Visualization Tools
-# =========================================================================
 
 
 class TestVisualizationTools:
@@ -294,11 +260,6 @@ class TestVisualizationTools:
         assert "create_heatmap" in names
         assert "create_scatter_plot" in names
         assert "create_volcano_plot" in names
-
-
-# =========================================================================
-# File Tools
-# =========================================================================
 
 
 class TestFileTools:
@@ -348,11 +309,6 @@ class TestFileTools:
 
         result = write_local_file.invoke({"file_path": "test.txt", "content": "hello"})
         assert "Successfully wrote" in result
-
-
-# =========================================================================
-# Environment Tools
-# =========================================================================
 
 
 class TestEnvironmentTools:

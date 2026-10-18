@@ -251,11 +251,7 @@ def get_llm(
             _request_timeout_seconds("LLM_REQUEST_TIMEOUT", 600.0),
         )
 
-        # Thinking budget: only supported by Gemini 2.5+ / 3+ models.
-        # gemini-2.0-flash and earlier do not support thinking_budget and will
-        # raise an API error if it is set. Only apply it for 2.5+ / 3 models.
-        # GEMINI_THINKING_BUDGET env var: set to a positive int to enable,
-        # or leave unset to keep it disabled (default: 0).
+        # Gemini 2.0 and earlier raise an API error if thinking_budget is set.
         _thinking_raw = os.getenv("GEMINI_THINKING_BUDGET", "0").strip()
         _raw_budget: int | None = int(_thinking_raw) if _thinking_raw else None
         _supports_thinking = "2.5" in model or "3" in model or "gemini-exp" in model

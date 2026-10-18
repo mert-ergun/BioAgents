@@ -78,15 +78,9 @@ from bioagents.workflows.drug_discovery.structure_nodes import (
 )
 from bioagents.workflows.graph import WorkflowGraph
 
-# Standard node ids used throughout the scenarios so the API can reliably
-# surface decision-log outputs to the UI.
+# Node ids the API relies on to surface decision-log output to the UI.
 DECISION_LOG_NODE_ID = "decision_log"
 DOSSIER_NODE_ID = "target_dossier"
-
-
-# ---------------------------------------------------------------------------
-# Shared downstream pipeline
-# ---------------------------------------------------------------------------
 
 
 def _wire_downstream(
@@ -106,11 +100,9 @@ def _wire_downstream(
     """
     th = thresholds or {}
 
-    # Design expansion (ligand-based; SeriesPackage in → SeriesPackage out)
     g.add_node("design", Reinvent4StubNode(n_candidates=n_candidates))
     g.add_edge(series_id, "design", {"series_package": "series_package"})
 
-    # Docking lane
     g.add_node("vina", VinaDockingStubNode())
     g.add_edge("design", "vina", {"series_package": "series_package"})
     g.add_edge(structure_id, "vina", {"structure_package": "structure_package"})
@@ -122,18 +114,15 @@ def _wire_downstream(
     g.add_edge("vina", "redock_val", {"docking_results": "docking_results"})
     g.add_edge(structure_id, "redock_val", {"structure_package": "structure_package"})
 
-    # Boltz lane
     g.add_node("boltz", BoltzComplexStubNode())
     g.add_edge("design", "boltz", {"series_package": "series_package"})
     g.add_edge(structure_id, "boltz", {"structure_package": "structure_package"})
 
-    # Consensus
     g.add_node("consensus", ConsensusStructuralReviewNode())
     g.add_edge("vina", "consensus", {"docking_results": "docking_results"})
     g.add_edge("boltz", "consensus", {"boltz_results": "boltz_results"})
     g.add_edge(structure_id, "consensus", {"structure_package": "structure_package"})
 
-    # ADMET
     g.add_node("swissadme", SwissAdmeHeuristicNode())
     g.add_edge("design", "swissadme", {"series_package": "series_package"})
     g.add_node("admet_triage", EarlyAdmetTriageNode())
@@ -144,7 +133,7 @@ def _wire_downstream(
     g.add_node("admetsar", AdmetSarStubNode())
     g.add_edge("design", "admetsar", {"series_package": "series_package"})
 
-    # Off-target Tier 1 lanes — fetch_sequence=False to keep scenarios fast/offline-safe
+    # fetch_sequence=False keeps the scenario graphs fast and offline-safe.
     g.add_node("blast", BlastSimilarityStubNode(fetch_sequence=False))
     g.add_edge(uniprot_source_id, "blast", {"uniprot_id": "uniprot_id"})
     g.add_node("foldseek", FoldseekStubNode())
@@ -159,19 +148,16 @@ def _wire_downstream(
     g.add_edge("probis", "ot1", {"neighbors": "probis_neighbors"})
     g.add_edge("sea", "ot1", {"neighbors": "sea_neighbors"})
 
-    # Off-target Tier 2 refinement
     g.add_node("ot2", OffTargetTier2RefineStubNode())
     g.add_edge("ot1", "ot2", {"offtarget_panel": "offtarget_panel"})
     g.add_edge("vina", "ot2", {"docking_results": "docking_results"})
     g.add_edge("design", "ot2", {"series_package": "series_package"})
 
-    # Retrosynthesis
     g.add_node("aizynth", AiZynthFinderStubNode())
     g.add_edge("design", "aizynth", {"series_package": "series_package"})
     g.add_node("retro_review", RetrosynthRouteReviewNode())
     g.add_edge("aizynth", "retro_review", {"routes": "routes"})
 
-    # Gates (all receive per-gate threshold overrides if provided)
     g.add_node(
         "gate_structure",
         StructureReadinessGateNode(th.get("structure_readiness")),
@@ -192,7 +178,6 @@ def _wire_downstream(
     g.add_node("gate_retro", RetrosynthesisGateNode(th.get("retrosynthesis")))
     g.add_edge("retro_review", "gate_retro", {"route_summary": "route_summary"})
 
-    # Decision log aggregator
     g.add_node(DECISION_LOG_NODE_ID, DecisionLogNode())
     g.add_edge("gate_structure", DECISION_LOG_NODE_ID, {"verdicts": "structure_readiness"})
     g.add_edge("gate_docking", DECISION_LOG_NODE_ID, {"verdicts": "docking_validation"})
@@ -215,7 +200,6 @@ def _wire_target_research(
 
     Returns (pdb_entries_node_id, chembl_activities_node_id).
     """
-    # Pathways + interactors use gene_symbol emitted by UniprotRecordNode.
     g.add_node("reactome", ReactomePathwaysForGeneNode())
     g.add_edge(uniprot_source_id, "reactome", {"gene_symbol": "gene_symbol"})
     g.add_node("kegg", KeggPathwaysForGeneNode())
@@ -223,7 +207,6 @@ def _wire_target_research(
     g.add_node("string", StringInteractorsNode())
     g.add_edge(uniprot_source_id, "string", {"gene_symbol": "gene_symbol"})
 
-    # ChEMBL activities for the target (used as a seed source for series).
     g.add_node("chembl_acts", ChemblActivitiesForTargetNode(max_rows=10))
     g.add_edge(uniprot_source_id, "chembl_acts", {"uniprot_id": "uniprot_id"})
 
@@ -231,7 +214,6 @@ def _wire_target_research(
         g.add_node("bindingdb", BindingDbLigandsForTargetNode(max_rows=10))
         g.add_edge(uniprot_source_id, "bindingdb", {"uniprot_id": "uniprot_id"})
 
-    # PDB entries for the target.
     if include_pdb:
         g.add_node("pdb_entries", PdbEntriesForUniprotNode(max_entries=5))
         g.add_edge(uniprot_source_id, "pdb_entries", {"uniprot_id": "uniprot_id"})
@@ -239,8 +221,7 @@ def _wire_target_research(
         g.add_node("pdb_entries", PdbEntriesForUniprotNode(max_entries=1))
         g.add_edge(uniprot_source_id, "pdb_entries", {"uniprot_id": "uniprot_id"})
 
-    # Target dossier aggregator (informational).
-    # Reactome is used for pathways — KEGG output is kept inside its own node.
+    # Reactome feeds the dossier pathways; KEGG output stays inside its own node.
     g.add_node(DOSSIER_NODE_ID, TargetDossierAssembleNode())
     g.add_edge(
         uniprot_source_id,
@@ -255,18 +236,12 @@ def _wire_target_research(
     return ("pdb_entries", "chembl_acts")
 
 
-# ---------------------------------------------------------------------------
-# Scenario A: Disease-first
-# ---------------------------------------------------------------------------
-
-
 def build_scenario_a_disease_first(opts: dict[str, Any]) -> WorkflowGraph:
     """Disease-first: disease_id → target panel + full pipeline for target_uniprot."""
     n_candidates = max(1, min(32, int(opts.get("n_candidates", 6))))
     thresholds = opts.get("thresholds") or {}
 
     g = WorkflowGraph()
-    # Entry + target panel (informational)
     g.add_node(
         "brief",
         ProgramBriefEntryNode(
@@ -277,13 +252,11 @@ def build_scenario_a_disease_first(opts: dict[str, Any]) -> WorkflowGraph:
     g.add_node("disease_targets", OpenTargetsDiseaseTargetsNode(max_targets=5))
     g.add_edge("brief", "disease_targets", {"program_brief": "program_brief"})
 
-    # Target-centric sources (user-supplied target_uniprot)
     g.add_node("uni_record", UniprotRecordNode())
     _pdb_id, chembl_id = _wire_target_research(
         g, uniprot_source_id="uni_record", include_bindingdb=False
     )
 
-    # Series from ChEMBL activities → LigandLibraryPrep
     g.add_node("series_seeds", SeriesFromChemblActivitiesNode(max_seeds=5))
     g.add_edge(chembl_id, "series_seeds", {"activities": "activities"})
     g.add_node(
@@ -295,7 +268,6 @@ def build_scenario_a_disease_first(opts: dict[str, Any]) -> WorkflowGraph:
     )
     g.add_edge("series_seeds", "series", {"seed_smiles": "seed_smiles"})
 
-    # Structure readiness from PDB entries
     g.add_node("structure", StructureReadinessNode())
     g.add_edge("pdb_entries", "structure", {"pdb_entries": "pdb_entries"})
 
@@ -308,11 +280,6 @@ def build_scenario_a_disease_first(opts: dict[str, Any]) -> WorkflowGraph:
         thresholds=thresholds,
     )
     return g
-
-
-# ---------------------------------------------------------------------------
-# Scenario B: Target-first
-# ---------------------------------------------------------------------------
 
 
 def build_scenario_b_target_first(opts: dict[str, Any]) -> WorkflowGraph:
@@ -333,7 +300,6 @@ def build_scenario_b_target_first(opts: dict[str, Any]) -> WorkflowGraph:
         g, uniprot_source_id="uni_record", include_bindingdb=True
     )
 
-    # Series from ChEMBL activities
     g.add_node("series_seeds", SeriesFromChemblActivitiesNode(max_seeds=5))
     g.add_edge(chembl_id, "series_seeds", {"activities": "activities"})
     g.add_node(
@@ -345,7 +311,6 @@ def build_scenario_b_target_first(opts: dict[str, Any]) -> WorkflowGraph:
     )
     g.add_edge("series_seeds", "series", {"seed_smiles": "seed_smiles"})
 
-    # Structure
     g.add_node("structure", StructureReadinessNode())
     g.add_edge("pdb_entries", "structure", {"pdb_entries": "pdb_entries"})
 
@@ -358,11 +323,6 @@ def build_scenario_b_target_first(opts: dict[str, Any]) -> WorkflowGraph:
         thresholds=thresholds,
     )
     return g
-
-
-# ---------------------------------------------------------------------------
-# Scenario C: Molecule-first
-# ---------------------------------------------------------------------------
 
 
 def build_scenario_c_molecule_first(opts: dict[str, Any]) -> WorkflowGraph:
@@ -378,20 +338,11 @@ def build_scenario_c_molecule_first(opts: dict[str, Any]) -> WorkflowGraph:
             objective=str(opts.get("objective", "")),
         ),
     )
-    # Standardize the seed SMILES
     g.add_node("seed_std", SmilesStandardizerNode())
-    # Predict ligand-based targets (informational)
     g.add_node("swiss_targets", SwissTargetPredictionNode(max_targets=5))
     g.add_edge("seed_std", "swiss_targets", {"standardized_smiles": "smiles"})
 
-    # Series from the standardized seed — use LigandLibraryPrep with list input.
-    # We need an adapter: seed_std emits standardized_smiles as str, but
-    # LigandLibraryPrep wants seed_smiles as list. We wrap via a tiny dedicated
-    # adapter node — but to avoid introducing yet another node, we feed
-    # ``series`` directly from ``initial_inputs`` and chain SmilesStandardizerNode
-    # into the design stage via a second connection.
-    # For V1, we keep it simple: run LigandLibraryPrep as a source taking
-    # ``seed_smiles`` list from ``initial_inputs`` (same list as the user's SMILES).
+    # LigandLibraryPrep takes seed_smiles straight from initial_inputs, no adapter node.
     g.add_node(
         "series",
         LigandLibraryPrepNode(
@@ -400,11 +351,9 @@ def build_scenario_c_molecule_first(opts: dict[str, Any]) -> WorkflowGraph:
         ),
     )
 
-    # Target-side fetches (user-supplied target_uniprot)
     g.add_node("uni_record", UniprotRecordNode())
     _wire_target_research(g, uniprot_source_id="uni_record", include_bindingdb=False)
 
-    # Structure
     g.add_node("structure", StructureReadinessNode())
     g.add_edge("pdb_entries", "structure", {"pdb_entries": "pdb_entries"})
 
@@ -417,11 +366,6 @@ def build_scenario_c_molecule_first(opts: dict[str, Any]) -> WorkflowGraph:
         thresholds=thresholds,
     )
     return g
-
-
-# ---------------------------------------------------------------------------
-# Scenario D: Hit/Lead optimization loop (fixed N rounds)
-# ---------------------------------------------------------------------------
 
 
 def build_scenario_d_optimization_loop(opts: dict[str, Any]) -> WorkflowGraph:
@@ -449,7 +393,6 @@ def build_scenario_d_optimization_loop(opts: dict[str, Any]) -> WorkflowGraph:
         g, uniprot_source_id="uni_record", include_bindingdb=True
     )
 
-    # Initial series from ChEMBL activities.
     g.add_node("series_seeds", SeriesFromChemblActivitiesNode(max_seeds=5))
     g.add_edge(chembl_id, "series_seeds", {"activities": "activities"})
     g.add_node(
@@ -469,7 +412,6 @@ def build_scenario_d_optimization_loop(opts: dict[str, Any]) -> WorkflowGraph:
         g.add_edge(prev, nid, {"series_package": "series_package"})
         prev = nid
 
-    # Structure
     g.add_node("structure", StructureReadinessNode())
     g.add_edge("pdb_entries", "structure", {"pdb_entries": "pdb_entries"})
 
@@ -482,11 +424,6 @@ def build_scenario_d_optimization_loop(opts: dict[str, Any]) -> WorkflowGraph:
         thresholds=thresholds,
     )
     return g
-
-
-# ---------------------------------------------------------------------------
-# Scenario metadata (exposed to the frontend)
-# ---------------------------------------------------------------------------
 
 
 SCENARIO_FORM_FIELDS: dict[str, list[dict[str, Any]]] = {
@@ -598,10 +535,7 @@ def build_scenario_initial_inputs(
     return out
 
 
-# Backwards-compatible "source spec" used by :class:`PresetEntry`. The list is
-# purely informational here since drug-discovery scenarios use form fields; we
-# still populate a minimal single-source entry so the generic preset catalog
-# treats these presets consistently.
+# Informational only: scenarios use form fields, but the preset catalog expects a source entry.
 SCENARIO_SOURCE_SPECS: dict[str, list[dict[str, Any]]] = {
     sid: [
         {

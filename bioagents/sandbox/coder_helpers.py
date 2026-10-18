@@ -2,6 +2,7 @@
 
 import importlib.util
 import os
+import re
 from pathlib import Path
 from typing import Any
 
@@ -99,6 +100,25 @@ def extract_original_query(messages: list) -> str | None:
     return None
 
 
+SUPERVISOR_TASK_PREFIX = "[SUPERVISOR TASK]"
+
+
+def extract_current_instruction(messages: list) -> str | None:
+    """The supervisor's most recent instruction, if it has given one.
+
+    Without this a code agent always re-read the first HumanMessage, so every
+    re-delegation restarted the whole pipeline from the original request instead of
+    doing the step the supervisor actually asked for.
+    """
+    for msg in reversed(messages):
+        if not isinstance(msg, HumanMessage):
+            continue
+        content = str(msg.content or "")
+        if SUPERVISOR_TASK_PREFIX in content:
+            return content.split(SUPERVISOR_TASK_PREFIX, 1)[1].strip() or None
+    return None
+
+
 def extract_available_data(messages: list) -> list[str]:
     """
     Extract available data from recent messages.
@@ -132,6 +152,7 @@ def build_task_with_output_dir(
     original_query: str | None,
     available_data: list[str],
     output_dir: str | None,
+    current_instruction: str | None = None,
 ) -> str:
     """
     Build the task string for the coder agent with output directory instructions.
@@ -146,7 +167,12 @@ def build_task_with_output_dir(
     """
     task_parts = []
 
-    if original_query:
+    if current_instruction and original_query and current_instruction != original_query:
+        task_parts.append(f"TASK: {current_instruction}\n")
+        task_parts.append(f"\nORIGINAL REQUEST (context only): {original_query}\n")
+    elif current_instruction:
+        task_parts.append(f"TASK: {current_instruction}\n")
+    elif original_query:
         task_parts.append(f"TASK: {original_query}\n")
 
     if available_data:
@@ -263,3 +289,155 @@ def append_code_agent_status_footer(content: str, telemetry: dict[str, bool]) ->
         "or report, not delegate the same execution task to a code agent again."
     )
     return content + footer
+
+
+COMPLETION_MARKER = "[CODER_STATUS: completed]"
+
+
+def append_completion_marker(content: str) -> str:
+    """Mark a delivered final_answer so the supervisor need not infer completion.
+
+    Completion used to be guessed from the prose, with patterns borrowed from model
+    training ("Accuracy:", "Epoch 1/10"). A bioinformatics run that ended with
+    "TASK COMPLETE" and a file list matched none of them, so finished work was
+    re-delegated until the workflow timed out.
+    """
+    if "[CODER_STATUS:" in content:
+        return content
+    return (
+        f"{content}\n\n{COMPLETION_MARKER} The coding agent delivered its final answer. "
+        "The task is done: use this result, do not delegate it again."
+    )
+
+
+#: Key under which a code agent's internal smolagents steps travel on its AIMessage
+#: (``additional_kwargs``) so the experiment runner can persist them in run.json.
+SUBAGENT_STEPS_KEY = "subagent_steps"
+
+_STEP_FIELD_LIMIT = 3000
+
+
+def _clip(value: Any, limit: int = _STEP_FIELD_LIMIT) -> str:
+    text = str(value)
+    if len(text) <= limit:
+        return text
+    return text[:limit] + f"\n... [truncated {len(text) - limit} chars]"
+
+
+def serialize_code_agent_steps(agent: Any, limit: int = _STEP_FIELD_LIMIT) -> list[dict[str, Any]]:
+    """Return a JSON-safe record of every internal step a smolagents agent took.
+
+    Captures, per action step: the code executed, the observations, the error (if
+    any), timing and whether it delivered the final answer. Planning steps record the
+    plan. The task step (the prompt) is skipped.
+    """
+    memory = getattr(agent, "memory", None)
+    steps = getattr(memory, "steps", None) or []
+    records: list[dict[str, Any]] = []
+    for step in steps:
+        if hasattr(step, "task") and not hasattr(step, "step_number"):
+            continue  # TaskStep: just the prompt
+        if hasattr(step, "plan") and not hasattr(step, "step_number"):
+            records.append({"type": "planning", "plan": _clip(step.plan, limit)})
+            continue
+        record: dict[str, Any] = {"type": "action", "step": getattr(step, "step_number", None)}
+        code = getattr(step, "code_action", None)
+        if code:
+            record["code"] = _clip(code, limit)
+        observations = getattr(step, "observations", None)
+        if observations:
+            record["observations"] = _clip(observations, limit)
+        error = getattr(step, "error", None)
+        if error is not None:
+            record["error"] = _clip(getattr(error, "message", None) or error, limit)
+        timing = getattr(step, "timing", None)
+        duration = getattr(timing, "duration", None) if timing is not None else None
+        if duration is not None:
+            record["duration_s"] = round(float(duration), 2)
+        if getattr(step, "is_final_answer", False):
+            record["is_final_answer"] = True
+            record["final_answer"] = _clip(getattr(step, "action_output", ""), limit)
+        records.append(record)
+    return records
+
+
+def summarize_code_agent_steps(steps: list[dict[str, Any]]) -> dict[str, Any]:
+    """Counts for a run record: steps taken, how many errored, whether it finished."""
+    actions = [s for s in steps if s.get("type") == "action"]
+    return {
+        "step_count": len(actions),
+        "error_count": sum(1 for s in actions if s.get("error")),
+        "delivered_final_answer": any(s.get("is_final_answer") for s in actions),
+    }
+
+
+_OUTPUT_DIR_PATTERN = re.compile(
+    r"Save all generated files for this task under\s+(\S+?)\s+relative to the shared project root"
+)
+
+
+def infer_output_dir(output_dir: str | None, query: str | None) -> str | None:
+    """Prefer the state's output_dir; otherwise read the task directory from the prompt."""
+    if output_dir:
+        return output_dir
+    if not query:
+        return None
+    match = _OUTPUT_DIR_PATTERN.search(query)
+    return match.group(1) if match else None
+
+
+def list_recent_artifacts(output_dir: str | None, since: float, limit: int = 40) -> list[str]:
+    """Files under ``output_dir`` written at or after ``since`` (epoch seconds)."""
+    if not output_dir:
+        return []
+    root = Path(output_dir)
+    if not root.is_dir():
+        return []
+    recent: list[tuple[float, str]] = []
+    try:
+        for path in root.rglob("*"):
+            try:
+                if path.is_file() and path.stat().st_mtime >= since:
+                    recent.append((path.stat().st_mtime, str(path)))
+            except OSError:
+                continue
+    except OSError:
+        return []
+    recent.sort(reverse=True)
+    return [p for _, p in recent[:limit]]
+
+
+def build_partial_result(
+    agent: Any,
+    reason: str,
+    output_dir: str | None = None,
+    since: float | None = None,
+    max_chars: int = 4000,
+) -> str:
+    """Salvage what a code agent computed when it did not deliver a final answer.
+
+    Combines the last successful observations with the files it wrote, so a result
+    that was computed but never passed to ``final_answer`` still reaches the supervisor.
+    """
+    memory = getattr(agent, "memory", None)
+    observations: list[str] = []
+    for step in getattr(memory, "steps", None) or []:
+        if hasattr(step, "task") and not hasattr(step, "step_number"):
+            continue
+        obs = getattr(step, "observations", None)
+        if obs and str(obs).strip() and getattr(step, "error", None) is None:
+            observations.append(str(obs).strip())
+    parts: list[str] = [f"PARTIAL RESULT — {reason}"]
+    if observations:
+        combined = "\n\n---\n\n".join(observations[-3:])
+        parts.append("Last successful execution output:\n" + _clip(combined, max_chars))
+    artifacts = list_recent_artifacts(output_dir, since) if since is not None else []
+    if artifacts:
+        parts.append("Files written during this run:\n" + "\n".join(f"- {a}" for a in artifacts))
+    if len(parts) == 1:
+        return ""
+    parts.append(
+        "These results were computed by the code agent but it did not deliver a final "
+        "answer; verify them from the files above rather than re-running the whole task."
+    )
+    return "\n\n".join(parts)

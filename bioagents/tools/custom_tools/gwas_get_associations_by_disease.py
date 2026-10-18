@@ -148,11 +148,9 @@ def gwas_get_associations_by_disease(
         P_value, SNP_ID, Risk_Allele, Trait. Returns an informative message when
         no associations are found.
     """
-    # Resolve MONDO → EFO mapping if needed
     resolved_id = _MONDO_TO_EFO.get(efo_id, efo_id)
     deadline = time.monotonic() + _MAX_TOOL_SECONDS
 
-    # Primary: search by EFO ID via /associations/search/findByEfoId
     params_by_id = {"efoId": resolved_id, "size": 100}
     rows = _fetch_pages(
         f"{_BASE}/associations/search/findByEfoId",
@@ -161,7 +159,6 @@ def gwas_get_associations_by_disease(
         deadline=deadline,
     )
 
-    # Fallback: search by trait name via /associations/search/findByEfoTrait
     if not rows and time.monotonic() < deadline:
         _EFO_TO_TRAIT = {
             "EFO_0000249": "Alzheimer disease",

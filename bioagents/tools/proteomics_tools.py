@@ -6,8 +6,6 @@ from typing import Literal
 import requests
 from langchain_core.tools import tool
 
-from bioagents.tools.provider_utils import get_provider_key_or_ask
-
 
 def fetch_uniprot_fasta_impl(protein_id: str, timeout: int = 10) -> str:
     """
@@ -142,29 +140,46 @@ def _unavailable_hosted_model(
     )
 
 
+def _with_fallback_note(raw: str, note: str) -> str:
+    """Attach a model-substitution note to an ESM tool's JSON result."""
+    try:
+        payload = json.loads(raw)
+    except (TypeError, ValueError):
+        return raw
+    if isinstance(payload, dict):
+        payload["fallback_note"] = note
+        return json.dumps(payload)
+    return raw
+
+
 @tool
 def run_esm3(sequence: str, provider: ESM3Provider = "EvolutionaryScale Forge") -> str:
-    """Run the ESM-3 (98B) model for protein representation via a hosted provider.
+    """Protein embedding for an ESM-3 request; runs public ESM-2 locally as the fallback.
 
-    ESM-3 is not runnable locally; it requires a hosted provider and an API key.
-    This tool does NOT fall back to a smaller model silently — if the provider is
-    not configured it returns an error telling you to use `run_esm_embedding`
-    (real, local ESM-2/ESM-1b) instead.
+    ESM-3 is gated (EvolutionaryScale licence / Forge API) and no client for it is
+    wired up in this deployment. Instead of failing, this computes a real embedding
+    with the public ESM-2 650M model (no API key or HF token needed) and says so in
+    'fallback_note'. The numbers are ESM-2 numbers, never ESM-3 numbers.
 
     Args:
         sequence: Protein sequence in single-letter amino acid code.
-        provider: Hosted provider to call. Requires the matching API key in the environment.
+        provider: Hosted provider that was requested; recorded in the note only.
 
     Returns:
-        JSON with the provider response, or status='error' explaining what is missing.
-        Never reports success for a computation that did not run.
+        JSON with status, model, device, embedding_dim, mean_embedding and a
+        'fallback_note' naming the substitution, or status='error' explaining exactly
+        what is missing. Never reports success for a computation that did not run.
     """
-    return _unavailable_hosted_model(
-        model="ESM-3 (98B)",
-        provider=provider,
-        sequence=sequence,
-        local_alternative="run_esm_embedding (local ESM-2/ESM-1b, no API key required)",
+    from bioagents.tools.esm_tools import run_esm_embedding
+
+    note = (
+        f"ESM-3 via '{provider}' is gated and no client for it is available here, so "
+        "NO ESM-3 computation was performed. Fell back to the public "
+        "facebook/esm2_t33_650M_UR50D model run locally (no token required); the "
+        "embedding below is an ESM-2 embedding."
     )
+    raw = str(run_esm_embedding.invoke({"sequence": sequence, "model": "esm2"}))
+    return _with_fallback_note(raw, note)
 
 
 @tool
@@ -193,15 +208,16 @@ def run_saprot(sequence: str, provider: SaProtProvider = "Tamarind Bio") -> str:
 
 @tool
 def run_esm2(sequence: str, provider: ESM2Provider = "Local (HuggingFace)") -> str:
-    """Compute real ESM-2 protein embeddings. Runs locally — no API key needed.
+    """Compute real ESM-2 protein embeddings. Runs locally — no API key or HF token needed.
 
-    This delegates to the local ESM-2 implementation and returns actual embedding
-    numbers computed from your sequence.
+    ESM-2 is a public model, so every provider value runs the same local ESM-2 650M
+    computation; a hosted provider name is only recorded in a note (no hosted client
+    is wired up, and none is needed).
 
     Args:
         sequence: Protein sequence in single-letter amino acid code.
-        provider: Execution backend. 'Local (HuggingFace)' runs ESM-2 on this machine
-            and is the default; hosted providers require their API key.
+        provider: Requested backend. 'Local (HuggingFace)' is the default; other values
+            still run locally and add a 'fallback_note' saying so.
 
     Returns:
         JSON with status, model, device, embedding_dim and the mean-pooled embedding
@@ -209,8 +225,11 @@ def run_esm2(sequence: str, provider: ESM2Provider = "Local (HuggingFace)") -> s
     """
     from bioagents.tools.esm_tools import run_esm_embedding
 
+    raw = str(run_esm_embedding.invoke({"sequence": sequence, "model": "esm2"}))
     if provider != "Local (HuggingFace)":
-        key = get_provider_key_or_ask(provider, "ESM-2")
-        if "[ENGAGEMENT_PENDING]" in key:
-            return key
-    return str(run_esm_embedding.invoke({"sequence": sequence, "model": "esm2"}))
+        return _with_fallback_note(
+            raw,
+            f"Provider '{provider}' has no client here; ESM-2 is public, so it was run "
+            "locally instead (no API key or HF token required).",
+        )
+    return raw

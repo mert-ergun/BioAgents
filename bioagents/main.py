@@ -44,22 +44,18 @@ def main():
     """Execute a demonstration query through the multi-agent workflow."""
     load_dotenv()
 
-    # Set up LangSmith monitoring if enabled
     try:
         setup_langsmith_environment()
     except ValueError as e:
         print(f"\n⚠ Warning: {e}")
         print("   Continuing without LangSmith monitoring...\n")
 
-    # Print LangSmith status
     print_langsmith_status()
 
-    # Create the multi-agent graph
     print("\nInitializing BioAgents Multi-Agent Workflow...")
     print("   - Agents: Supervisor, Research, Analysis, Report, Summary")
     graph = create_graph()
 
-    # Get LangSmith config for tracing
     try:
         langsmith_config = get_langsmith_config()
     except ValueError as e:
@@ -112,7 +108,6 @@ def main():
         invoke_cfg = {**(langsmith_config or {}), "recursion_limit": GRAPH_RECURSION_LIMIT}
         final_result = graph.invoke(initial_state, config=invoke_cfg)
 
-        # Print all messages with better formatting
         for i, message in enumerate(final_result["messages"], 1):
             print_message_details(message, i)
 

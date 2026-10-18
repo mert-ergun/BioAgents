@@ -227,7 +227,6 @@ class TestCreateGraph:
         *new_agent_mocks,
     ):
         """Test basic graph creation."""
-        # Setup mocks
         mock_summary.return_value = Mock()
         mock_supervisor.return_value = Mock()
         mock_research.return_value = Mock()
@@ -294,7 +293,6 @@ class TestCreateGraph:
 
         create_graph()
 
-        # Check research agent was created with ToolUniverse + UniProt tools
         research_call_args = mock_research.call_args[0][0]
         research_tool_names = {tool.name for tool in research_call_args}
         assert {
@@ -303,8 +301,7 @@ class TestCreateGraph:
             "tool_universe_call_tool",
         }.issubset(research_tool_names)
 
-        # Check analysis agent was created with correct tools. Assert on names rather
-        # than a count so adding a tool does not fail the test for the wrong reason.
+        # Assert on names, not a count, so adding a tool cannot fail this test.
         analysis_call_args = mock_analysis.call_args[0][0]
         analysis_tool_names = {tool.name for tool in analysis_call_args}
         assert {
@@ -312,14 +309,12 @@ class TestCreateGraph:
             "analyze_amino_acid_composition",
             "calculate_isoelectric_point",
             "run_aggrescan3d",
-            # Real ESM tools: the analysis agent must be able to score mutations
-            # itself instead of reporting a model result it never computed.
+            # The agent must score mutations itself, not report an uncomputed result.
             "score_mutations_esm",
             "saturation_scan_esm",
             "run_esm_embedding",
         }.issubset(analysis_tool_names)
 
-        # Check supervisor was created with correct members
         supervisor_call_args = mock_supervisor.call_args[0][0]
         assert "research" in supervisor_call_args
         assert "analysis" in supervisor_call_args
@@ -375,7 +370,6 @@ class TestCreateGraph:
 
         graph = create_graph()
 
-        # Compiled graph should have invoke and stream methods
         assert hasattr(graph, "invoke")
         assert hasattr(graph, "stream")
 
@@ -487,7 +481,6 @@ class TestGraphEdges:
 
     def test_should_continue_to_tools_logic(self):
         """Test the logic of should_continue_to_tools function."""
-        # Case 1: Has tool calls
         state_with_tools = {
             "messages": [
                 AIMessage(
@@ -498,20 +491,17 @@ class TestGraphEdges:
         }
         assert should_continue_to_tools(state_with_tools) == "tools"
 
-        # Case 2: No tool calls
         state_without_tools = {"messages": [AIMessage(content="No tools")]}
         assert should_continue_to_tools(state_without_tools) == "supervisor"
 
     def test_route_supervisor_logic(self):
         """Test the logic of route_supervisor function."""
-        # Test all valid routes
         assert route_supervisor({"next": "research"}) == "research"
         assert route_supervisor({"next": "analysis"}) == "analysis"
         assert route_supervisor({"next": "report"}) == "report"
         assert route_supervisor({"next": "critic"}) == "critic"
         assert route_supervisor({"next": "FINISH"}) == "summary"
 
-        # Test default case
         assert route_supervisor({}) == "summary"
 
 

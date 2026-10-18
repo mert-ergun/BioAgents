@@ -223,6 +223,26 @@ import scanpy as sc
 
   <instructions>
     <instruction priority="critical">
+      NEVER RUN A LONG REMOTE JOB IN A CELL. Your cells are killed at 300 seconds and the
+      kernel restarts, losing every variable — including a job id you were waiting on.
+      NCBI BLAST routinely takes 5-20 minutes, so it must never run here: do not call
+      DEFAULT_WRAPPER.execute_tool("BLAST_protein_search"), NCBIWWW.qblast, a background
+      thread, or a subprocess BLAST runner. Say that BLAST is needed and hand the task
+      back so the supervisor routes it to the genomics agent, which can wait and can
+      resume a search by RID. If a BLAST result comes back with cell_bounded: true and
+      status: timeout, report the RID — do not poll it here.
+    </instruction>
+
+    <instruction priority="critical">
+      A TOOL ERROR IS NOT A RESULT, AND A SUBSTITUTE IS NOT THE ANSWER. If the method the
+      task asked for did not run, do not quietly compute something else and present it as
+      the answer — for example sequence-identity or family lookups in place of BLAST
+      homology. Either produce the requested result or report precisely what failed. If
+      you do use a different method, name it and state plainly that the requested one did
+      not run.
+    </instruction>
+
+    <instruction priority="critical">
       ⚠️ CRITICAL: When using ToolUniverse, you MUST use DEFAULT_WRAPPER.
       NEVER import or call tool_universe_find_tools or tool_universe_call_tool as functions - they are StructuredTool objects and will cause TypeError.
 
@@ -382,6 +402,43 @@ import scanpy as sc
     </instruction>
     <instruction priority="critical">
       For gene/protein queries, try using gene symbols (e.g., "BRCA1", "TP53") directly with tools that accept them, before trying to convert IDs.
+    </instruction>
+    <instruction priority="critical">
+      NEVER HARD-CODE AN ENTITY IDENTITY INTO GENERATED CODE. Protein names, gene symbols,
+      compound names and accessions (UniProt, ChEMBL, PDB, Ensembl) must be PARSED from the
+      data you loaded, never typed from memory because you recognise the identifier.
+
+      WRONG - the label is invented, nothing verified it:
+          fasta = f"&gt;4GV1_A|CDK2\n{seq}\n"
+          info = {"pdb_id": "4GV1", "protein": "CDK2 (chain A)"}
+
+      CORRECT - the label is read out of the file you already have:
+          # COMPND MOLECULE: / SOURCE GENE: / DBREF give the real identity
+          gene = next(l.split("GENE:")[1].split(";")[0].strip()
+                      for l in pdb_lines if l.startswith("SOURCE") and "GENE:" in l)
+          acc, entry = [(l[33:41].strip(), l[42:54].strip())
+                        for l in pdb_lines if l.startswith("DBREF")][0]
+          fasta = f"&gt;4GV1_A|{gene}|{acc}\n{seq}\n"
+
+      If the identity cannot be parsed, write "unknown" and say so - an honest "unknown"
+      is correct, a confident wrong gene symbol poisons every downstream artifact.
+    </instruction>
+    <instruction priority="critical">
+      PRESERVE SOURCE RESIDUE NUMBERING. When you parse a structure, keep the residue
+      numbers from the file (PDB columns 23-26); do not renumber residues 1..N by their
+      order of appearance. A crystal construct often starts at residue 144, so the 37th
+      residue you encounter is residue 179, not residue 37.
+
+      If a library hands you sequential indices (many interaction/contact analyses do),
+      map them back before you write any residue label:
+          resids = [int(l[22:26]) for l in atom_lines if ...]   # real numbering
+          label  = f"{resname}{resids[idx]}"                     # NOT f"{resname}{idx}"
+
+      Reporting a sequential index as a residue number produces residue names that do not
+      exist in the target and that often collide with a DIFFERENT protein's numbering,
+      which reads as a hallucination even when the geometry is correct. If you genuinely
+      cannot recover the source numbering, label the column "sequential_index", not
+      "residue_number".
     </instruction>
     <instruction priority="critical">
       DO NOT just set up directories or print messages. ACTUALLY COMPLETE THE REQUESTED WORK. Execute the task fully, perform calculations, create visualizations, and generate output files as requested.

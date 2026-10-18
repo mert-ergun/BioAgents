@@ -37,11 +37,6 @@ def _safe_post_json(
     return r.json()
 
 
-# ---------------------------------------------------------------------------
-# Program brief entry nodes
-# ---------------------------------------------------------------------------
-
-
 class ProgramBriefEntryNode(WorkflowNode):
     """Source node that packages an entry-mode program brief for scenario graphs."""
 
@@ -89,11 +84,6 @@ class ProgramBriefEntryNode(WorkflowNode):
         else:
             brief["seed_smiles"] = [primary] if primary else []
         return {"program_brief": brief}
-
-
-# ---------------------------------------------------------------------------
-# Disease -> targets (Open Targets)
-# ---------------------------------------------------------------------------
 
 
 _OPEN_TARGETS_GRAPHQL = "https://api.platform.opentargets.org/api/v4/graphql"
@@ -245,11 +235,6 @@ class OpenTargetsTargetSummaryNode(WorkflowNode):
             return {"summary": {"error": str(exc)}}
         t = (data or {}).get("data", {}).get("target") or {}
         return {"summary": t}
-
-
-# ---------------------------------------------------------------------------
-# Pathway / network context
-# ---------------------------------------------------------------------------
 
 
 class ReactomePathwaysForGeneNode(WorkflowNode):
@@ -434,11 +419,6 @@ class StringInteractorsNode(WorkflowNode):
         return {"interactors": out}
 
 
-# ---------------------------------------------------------------------------
-# Ligand landscape
-# ---------------------------------------------------------------------------
-
-
 class BindingDbLigandsForTargetNode(WorkflowNode):
     workflow_type_id: ClassVar[str] = "dd_bindingdb_ligands_for_target"
 
@@ -532,16 +512,14 @@ class ChemblActivitiesForTargetNode(WorkflowNode):
         acc = str(inputs.get("uniprot_id", "")).strip().upper()
         if not acc:
             return {"activities": []}
-        tgt_url = (
-            "https://www.ebi.ac.uk/chembl/api/data/target.json"
-            f"?target_components__accession={acc}&limit=1"
-        )
+        # ChEMBL returns intermittent 500s; the client retries so a blip is not "no activities".
+        from bioagents.tools.chembl_client import ChemblClient, ChemblError
+
+        client = ChemblClient(read_timeout=self._timeout)
         try:
-            tgt = _safe_get_json(
-                tgt_url,
-                timeout=self._timeout,
-                headers={"Accept": "application/json"},
-            )
+            tgt = client.get_json("target.json", {"target_components__accession": acc, "limit": 1})
+        except ChemblError as exc:
+            return {"activities": [{"error": str(exc), "transient": exc.transient}]}
         except Exception as exc:
             return {"activities": [{"error": str(exc)}]}
         tgts = tgt.get("targets") or []
@@ -550,16 +528,10 @@ class ChemblActivitiesForTargetNode(WorkflowNode):
         tid = tgts[0].get("target_chembl_id")
         if not tid:
             return {"activities": []}
-        act_url = (
-            "https://www.ebi.ac.uk/chembl/api/data/activity.json"
-            f"?target_chembl_id={tid}&limit={self._max}"
-        )
         try:
-            acts = _safe_get_json(
-                act_url,
-                timeout=self._timeout,
-                headers={"Accept": "application/json"},
-            )
+            acts = client.get_json("activity.json", {"target_chembl_id": tid, "limit": self._max})
+        except ChemblError as exc:
+            return {"activities": [{"error": str(exc), "transient": exc.transient}]}
         except Exception as exc:
             return {"activities": [{"error": str(exc)}]}
         out: list[dict[str, Any]] = []
@@ -579,13 +551,8 @@ class ChemblActivitiesForTargetNode(WorkflowNode):
         return {"activities": out}
 
 
-# ---------------------------------------------------------------------------
-# Molecule-first target prediction
-# ---------------------------------------------------------------------------
-
-
 class SwissTargetPredictionNode(WorkflowNode):
-    """Query SwissTargetPrediction; fall back to a deterministic stub on failure.
+    """Query SwissTargetPrediction, reporting unavailability rather than inventing hits.
 
     The public site exposes a page that accepts a SMILES via POST. The response
     is HTML; we attempt a JSON fetch via their scoring endpoint and, if that
@@ -609,8 +576,8 @@ class SwissTargetPredictionNode(WorkflowNode):
     @property
     def metadata(self) -> NodeMetadata:
         return NodeMetadata(
-            name="SwissTargetPrediction (heuristic)",
-            description="Ligand-based target prediction; falls back to deterministic stub.",
+            name="SwissTargetPrediction",
+            description="Ligand-based target prediction; reports unavailable when it cannot run.",
             version="1.0.0",
             category="model",
         )
@@ -621,65 +588,46 @@ class SwissTargetPredictionNode(WorkflowNode):
 
     @property
     def output_schema(self) -> dict[str, str]:
-        return {"predicted_targets": "list", "stub": "bool"}
+        return {"predicted_targets": "list", "available": "bool", "message": "str"}
 
     def run(self, inputs: dict[str, Any]) -> dict[str, Any]:
         smiles = str(inputs.get("smiles", "")).strip()
         if not smiles:
-            return {"predicted_targets": [], "stub": True}
-        # Try POST to public endpoint; if it fails, return deterministic stub.
+            return {
+                "predicted_targets": [],
+                "available": False,
+                "message": "No SMILES supplied, so no target prediction was attempted.",
+            }
         try:
-            url = "http://www.swisstargetprediction.ch/predict.php"
             r = requests.post(
-                url,
+                "http://www.swisstargetprediction.ch/predict.php",
                 data={"organism": "Homo_sapiens", "smiles": smiles},
                 timeout=self._timeout,
             )
-            if r.status_code != 200 or "<html" not in (r.text[:80].lower()):
-                raise RuntimeError("non-HTML SwissTargetPrediction response")
-            # SwissTargetPrediction does not expose a stable JSON API; to keep
-            # this deterministic and offline-safe we fall through to the stub.
-            raise RuntimeError("no structured JSON available")
-        except Exception:  # nosec B110 - best-effort network probe; deterministic stub below
-            pass
-        targets = _stub_target_panel(smiles, self._max)
-        return {"predicted_targets": targets, "stub": True}
-
-
-def _stub_target_panel(smiles: str, max_targets: int) -> list[dict[str, Any]]:
-    """Deterministic stub target panel derived from SMILES content."""
-    bases = [
-        ("EGFR", "P00533"),
-        ("VEGFR2", "P35968"),
-        ("BRAF", "P15056"),
-        ("HDAC1", "Q13547"),
-        ("CDK2", "P24941"),
-        ("ABL1", "P00519"),
-        ("ESR1", "P03372"),
-        ("AR", "P10275"),
-        ("SRC", "P12931"),
-        ("MAP2K1", "Q02750"),
-    ]
-    # Scale by length and Carbon count for deterministic variation.
-    seed = sum(ord(c) for c in smiles) % 9973
-    out: list[dict[str, Any]] = []
-    for i, (sym, acc) in enumerate(bases[:max_targets]):
-        score = max(0.05, min(0.95, ((seed * (i + 3)) % 1000) / 1000.0))
-        out.append(
-            {
-                "symbol": sym,
-                "uniprot_id": acc,
-                "probability": round(score, 3),
-                "source": "stub",
+            reachable = r.status_code == 200
+        except Exception as exc:
+            return {
+                "predicted_targets": [],
+                "available": False,
+                "message": f"SwissTargetPrediction could not be reached: {exc}",
             }
-        )
-    out.sort(key=lambda d: d["probability"], reverse=True)
-    return out
 
-
-# ---------------------------------------------------------------------------
-# Structure availability
-# ---------------------------------------------------------------------------
+        # The service returns an HTML page and publishes no stable JSON API, so there is
+        # nothing to parse. It previously fell through to a panel of fixed gene symbols
+        # (EGFR, CDK2, BRAF...) with probabilities derived from a character sum of the
+        # SMILES — fabricated numbers for a query-independent list, which is where stray
+        # "predicted CDK2 target" claims came from. No prediction is reported instead.
+        return {
+            "predicted_targets": [],
+            "available": False,
+            "message": (
+                "SwissTargetPrediction was "
+                + ("reached" if reachable else "unreachable")
+                + " but exposes no machine-readable results, so NO target prediction was "
+                "produced. Do not report predicted targets for this molecule from this "
+                "node; use a real target-prediction tool or state that none ran."
+            ),
+        }
 
 
 class UniprotRecordNode(WorkflowNode):
@@ -709,8 +657,7 @@ class UniprotRecordNode(WorkflowNode):
 
     @property
     def output_schema(self) -> dict[str, str]:
-        # ``uniprot_id`` is passed through so downstream nodes (ChEMBL, PDB,
-        # BindingDB, BLAST, Foldseek, ProBiS) can share one source for the id.
+        # ``uniprot_id`` passes through so downstream nodes share one source for the id.
         return {"uniprot_record": "dict", "gene_symbol": "str", "uniprot_id": "str"}
 
     def run(self, inputs: dict[str, Any]) -> dict[str, Any]:
@@ -828,11 +775,6 @@ class PdbEntriesForUniprotNode(WorkflowNode):
             if isinstance(r, dict) and r.get("identifier"):
                 entries.append({"pdb_id": r["identifier"], "score": r.get("score")})
         return {"pdb_entries": entries}
-
-
-# ---------------------------------------------------------------------------
-# Target dossier assembly
-# ---------------------------------------------------------------------------
 
 
 class TargetDossierAssembleNode(WorkflowNode):

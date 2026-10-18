@@ -79,7 +79,6 @@ class _DesignStubBase(WorkflowNode):
         per_seed = max(1, self._n // len(seeds))
         for seed_smi in seeds:
             out.extend(enumerate_methyl_analogues(seed_smi, per_seed + 1))
-        # Drop duplicates while preserving order.
         seen: set[str] = set()
         uniq: list[str] = []
         for s in out:

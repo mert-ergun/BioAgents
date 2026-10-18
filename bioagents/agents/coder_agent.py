@@ -1,6 +1,7 @@
 """Coder Agent for generating and executing code via Jupyter notebooks."""
 
 import logging
+import time
 import traceback
 from collections.abc import Callable
 from typing import Any
@@ -14,12 +15,19 @@ from bioagents.prompts.prompt_loader import load_prompt
 from bioagents.sandbox.coder_executor import create_executor
 from bioagents.sandbox.coder_helpers import (
     DEFAULT_CODER_IMPORTS,
+    SUBAGENT_STEPS_KEY,
     append_code_agent_status_footer,
+    append_completion_marker,
+    build_partial_result,
     build_task_with_output_dir,
     collect_code_agent_run_telemetry,
     extract_available_data,
+    extract_current_instruction,
     extract_original_query,
     format_coder_result,
+    infer_output_dir,
+    serialize_code_agent_steps,
+    summarize_code_agent_steps,
 )
 from bioagents.tools.smol_tool_wrappers import ToolUniverseExecuteTool, ToolUniverseSearchTool
 
@@ -28,24 +36,74 @@ logger = logging.getLogger("BioAgents")
 CODER_AGENT_PROMPT = load_prompt("coder")
 
 
-def _extract_partial_coder_output(agent: CodeAgent) -> str:
-    """Extract the best partial output from a coder agent that timed out mid-run."""
-    memory = getattr(agent, "memory", None)
-    if not memory or not getattr(memory, "steps", None):
-        return ""
-    parts: list[str] = []
-    for step in memory.steps:
-        if hasattr(step, "task"):
-            continue
-        obs = getattr(step, "observations", None)
-        if obs and str(obs).strip():
-            parts.append(str(obs).strip())
-    if not parts:
-        return ""
-    combined = "\n\n---\n\n".join(parts[-3:])
-    if len(combined) > 4000:
-        combined = combined[:4000] + "\n... [truncated]"
-    return combined
+def _sandbox_fatal_error(agent: CodeAgent) -> str | None:
+    executor = getattr(agent, "python_executor", None)
+    error = getattr(executor, "fatal_error", None)
+    return error if isinstance(error, str) and error else None
+
+
+def _delivered_final_answer(agent: CodeAgent) -> bool:
+    steps = getattr(getattr(agent, "memory", None), "steps", None) or []
+    return any(getattr(step, "is_final_answer", False) for step in steps)
+
+
+def _coder_message(content: str, internal_steps: list[dict[str, Any]]) -> AIMessage:
+    """The coder's result for the supervisor, carrying its internal steps for run logs."""
+    return AIMessage(
+        content=content,
+        additional_kwargs={
+            SUBAGENT_STEPS_KEY: internal_steps,
+            "subagent_summary": summarize_code_agent_steps(internal_steps),
+        },
+    )
+
+
+def _is_timeout_error(e: BaseException) -> bool:
+    if isinstance(e, TimeoutError) or "TimeoutError" in type(e).__name__:
+        return True
+    cause = getattr(e, "__cause__", None) or getattr(e, "__context__", None)
+    while cause:
+        if isinstance(cause, TimeoutError) or "Timeout" in type(cause).__name__:
+            return True
+        cause = getattr(cause, "__cause__", None) or getattr(cause, "__context__", None)
+    return False
+
+
+def _content_for_exception(
+    e: Exception, agent: CodeAgent, artifact_dir: str | None, started_at: float
+) -> str:
+    """Build the supervisor-facing message for a coder run that raised."""
+    if isinstance(e, RecursionError):
+        logger.warning("Coder agent RecursionError (kernel state reuse): %s", e)
+        return (
+            "The coding agent encountered an internal recursion error caused by "
+            "reusing a kernel that already completed a previous run.\n\n"
+            "[CODER_STATUS: max_steps_reached] The coding agent ended in a "
+            "degraded state. The supervisor must choose FINISH or report, not "
+            "delegate the same execution task to a code agent again."
+        )
+    if _is_timeout_error(e):
+        partial = build_partial_result(agent, "the LLM call timed out", artifact_dir, started_at)
+        logger.warning("Coder agent timed out (partial output: %s)", bool(partial))
+        if partial:
+            return (
+                f"{partial}\n\n[CODER_STATUS: timeout] The coding agent's LLM call timed "
+                "out before completing all steps. The partial results above are the best "
+                "output available. The supervisor must choose FINISH or report, not "
+                "delegate the same execution task to a code agent again."
+            )
+        return (
+            "The coding agent's LLM call timed out before producing any output.\n\n"
+            "[CODER_STATUS: max_steps_reached] The supervisor must choose FINISH "
+            "or report, not delegate the same execution task to a code agent again."
+        )
+    tb = traceback.format_exc()
+    content = f"Error executing code: {e}\n\nTraceback:\n{tb}"
+    logger.error("Coder agent error: %s", content)
+    partial = build_partial_result(
+        agent, f"the coding agent crashed ({e})", artifact_dir, started_at
+    )
+    return f"{partial}\n\n{content}" if partial else content
 
 
 def create_coder_agent(
@@ -115,21 +173,48 @@ def create_coder_node(agent: CodeAgent) -> Callable:
         original_query = extract_original_query(messages)
         available_data = extract_available_data(messages)
         output_dir = state.get("output_dir")
+        artifact_dir = infer_output_dir(output_dir, original_query)
 
-        task = build_task_with_output_dir(original_query, available_data, output_dir)
+        task = build_task_with_output_dir(
+            original_query,
+            available_data,
+            output_dir,
+            current_instruction=extract_current_instruction(messages),
+        )
+        started_at = time.time()
 
         try:
             logger.info("Starting coder agent execution")
             result = agent.run(task)
-            content = format_coder_result(result)
-            content = append_code_agent_status_footer(
-                content, collect_code_agent_run_telemetry(agent)
-            )
+            sandbox_error = _sandbox_fatal_error(agent)
+            if sandbox_error:
+                partial = build_partial_result(
+                    agent, "the code sandbox died", artifact_dir, started_at
+                )
+                content = f"{partial}\n\n{sandbox_error}" if partial else sandbox_error
+                content += (
+                    " The supervisor must not delegate the same execution task to a code "
+                    "agent again; report the partial results above or FINISH."
+                )
+            else:
+                content = format_coder_result(result)
+                content = append_code_agent_status_footer(
+                    content, collect_code_agent_run_telemetry(agent)
+                )
+                if _delivered_final_answer(agent):
+                    content = append_completion_marker(content)
+                else:
+                    partial = build_partial_result(
+                        agent,
+                        "the coding agent stopped without calling final_answer",
+                        artifact_dir,
+                        started_at,
+                    )
+                    if partial:
+                        content = f"{content}\n\n{partial}"
 
-            # The LangChainModelAdapter injects a final_answer fallback when the LLM
-            # returns empty responses repeatedly. That message has no [CODER_STATUS:]
-            # marker, so the supervisor won't know to stop and will re-delegate the
-            # same task, causing a kernel-state RecursionError on the next run.
+            # The adapter's empty-response fallback carries no [CODER_STATUS:] marker,
+            # so without this the supervisor re-delegates the same task.
             if (
                 "returned empty responses repeatedly" in str(result)
                 and "[CODER_STATUS:" not in content
@@ -141,85 +226,30 @@ def create_coder_node(agent: CodeAgent) -> Callable:
                     "code agent again."
                 )
 
-            # Collect execution steps for the audit trail
-            execution_steps: list[dict[str, Any]] = []
-            for step in agent.memory.steps:
-                if hasattr(step, "task"):
-                    # TaskStep — skip, it's just the prompt
-                    continue
-                step_info: dict[str, Any] = {}
-                if hasattr(step, "tool_calls") and step.tool_calls:
-                    step_info["tool_calls"] = [
-                        {
-                            "tool": tc.name,
-                            "args": tc.arguments,
-                            "result": getattr(tc, "result", None),
-                        }
-                        for tc in step.tool_calls
-                    ]
-                if hasattr(step, "observations") and step.observations:
-                    step_info["observations"] = str(step.observations)
-                if step_info:
-                    execution_steps.append(step_info)
-
+            internal_steps = serialize_code_agent_steps(agent)
             structured_data = {
                 "code": content,
                 "language": "python",
                 "description": f"Code execution result for: {original_query}",
-                "execution_steps": execution_steps,
+                "execution_steps": internal_steps,
                 "execution_ready": True,
             }
 
+            # Must travel as a message: state has no data/raw_output channels, so
+            # LangGraph drops an update without "messages".
             return {
+                "messages": [_coder_message(content, internal_steps)],
                 "data": structured_data,
                 "raw_output": content,
-                "tool_calls": execution_steps,
+                "tool_calls": internal_steps,
                 "error": None,
             }
 
         except Exception as e:
-            tb = traceback.format_exc()
-
-            is_recursion = isinstance(e, RecursionError)
-            is_timeout = isinstance(e, TimeoutError) or "TimeoutError" in str(type(e).__name__)
-            if not is_timeout and not is_recursion:
-                cause = getattr(e, "__cause__", None) or getattr(e, "__context__", None)
-                while cause and not is_timeout:
-                    is_timeout = (
-                        isinstance(cause, TimeoutError) or "Timeout" in type(cause).__name__
-                    )
-                    cause = getattr(cause, "__cause__", None) or getattr(cause, "__context__", None)
-
-            if is_recursion:
-                content = (
-                    "The coding agent encountered an internal recursion error caused by "
-                    "reusing a kernel that already completed a previous run.\n\n"
-                    "[CODER_STATUS: max_steps_reached] The coding agent ended in a "
-                    "degraded state. The supervisor must choose FINISH or report, not "
-                    "delegate the same execution task to a code agent again."
-                )
-                logger.warning("Coder agent RecursionError (kernel state reuse): %s", e)
-            elif is_timeout:
-                partial_output = _extract_partial_coder_output(agent)
-                if partial_output:
-                    content = (
-                        f"{partial_output}\n\n"
-                        f"[CODER_STATUS: timeout] The coding agent's LLM call timed out "
-                        f"before completing all steps. The partial results above are the "
-                        f"best output available. The supervisor must choose FINISH or report, "
-                        f"not delegate the same execution task to a code agent again."
-                    )
-                else:
-                    content = (
-                        "The coding agent's LLM call timed out before producing any output.\n\n"
-                        "[CODER_STATUS: max_steps_reached] The supervisor must choose FINISH "
-                        "or report, not delegate the same execution task to a code agent again."
-                    )
-                logger.warning("Coder agent timed out (partial output: %s)", bool(partial_output))
-            else:
-                content = f"Error executing code: {e}\n\nTraceback:\n{tb}"
-                logger.error(f"Coder agent error: {content}")
-
-            return {"messages": [AIMessage(content=content)], "next": "supervisor"}
+            content = _content_for_exception(e, agent, artifact_dir, started_at)
+            return {
+                "messages": [_coder_message(content, serialize_code_agent_steps(agent))],
+                "next": "supervisor",
+            }
 
     return coder_node

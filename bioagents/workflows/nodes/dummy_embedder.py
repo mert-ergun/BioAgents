@@ -41,5 +41,5 @@ class DummyEmbedderNode(WorkflowNode):
         sequence = inputs["sequence"]
         if not isinstance(sequence, str):
             raise TypeError("sequence must be str")
-        _ = len(sequence)  # could influence dummy output later
+        _ = len(sequence)
         return {"embedding": [0.0] * self._dim}

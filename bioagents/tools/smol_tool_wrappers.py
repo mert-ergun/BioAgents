@@ -1,4 +1,15 @@
-"""Wrappers for ToolUniverse tools to be used with smolagents."""
+"""Wrappers for ToolUniverse and ESM tools to be used with smolagents.
+
+Every ``forward`` below reaches its implementation through ``import_module`` rather than
+a literal ``from bioagents... import ...``. smolagents derives each tool's pip
+requirements by parsing the import statements out of the tool's own source, then runs
+``pip install`` for them inside the sandbox kernel before the agent takes its first
+step. A literal import made "bioagents" a requirement, so the kernel ran
+``pip install bioagents``, re-resolved the whole dependency tree and pulled a 554 MB
+torch wheel from PyPI over the image's pinned CUDA build — on every coder start, and
+leaving a half-installed torch whenever it was interrupted. A module name inside a call
+is invisible to that parser, which is the point.
+"""
 
 from typing import Any, ClassVar
 
@@ -21,9 +32,11 @@ class ToolUniverseSearchTool(Tool):
     output_type = "string"
 
     def forward(self, description: str, limit: int = 5) -> str:
-        from bioagents.tools.tool_universe import DEFAULT_WRAPPER
+        import importlib
 
-        return DEFAULT_WRAPPER.find_tools(description, limit=limit)
+        wrapper = importlib.import_module("bioagents.tools.tool_universe").DEFAULT_WRAPPER
+
+        return str(wrapper.find_tools(description, limit=limit))
 
 
 class ToolUniverseExecuteTool(Tool):
@@ -42,9 +55,11 @@ class ToolUniverseExecuteTool(Tool):
     output_type = "string"
 
     def forward(self, tool_name: str, arguments_json: str = "{}") -> str:
-        from bioagents.tools.tool_universe import DEFAULT_WRAPPER
+        import importlib
 
-        return DEFAULT_WRAPPER.execute_tool(tool_name, arguments_json)
+        wrapper = importlib.import_module("bioagents.tools.tool_universe").DEFAULT_WRAPPER
+
+        return str(wrapper.execute_tool(tool_name, arguments_json))
 
 
 class EsmMutationScoringTool(Tool):
@@ -76,15 +91,33 @@ class EsmMutationScoringTool(Tool):
             "description": "Model alias: 'esm1b' (default), 'esm2', 'esm2-small', 'esm2-tiny'.",
             "nullable": True,
         },
+        "scoring_method": {
+            "type": "string",
+            "description": "'masked_marginal' (default, more accurate) or 'wt_marginal' (one pass).",
+            "nullable": True,
+        },
     }
     output_type = "string"
 
-    def forward(self, sequence: str, mutations: str, model: str = "esm1b") -> str:
-        from bioagents.tools.esm_tools import score_mutations_esm
+    def forward(
+        self,
+        sequence: str,
+        mutations: str,
+        model: str = "esm1b",
+        scoring_method: str = "masked_marginal",
+    ) -> str:
+        import importlib
+
+        impl = importlib.import_module("bioagents.tools.esm_tools").score_mutations_esm
 
         return str(
-            score_mutations_esm.invoke(
-                {"sequence": sequence, "mutations": mutations, "model": model}
+            impl.invoke(
+                {
+                    "sequence": sequence,
+                    "mutations": mutations,
+                    "model": model,
+                    "scoring_method": scoring_method,
+                }
             )
         )
 
@@ -119,19 +152,41 @@ class EsmSaturationScanTool(Tool):
             "description": "How many of the most deleterious variants to highlight (default 10).",
             "nullable": True,
         },
+        "scoring_method": {
+            "type": "string",
+            "description": "'masked_marginal' (default, more accurate) or 'wt_marginal' (one pass).",
+            "nullable": True,
+        },
+        "output_dir": {
+            "type": "string",
+            "description": "Directory for the all-variants CSV (use the task output dir).",
+            "nullable": True,
+        },
     }
     output_type = "string"
 
-    def forward(self, sequence: str, positions: str, model: str = "esm1b", top_n: int = 10) -> str:
-        from bioagents.tools.esm_tools import saturation_scan_esm
+    def forward(
+        self,
+        sequence: str,
+        positions: str,
+        model: str = "esm1b",
+        top_n: int = 10,
+        scoring_method: str = "masked_marginal",
+        output_dir: str = "esm_scan_output",
+    ) -> str:
+        import importlib
+
+        impl = importlib.import_module("bioagents.tools.esm_tools").saturation_scan_esm
 
         return str(
-            saturation_scan_esm.invoke(
+            impl.invoke(
                 {
                     "sequence": sequence,
                     "positions": positions,
                     "model": model,
                     "top_n": top_n,
+                    "scoring_method": scoring_method,
+                    "output_dir": output_dir,
                 }
             )
         )
@@ -160,9 +215,11 @@ class EsmEmbeddingTool(Tool):
     output_type = "string"
 
     def forward(self, sequence: str, model: str = "esm2") -> str:
-        from bioagents.tools.esm_tools import run_esm_embedding
+        import importlib
 
-        return str(run_esm_embedding.invoke({"sequence": sequence, "model": model}))
+        impl = importlib.import_module("bioagents.tools.esm_tools").run_esm_embedding
+
+        return str(impl.invoke({"sequence": sequence, "model": model}))
 
 
 def get_esm_smol_tools() -> list:

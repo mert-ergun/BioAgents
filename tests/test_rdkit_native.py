@@ -1,13 +1,4 @@
-"""Tests for the native RDKit backend.
-
-Regression context: the 22 chemistry tools used to shell out to a Node.js
-`rdkit-agent` CLI that was not installed. Every one of them was unusable, and some
-reported the missing CLI as a *chemical* verdict — `validate_smiles` answered
-`{"success": true, "valid": false}` for perfectly good molecules, which would make a
-caller discard them. Separately, a benchmark run had an agent fake a synthetic
-accessibility score with `sa = 3.0 + np.random.normal(0, 0.5)` because it could not
-find a real one, while RDKit's SA_Score shipped in the installed distribution all along.
-"""
+"""Tests for the native RDKit backend."""
 
 from __future__ import annotations
 
@@ -61,11 +52,7 @@ class TestValidation:
         assert result["valid"] is False
 
     def test_invalid_verdict_is_never_an_infrastructure_failure(self) -> None:
-        """A chemical verdict must not be produced by a tooling problem.
-
-        The old backend returned valid=False when its CLI was absent. If RDKit itself
-        is missing the backend raises instead, so a caller can tell the two apart.
-        """
+        """A chemical verdict must not be produced by a tooling problem."""
         result = check_smiles(BENZENE)
 
         assert result["valid"] is True, (

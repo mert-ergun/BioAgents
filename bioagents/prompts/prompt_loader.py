@@ -34,15 +34,7 @@ def _humanize_tag(tag: str) -> str:
     return tag.replace("_", " ").replace("-", " ").title()
 
 
-# ---------------------------------------------------------------------------
-# Experiment prompt-override context variable
-# ---------------------------------------------------------------------------
-# The experiment runner sets this context variable before executing each run.
-# It maps prompt_name -> override text (plain string, replaces XML-parsed output).
-# The global load_prompt() function checks this first; if an override exists
-# for the requested prompt, it returns that text without loading the XML file.
-# This enables per-run system prompt tweaks without modifying any agent code.
-# ---------------------------------------------------------------------------
+# Per-run prompt overrides set by the experiment runner: prompt_name -> replacement text.
 _experiment_prompt_overrides: ContextVar[dict[str, str] | None] = ContextVar(
     "experiment_prompt_overrides", default=None
 )
@@ -134,102 +126,85 @@ class PromptLoader:
         Returns:
             The formatted prompt text
         """
-        # Build the prompt text
         sections = []
 
-        # Add role section
         role = root.find("role")
         if role is not None and role.text:
             sections.append(role.text.strip())
 
-        # Add capabilities (if present)
         capabilities = root.find("capabilities")
         if capabilities is not None:
             cap_text = self._format_capabilities(capabilities)
             if cap_text:
                 sections.append(cap_text)
 
-        # Add team information (for supervisor)
         team = root.find("team")
         if team is not None:
             team_text = self._format_team(team)
             if team_text:
                 sections.append(team_text)
 
-        # Add responsibilities (for report agent)
         responsibilities = root.find("responsibilities")
         if responsibilities is not None:
             resp_text = self._format_responsibilities(responsibilities)
             if resp_text:
                 sections.append(resp_text)
 
-        # Add evaluation criteria (if present)
         evaluation_criteria = root.find("evaluation_criteria")
         if evaluation_criteria is not None:
             eval_text = self._format_evaluation_criteria(evaluation_criteria)
             if eval_text:
                 sections.append(eval_text)
 
-        # Add output format (if present)
         output_format = root.find("output_format")
         if output_format is not None:
             out_text = self._format_output_format(output_format)
             if out_text:
                 sections.append(out_text)
 
-        # Add data formats (if present)
         data_formats = root.find("data_formats")
         if data_formats is not None:
             df_text = self._format_data_formats(data_formats)
             if df_text:
                 sections.append(df_text)
 
-        # Add instructions
         instructions = root.find("instructions")
         if instructions is not None:
             inst_text = self._format_instructions(instructions)
             if inst_text:
                 sections.append(inst_text)
 
-        # Add error handling
         error_handling = root.find("error_handling")
         if error_handling is not None:
             err_text = self._format_error_handling(error_handling)
             if err_text:
                 sections.append(err_text)
 
-        # Add workflow (if present)
         workflow = root.find("workflow")
         if workflow is not None:
             workflow_text = self._format_workflow(workflow)
             if workflow_text:
                 sections.append(workflow_text)
 
-        # Add decision guidelines (for supervisor)
         decision_guidelines = root.find("decision_guidelines")
         if decision_guidelines is not None:
             guidelines_text = self._format_decision_guidelines(decision_guidelines)
             if guidelines_text:
                 sections.append(guidelines_text)
 
-        # Add communication style
         comm_style = root.find("communication_style")
         if comm_style is not None:
             style_text = self._format_communication_style(comm_style)
             if style_text:
                 sections.append(style_text)
 
-        # Add best practices
         best_practices = root.find("best_practices")
         if best_practices is not None:
             bp_text = self._format_best_practices(best_practices)
             if bp_text:
                 sections.append(bp_text)
 
-        # Add examples (if present)
-        # Render any section this loader has no dedicated formatter for, in document
-        # order. Without this, authoring a new section silently drops it from the prompt:
-        # the file looks correct on disk while the model never receives the content.
+        # Render sections with no dedicated formatter, in document order, so none is dropped.
         for child in root:
             if child.tag in _HANDLED_SECTIONS:
                 continue
@@ -243,7 +218,6 @@ class PromptLoader:
             if examples_text:
                 sections.append(examples_text)
 
-        # Join all sections with double newlines
         return "\n\n".join(sections)
 
     def _render_unconsumed(self, parent: ET.Element, consumed: set[str]) -> list[str]:
@@ -310,9 +284,7 @@ class PromptLoader:
             desc = capability.find("description")
             tool = capability.find("tool")
 
-            # The capability name may be a <name> child or a name="" attribute, and the
-            # tools may be a single <tool> or a <tools> wrapper. Supporting only one
-            # shape silently drops whole capabilities — including which tools serve them.
+            # Name may be a <name> child or a name="" attribute; tools a <tool> or <tools> wrapper.
             label = (
                 name.text.strip()
                 if (name is not None and name.text)
@@ -334,8 +306,7 @@ class PromptLoader:
                     cap_line += f" (Tools: {', '.join(dict.fromkeys(tool_names))})"
                 lines.append(cap_line)
 
-                # Capabilities often carry nested detail (steps, examples, parameter
-                # notes). Dropping it strips the concrete how-to an agent needs.
+                # Capabilities often carry nested detail (steps, examples) that must not be dropped.
                 for child in capability:
                     if child.tag in ("name", "description", "tool", "tools"):
                         continue
@@ -525,12 +496,10 @@ class PromptLoader:
         """Format the output format section."""
         lines = ["Output Format:"]
 
-        # Handle requirements
         for req in output_format.findall("requirement"):
             if req.text:
                 lines.append(f"- {req.text.strip()}")
 
-        # Handle sections
         for section in output_format.findall("section"):
             name = section.get("name")
             desc = section.find("description")
@@ -604,12 +573,10 @@ class PromptLoader:
         for i, example in enumerate(examples.findall("example"), 1):
             lines.append(f"\nExample {i}:")
 
-            # Format all sub-elements of the example
             for child in example:
                 tag = child.tag
                 label = tag.capitalize()
 
-                # If child has nested elements (like <actions><action>...</actions>)
                 if len(child) > 0:
                     lines.append(f"  {label}:")
                     for subchild in child:
@@ -625,7 +592,6 @@ class PromptLoader:
                                 lines.append(f"    {prefix}{indented_text.lstrip()}")
                             else:
                                 lines.append(f"    {prefix}{text}")
-                # If child only has text
                 elif child.text and child.text.strip():
                     text = child.text.strip()
                     if "\n" in text:
@@ -637,7 +603,6 @@ class PromptLoader:
         return "\n".join(lines) if len(lines) > 1 else ""
 
 
-# Global instance for convenience
 _loader = PromptLoader()
 
 
@@ -659,41 +624,32 @@ def load_prompt(prompt_name: str) -> str:
     Returns:
         The formatted prompt text (with playbook appended if ACE enabled)
     """
-    # Check for experiment-level per-run prompt override
     overrides = _experiment_prompt_overrides.get()
     if overrides and prompt_name in overrides:
         return overrides[prompt_name]
 
-    # Load base prompt from XML
     base_prompt = _loader.load_prompt(prompt_name)
 
-    # Check if ACE is enabled
     try:
         from bioagents.learning import is_ace_enabled
         from bioagents.learning.playbook_manager import _parse_playbook_line, load_playbook
 
         if is_ace_enabled():
-            # Load playbook
             playbook = load_playbook(prompt_name)
 
-            # Only append if playbook has bullets (not empty)
-            # Check if playbook has any bullet lines (format: [id] helpful=X harmful=Y :: content)
+            # Playbook bullet format: [id] helpful=X harmful=Y :: content
             import re
 
             has_bullets = bool(re.search(r"\[[^\]]+\]\s*helpful=\d+\s*harmful=\d+\s*::", playbook))
 
             if has_bullets:
-                # Filter bullets: only include helpful ones (helpful > harmful)
-                # Format playbook bullets for prompt
                 playbook_lines = playbook.strip().split("\n")
                 filtered_bullets = []
 
                 for line in playbook_lines:
-                    # Skip section headers and empty lines
                     if line.strip().startswith("#") or not line.strip():
                         continue
 
-                    # Parse bullet line
                     parsed = _parse_playbook_line(line)
                     if parsed:
                         helpful = parsed.get("helpful", 0) or 0
@@ -701,15 +657,12 @@ def load_prompt(prompt_name: str) -> str:
                         content_str = parsed.get("content", "")
                         content = content_str.strip() if isinstance(content_str, str) else ""
 
-                        # Only include helpful bullets (helpful > harmful)
                         if content and helpful > harmful:
-                            # Format: [id] (helpful: X, harmful: Y, score: Z) - content
                             bullet_id = parsed.get("id", "") or ""
                             score = helpful - harmful
                             formatted = f"[{bullet_id}] (helpful: {helpful}, harmful: {harmful}, score: {score}) - {content}"
                             filtered_bullets.append(formatted)
 
-                # Append playbook section to prompt
                 if filtered_bullets:
                     playbook_section = "\n\n## Learned Best Practices (from ACE)\n\n"
                     playbook_section += "The following strategies and insights have been learned from previous executions:\n\n"
@@ -717,7 +670,6 @@ def load_prompt(prompt_name: str) -> str:
                     base_prompt += playbook_section
 
     except Exception:  # nosec B110
-        # If anything fails, fall back to normal loading
         pass
 
     return base_prompt

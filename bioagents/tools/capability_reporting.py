@@ -16,9 +16,8 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-# Appended to every unavailable-capability payload. The agents' system prompts
-# reinforce this, but repeating it in the tool result puts the instruction in the
-# same place as the evidence, which is where it is most likely to be followed.
+# Appended to every unavailable-capability payload: repeating the instruction next to the
+# evidence is where an agent is most likely to act on it.
 NO_FABRICATION_DIRECTIVE = (
     "NO computation was performed. Do not report, estimate, approximate or infer "
     "results for this capability. Either use the suggested alternative, or state "
@@ -146,9 +145,8 @@ def check_modules(modules: list[str]) -> list[str]:
     return missing
 
 
-#: Free VRAM (MiB) a GPU must have before we route work to it. A trivial probe
-#: allocation succeeds on an almost-full card, so without this check a second job
-#: starts on the GPU and then dies of OOM part-way through a real computation.
+#: Free VRAM (MiB) a GPU must have before we route work to it. A trivial probe allocation
+#: succeeds on an almost-full card, so without this a second job OOMs mid-computation.
 MIN_FREE_VRAM_MIB = 2048
 
 
@@ -214,3 +212,19 @@ def subprocess_env_for_torch() -> dict:
     if not cuda_is_usable():
         env["CUDA_VISIBLE_DEVICES"] = ""
     return env
+
+
+#: Attribute honoured by ``agent_manifest.filter_bindable_tools``: a tool (or the
+#: function it wraps) carrying it as True is not offered to agents.
+UNAVAILABLE_ATTR = "__bioagents_unavailable__"
+
+
+def mark_tool_availability(tool: Any, available: bool) -> None:
+    """Flag a LangChain tool as (un)available for agent binding.
+
+    Set on the wrapped function because StructuredTool is a pydantic model that rejects
+    unknown attributes; the binding filter checks both the tool and its ``func``.
+    """
+    target = getattr(tool, "func", None) or tool
+    with contextlib.suppress(AttributeError, TypeError, ValueError):
+        setattr(target, UNAVAILABLE_ATTR, not available)

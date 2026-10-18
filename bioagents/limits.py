@@ -22,12 +22,7 @@ def _env_int(name: str, default: int) -> int:
 MAX_TOOL_OUTPUT_CHARS = max(1000, _env_int("BIOAGENTS_MAX_TOOL_OUTPUT_CHARS", 24_000))
 
 # Hard cap on a single LLM API invoke (HTTP timeout is separate). 0 = disabled.
-# This ONLY covers the time waiting for the LLM HTTP response — code execution
-# inside the Docker/Jupyter kernel (pip installs, model downloads, long computations)
-# is entirely separate and has no timeout.
-# 600s default accommodates Gemini 3 Flash with thinking enabled for long-form
-# report generation. Increase via BIOAGENTS_AGENT_LLM_INVOKE_TIMEOUT_SEC if needed,
-# or set to 0 to disable entirely.
+# Covers only the wait for the LLM response; sandbox code execution is untimed.
 AGENT_LLM_INVOKE_TIMEOUT_SEC = _env_float("BIOAGENTS_AGENT_LLM_INVOKE_TIMEOUT_SEC", 600.0)
 
 # Max seconds to wait for a rate-limit slot before failing fast (avoids “stuck” behind RPM).
@@ -38,8 +33,6 @@ GRAPH_STREAM_WALL_CLOCK_SEC = _env_float("BIOAGENTS_GRAPH_STREAM_WALL_CLOCK_SEC"
 
 # Default LangGraph recursion cap (also set per call in server).
 GRAPH_RECURSION_LIMIT = max(10, _env_int("BIOAGENTS_GRAPH_RECURSION_LIMIT", 100))
-
-# --- Tool Policy & Approval limits ---
 
 # Consecutive identical tool calls (same name + same args) before forced break.
 MAX_CONSECUTIVE_IDENTICAL_TOOL_CALLS = max(
@@ -64,9 +57,35 @@ TOOL_POLICY_STRICTNESS = os.getenv("BIOAGENTS_TOOL_POLICY_STRICTNESS", "moderate
 # Comma-separated extra tool categories to allow beyond defaults.
 TOOL_POLICY_EXTRA_CATEGORIES = os.getenv("BIOAGENTS_TOOL_POLICY_EXTRA_CATEGORIES", "")
 
-# Max tool-calling rounds a single agent may run for one supervisor task before control
-# is forced back to the supervisor. The agent -> tools -> agent cycle is otherwise
-# unbounded: an agent that keeps calling tools never returns, so the supervisor's loop
-# detection and re-routing never get a chance to run and one specialist consumes the
-# entire workflow step budget.
+# Tool rounds one agent gets per supervisor task; uncapped, it never yields back
+# and the supervisor's loop detection never runs.
 MAX_AGENT_TOOL_ROUNDS = max(1, _env_int("BIOAGENTS_MAX_AGENT_TOOL_ROUNDS", 8))
+
+# Attempts per tool call including the first; only transient failures retry, bad args fail fast.
+TOOL_MAX_ATTEMPTS = max(1, _env_int("BIOAGENTS_TOOL_MAX_ATTEMPTS", 3))
+
+# Backoff between attempts: base * 2**(attempt-1), capped, plus jitter.
+TOOL_RETRY_BASE_DELAY_SEC = max(0.0, _env_float("BIOAGENTS_TOOL_RETRY_BASE_DELAY_SEC", 2.0))
+TOOL_RETRY_MAX_DELAY_SEC = max(
+    TOOL_RETRY_BASE_DELAY_SEC, _env_float("BIOAGENTS_TOOL_RETRY_MAX_DELAY_SEC", 30.0)
+)
+
+# Total wall clock for one BLAST search; remote nr searches routinely take 5-20 min.
+# On timeout the tool returns the RID so the search can be resumed, not resubmitted.
+BLAST_TIMEOUT_SEC = max(60.0, _env_float("BIOAGENTS_BLAST_TIMEOUT_SEC", 1200.0))
+
+# NCBI usage guidelines: poll a single RID no more often than once per minute.
+# Values below 60 are clamped up so the guideline cannot be configured away.
+BLAST_POLL_INTERVAL_SEC = max(60.0, _env_float("BIOAGENTS_BLAST_POLL_INTERVAL_SEC", 60.0))
+
+# Budget for a BLAST started from inside the coder sandbox. smolagents kills a
+# Jupyter cell at 300 s and restarts the kernel, which would lose the RID mid-poll
+# (the task3 failure). Capping below that lets the call return its RID instead.
+BLAST_CELL_BUDGET_SEC = max(30.0, _env_float("BIOAGENTS_BLAST_CELL_BUDGET_SEC", 240.0))
+
+# Exponential backoff for HTTP 429 / "CPU usage limit" responses: base delay, doubled
+# on every consecutive rate-limit response, capped at the max.
+BLAST_BACKOFF_BASE_SEC = max(1.0, _env_float("BIOAGENTS_BLAST_BACKOFF_BASE_SEC", 30.0))
+BLAST_BACKOFF_MAX_SEC = max(
+    BLAST_BACKOFF_BASE_SEC, _env_float("BIOAGENTS_BLAST_BACKOFF_MAX_SEC", 600.0)
+)

@@ -27,10 +27,7 @@ def resolve_tool_name(tool: Any) -> str:
     return str(tool)
 
 
-# Conduct rules injected into every tool-using agent's context. These exist because the
-# failure modes they address were observed across agents, not in any single prompt:
-# agents reported results for tools that returned errors, claimed work other agents had
-# not done, and kept working far outside their own role rather than handing back.
+# Conduct rules injected into every tool-using agent; these failure modes span all agents.
 AGENT_CONDUCT_RULES = """[AGENT CONDUCT RULES — these override any conflicting instruction]
 
 1. EVIDENCE. Only report values that a tool actually returned in this conversation. If a
@@ -158,16 +155,13 @@ def extract_task_from_messages(messages) -> str:
     for msg in reversed(messages[-5:]):
         content = get_content_text(getattr(msg, "content", ""))
 
-        # Look for UniProt ID patterns
         uniprot_match = re.search(r"\b([A-Z][A-Z0-9]{5}|[A-Z]\d{5})\b", content)
         if uniprot_match:
             return f"fetch_uniprot_fasta for protein ID: {uniprot_match.group(1)}"
 
-        # Look for FASTA requests
         if "fasta" in content.lower() or "sequence" in content.lower():
             return "fetch protein sequence using fetch_uniprot_fasta tool"
 
-        # Look for search requests
         if "search" in content.lower() or "find" in content.lower():
             return "search using tool_universe_find_tools and tool_universe_call_tool"
 
@@ -361,8 +355,7 @@ def prepare_messages_for_agent(
     if first_human and first_human not in windowed:
         windowed = [first_human, *windowed]
 
-    # Preserve session catalog SystemMessage so follow-up queries can
-    # reference previous work even after the conversation grows long.
+    # Preserve the session catalog SystemMessage so follow-ups can reference earlier work.
     session_context_msg = None
     for msg in messages:
         if isinstance(msg, SystemMessage):
@@ -416,8 +409,7 @@ def prepare_messages_for_agent(
         else:
             result.append(msg)
 
-    # Conduct rules go last so they are the most recent instruction the model sees,
-    # which is where they are most reliably followed.
+    # Conduct rules go last: the most recent instruction is the most reliably followed.
     result.append(conduct)
 
     return result

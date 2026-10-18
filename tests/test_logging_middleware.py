@@ -42,7 +42,6 @@ def app_with_middleware() -> FastAPI:
     db = AdminDatabase(":memory:")
     application.add_middleware(ActivityLoggingMiddleware, db=db)
 
-    # Attach db for assertions
     application.state.db = db
     return application
 
@@ -72,7 +71,6 @@ class TestMiddlewareLogging:
         db = app_with_middleware.state.db
         feed = db.get_activity_feed()
         assert feed["total"] >= 1
-        # Find the experiment_run action
         actions = [item["action"] for item in feed["items"]]
         assert "experiment_run" in actions
 

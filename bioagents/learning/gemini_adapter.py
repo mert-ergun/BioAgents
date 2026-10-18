@@ -64,7 +64,6 @@ class GeminiACEAdapter:
                 """
                 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 
-                # Convert messages to LangChain format
                 lc_messages: list[BaseMessage] = []
                 for msg in messages:
                     role = msg.get("role", "user")
@@ -77,10 +76,8 @@ class GeminiACEAdapter:
                     elif role == "system":
                         lc_messages.append(HumanMessage(content=f"System: {content}"))
 
-                # Invoke LangChain LLM
                 response = self.adapter.llm.invoke(lc_messages)
 
-                # Extract content
                 content = response.content if hasattr(response, "content") else str(response)
 
                 if response_format and response_format.get("type") == "json_object":
@@ -95,7 +92,6 @@ class GeminiACEAdapter:
                         except json.JSONDecodeError:
                             pass
 
-                # Create mock response
                 return MockResponse(content)
 
     @property

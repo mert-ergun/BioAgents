@@ -1,11 +1,4 @@
-"""Keeps the agent→tool mapping honest and single-sourced.
-
-Regression context: the mapping lived in two places that had drifted — the real wiring
-inside create_graph, and a hardcoded catalogue in frontend/server.py that advertised
-tool names (fetch_target_structure, analyze_interface, predict_structure,
-evaluate_binders) which did not exist anywhere in the codebase. Nothing could answer
-"does this agent actually have a tool for this task?", so the supervisor routed blind.
-"""
+"""Keeps the agent→tool mapping honest and single-sourced against create_graph."""
 
 from __future__ import annotations
 

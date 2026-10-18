@@ -52,7 +52,6 @@ class RateLimiter:
             with self.lock:
                 current_time = time.time()
 
-                # Remove requests outside the time window
                 while self.requests and self.requests[0] <= current_time - self.time_window:
                     self.requests.popleft()
 

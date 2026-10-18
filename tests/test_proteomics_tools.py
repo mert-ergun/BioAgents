@@ -106,7 +106,6 @@ class TestFetchUniprotFasta:
 
         fetch_uniprot_fasta.invoke({"protein_id": "P12345"})
 
-        # Verify timeout is set to 10 seconds
         call_kwargs = mock_get.call_args[1]
         assert call_kwargs["timeout"] == 10
 
@@ -126,5 +125,4 @@ class TestFetchUniprotFasta:
 
             result = fetch_uniprot_fasta.invoke({"protein_id": "P12345"})
 
-            # Should be stripped
             assert result == ">sp|P12345|TEST\nMASL"

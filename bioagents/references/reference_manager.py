@@ -29,18 +29,15 @@ class ReferenceManager:
             Reference ID (existing if duplicate, new if unique)
         """
         try:
-            # Check if this reference already exists
             unique_key = ref.get_unique_key()
             if unique_key in self._unique_keys:
                 existing_id = self._unique_keys[unique_key]
                 logger.debug(f"Duplicate reference found, using existing ID: {existing_id}")
                 return existing_id
 
-            # Add new reference
             self._references[ref.id] = ref
             self._unique_keys[unique_key] = ref.id
 
-            # Assign display number
             self._counter += 1
             self._display_numbers[ref.id] = self._counter
 

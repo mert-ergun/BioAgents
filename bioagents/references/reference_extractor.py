@@ -63,7 +63,6 @@ def extract_references_from_tool_call(
     references: list[Reference] = []
 
     try:
-        # Handle nested tool_universe_call_tool
         if tool_name == "tool_universe_call_tool":
             nested_tool = tool_args.get("tool_name", "")
             nested_args = {}
@@ -73,7 +72,6 @@ def extract_references_from_tool_call(
             # Recursively extract from nested tool
             return extract_references_from_tool_call(nested_tool, nested_args, tool_call_id)
 
-        # Create tool reference for the tool being used
         ref_id = f"ref_{uuid.uuid4().hex[:8]}"
         tool_ref = ToolReference(
             id=ref_id,
@@ -84,7 +82,6 @@ def extract_references_from_tool_call(
         )
         references.append(tool_ref)
 
-        # Extract database references from specific tools
         if tool_name in ["UniProt_get_protein", "UniProt_search"]:
             uniprot_id = tool_args.get("uniprot_id") or tool_args.get("query")
             if uniprot_id:
@@ -153,7 +150,6 @@ def extract_references_from_tool_result(
     references: list[Reference] = []
 
     try:
-        # Try to parse as JSON
         result_data = None
         if isinstance(result_content, str):
             try:
@@ -161,7 +157,6 @@ def extract_references_from_tool_result(
             except json.JSONDecodeError:
                 result_data = None
 
-        # Extract from PubMed results
         if tool_name == "PubMed_search_articles" and result_data:
             papers = (
                 result_data if isinstance(result_data, list) else result_data.get("results", [])
@@ -188,7 +183,6 @@ def extract_references_from_tool_result(
                     )
                     references.append(paper_ref)
 
-        # Extract from ArXiv results
         elif tool_name == "ArXiv_search_papers" and result_data:
             papers = (
                 result_data if isinstance(result_data, list) else result_data.get("results", [])
@@ -210,7 +204,6 @@ def extract_references_from_tool_result(
                     )
                     references.append(paper_ref)
 
-        # Extract from BioRxiv results
         elif tool_name == "BioRxiv_search_papers" and result_data:
             papers = (
                 result_data if isinstance(result_data, list) else result_data.get("results", [])
@@ -250,7 +243,6 @@ def extract_references_from_message(message_content: str) -> list[Reference]:
     references: list[Reference] = []
 
     try:
-        # Extract DOIs
         doi_matches = DOI_PATTERN.findall(message_content)
         for doi in set(doi_matches):
             ref_id = f"ref_{uuid.uuid4().hex[:8]}"
@@ -262,7 +254,6 @@ def extract_references_from_message(message_content: str) -> list[Reference]:
             )
             references.append(paper_ref)
 
-        # Extract PMIDs
         pmid_matches = PMID_PATTERN.findall(message_content)
         for pmid in set(pmid_matches):
             ref_id = f"ref_{uuid.uuid4().hex[:8]}"
@@ -274,7 +265,6 @@ def extract_references_from_message(message_content: str) -> list[Reference]:
             )
             references.append(paper_ref)
 
-        # Extract ArXiv IDs
         arxiv_matches = ARXIV_PATTERN.findall(message_content)
         for arxiv_id in set(arxiv_matches):
             ref_id = f"ref_{uuid.uuid4().hex[:8]}"
@@ -287,7 +277,6 @@ def extract_references_from_message(message_content: str) -> list[Reference]:
             references.append(paper_ref)
 
         # Extract year ranges that might indicate citations (e.g., "2019-2026" or "(2023)")
-        # Create synthetic references for comprehensive reports
         year_pattern = re.compile(r"\((\d{4})-(\d{4})\)|\((\d{4})\)")
         year_matches = year_pattern.findall(message_content)
         if year_matches and len(year_matches) > 0:
@@ -329,7 +318,6 @@ def extract_references_from_messages(messages: list) -> list[Reference]:
 
     for msg in messages:
         try:
-            # Extract from tool calls in AIMessage
             if isinstance(msg, AIMessage) and hasattr(msg, "tool_calls") and msg.tool_calls:
                 for tool_call in msg.tool_calls:
                     tool_name = tool_call.get("name", "")
@@ -338,7 +326,6 @@ def extract_references_from_messages(messages: list) -> list[Reference]:
                     refs = extract_references_from_tool_call(tool_name, tool_args, tool_id)
                     all_references.extend(refs)
 
-            # Extract from tool results
             if isinstance(msg, ToolMessage):
                 tool_name = getattr(msg, "name", "")
                 content = msg.content
@@ -347,7 +334,6 @@ def extract_references_from_messages(messages: list) -> list[Reference]:
                     refs = extract_references_from_tool_result(tool_name, content, tool_id)
                     all_references.extend(refs)
 
-            # Extract from message content
             if hasattr(msg, "content") and msg.content:
                 content = msg.content
                 if isinstance(content, str) and len(content) > 100:

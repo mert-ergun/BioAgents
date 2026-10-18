@@ -30,11 +30,6 @@ def is_ace_enabled() -> bool:
 
 def _setup_ace_path() -> None:
     """Add ACE directory to sys.path for imports."""
-    # Find ACE directory relative to BioAgents root
-    # __file__ = bioagents/learning/ace_wrapper.py
-    # .parent = bioagents/learning
-    # .parent.parent = bioagents
-    # .parent.parent.parent = BioAgents (root)
     bioagents_root = Path(__file__).parent.parent.parent
     ace_path = bioagents_root / "ace"
 
@@ -79,7 +74,6 @@ class BioAgentsACE:
         self.use_bulletpoint_analyzer = use_bulletpoint_analyzer
         self.execution_count = 0
 
-        # Setup ACE path and import components
         _setup_ace_path()
 
         try:
@@ -88,17 +82,14 @@ class BioAgentsACE:
             from ace.core.generator import Generator
             from ace.core.reflector import Reflector
 
-            # Create ACE clients from BioAgents LLM
             generator_client, api_provider, model_name = create_ace_client_from_bioagents_llm(
                 llm_provider
             )
 
-            # Initialize ACE components
             self.generator = Generator(generator_client, api_provider, model_name, max_tokens)
             self.reflector = Reflector(generator_client, api_provider, model_name, max_tokens)
             self.curator = Curator(generator_client, api_provider, model_name, max_tokens)
 
-            # Initialize bulletpoint analyzer if requested
             self.bulletpoint_analyzer = None
             if use_bulletpoint_analyzer:
                 try:
@@ -110,16 +101,13 @@ class BioAgentsACE:
                 except ImportError:
                     print("Warning: BulletpointAnalyzer not available")
 
-            # Initialize execution tracker
             self.execution_tracker = ExecutionTracker()
 
-            # Load or initialize playbook
             if initial_playbook:
                 self.playbook = initial_playbook
             else:
                 self.playbook = load_playbook(agent_name)
                 if not self.playbook.strip():
-                    # Convert XML prompt to playbook if playbook is empty
                     xml_prompt = load_xml_prompt(agent_name)
                     if xml_prompt:
                         self.playbook = xml_to_playbook(xml_prompt, agent_name)
@@ -221,7 +209,6 @@ class BioAgentsACE:
             call_id=f"{self.agent_name}_reflect_{self.execution_count}",
         )
 
-        # Update bullet counts
         if bullet_tags:
             self.playbook = update_bullet_counts(self.playbook, bullet_tags)
             save_playbook(self.agent_name, self.playbook)
@@ -257,7 +244,6 @@ class BioAgentsACE:
         if not self.is_enabled():
             return
 
-        # Get playbook stats
         playbook_stats = {
             "num_bullets": len(
                 [line for line in self.playbook.split("\n") if line.strip().startswith("[")]
@@ -269,7 +255,6 @@ class BioAgentsACE:
 
         token_budget = int(os.getenv("ACE_PLAYBOOK_TOKEN_BUDGET", "80000"))
 
-        # Run curator
         updated_playbook, next_id, _operations, _ = self.curator.curate(
             current_playbook=self.playbook,
             recent_reflection=reflection_content,
@@ -287,7 +272,6 @@ class BioAgentsACE:
         self.playbook = updated_playbook
         self.next_global_id = next_id
 
-        # Run bulletpoint analyzer if enabled
         if self.use_bulletpoint_analyzer and self.bulletpoint_analyzer:
             self.playbook = self.bulletpoint_analyzer.analyze(
                 playbook=self.playbook,
@@ -295,7 +279,6 @@ class BioAgentsACE:
                 merge=True,
             )
 
-        # Save updated playbook
         save_playbook(self.agent_name, self.playbook)
 
 

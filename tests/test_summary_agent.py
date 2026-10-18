@@ -38,7 +38,6 @@ class TestSummaryAgentCreation:
 
         node = create_summary_agent()
 
-        # Verify it's a callable function (the summary_node)
         assert callable(node)
 
 
@@ -57,7 +56,6 @@ class TestSummaryAgentWithMemory:
 
         agent = create_summary_agent()
 
-        # Simulate complex multi-agent conversation with tool calls
         messages = [
             HumanMessage(content="What is protein?"),
             AIMessage(
@@ -78,16 +76,13 @@ class TestSummaryAgentWithMemory:
 
         result = agent(state)
 
-        # Verify result structure: new API returns {"messages": [AIMessage(...)]}
         assert "messages" in result
         assert len(result["messages"]) == 1
         assert isinstance(result["messages"][0], AIMessage)
         assert result["messages"][0].content == "Protein is a complex molecule"
 
-        # Verify LLM was invoked
         mock_llm.invoke.assert_called_once()
 
-        # Verify system message was included in the call
         call_args = mock_llm.invoke.call_args[0][0]
         assert len(call_args) >= 2
         assert isinstance(call_args[0], SystemMessage)
@@ -107,7 +102,6 @@ class TestSummaryAgentWithMemory:
 
         agent = create_summary_agent()
 
-        # Simulate complex multi-agent conversation
         messages = [
             HumanMessage(content="Analyze this protein"),
             AIMessage(
@@ -137,7 +131,6 @@ class TestSummaryAgentWithMemory:
             == "Proteins are polymers of amino acids with complex structures"
         )
 
-        # Verify system message includes FULL SUMMARY mode instruction
         call_args = mock_llm.invoke.call_args[0][0]
         mode_instruction = call_args[1].content
         assert "FULL SUMMARY" in mode_instruction
@@ -198,7 +191,6 @@ class TestSummaryAgentEmptyMemory:
         assert len(result["messages"]) == 1
         assert result["messages"][0].content == "Proteins are biological macromolecules"
 
-        # Verify DIRECT ANSWER mode instruction was used
         call_args = mock_llm.invoke.call_args[0][0]
         mode_instruction = call_args[1].content
         assert "DIRECT ANSWER" in mode_instruction
@@ -241,7 +233,6 @@ class TestSummaryAgentEmptyMemory:
         result = agent(state)
 
         assert "messages" in result
-        # Verify full summary mode was selected (empty list has 0 human msgs, not 1)
         call_args = mock_llm.invoke.call_args[0][0]
         mode_instruction = call_args[1].content
         assert "FULL SUMMARY" in mode_instruction
@@ -265,11 +256,9 @@ class TestSummaryAgentErrorHandling:
             "messages": [HumanMessage(content="What is protein?")],
         }
 
-        # The new agent does not catch exceptions from invoke_with_retry;
-        # the error propagates to the caller.
+        # invoke_with_retry errors are not caught; they propagate to the caller.
         try:
             result = agent(state)
-            # If it doesn't raise, it should still return a valid structure
             assert "messages" in result
         except Exception as e:
             assert "LLM Service unavailable" in str(e)
@@ -291,7 +280,6 @@ class TestSummaryAgentErrorHandling:
 
         result = agent(state)
 
-        # Should handle gracefully and return messages
         assert "messages" in result
         assert len(result["messages"]) == 1
         assert result["messages"][0].content == "Response"
@@ -318,7 +306,6 @@ class TestSummaryAgentSystemMessage:
 
         agent(state)
 
-        # Check that invoke was called with messages that include system message
         call_args = mock_llm.invoke.call_args[0][0]
         assert len(call_args) >= 2  # System message + mode instruction + user message
         assert isinstance(call_args[0], SystemMessage)

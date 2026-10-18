@@ -43,7 +43,6 @@ def parse_fasta_sequence(fasta_text: str) -> str:
         The amino acid sequence (without header)
     """
     lines = fasta_text.strip().split("\n")
-    # Skip the header line (starts with >)
     sequence_lines = [line for line in lines if not line.startswith(">")]
     return "".join(sequence_lines).upper()
 
@@ -71,8 +70,7 @@ def calculate_molecular_weight(fasta_sequence: str) -> str:
             elif aa not in ["*", "-"]:  # Ignore stop codons and gaps
                 unknown_aas.append(aa)
 
-        # Subtract water molecules (peptide bonds)
-        # Each peptide bond releases one water molecule (18.015 Da)
+        # Each peptide bond releases one water (18.015 Da).
         water_weight = 18.015 * (len(sequence) - 1)
         weight -= water_weight
 
@@ -107,7 +105,6 @@ def analyze_amino_acid_composition(fasta_sequence: str) -> str:
 
         aa_counts = Counter(sequence)
 
-        # Remove non-standard characters
         for char in ["*", "-"]:
             aa_counts.pop(char, None)
 
@@ -126,7 +123,6 @@ def analyze_amino_acid_composition(fasta_sequence: str) -> str:
             percentage = (count / total) * 100
             result += f"{aa:<4} {count:<8} {percentage:>6.2f}%\n"
 
-        # Calculate biochemical properties
         hydrophobic = sum(aa_counts.get(aa, 0) for aa in ["A", "V", "I", "L", "M", "F", "W", "P"])
         polar = sum(aa_counts.get(aa, 0) for aa in ["S", "T", "N", "Q", "Y", "C"])
         charged = sum(aa_counts.get(aa, 0) for aa in ["K", "R", "H", "D", "E"])
@@ -173,15 +169,13 @@ def calculate_isoelectric_point(fasta_sequence: str) -> str:
         n_cys = aa_counts.get("C", 0)  # pKa ~8.3
         n_tyr = aa_counts.get("Y", 0)  # pKa ~10.1
 
-        # Simple estimation (this is a simplified calculation)
+        # Rough pI estimate from charged-residue counts, not a Henderson-Hasselbalch fit.
         positive_groups = n_lys + n_arg + n_his + 1  # +1 for N-terminus
         negative_groups = n_asp + n_glu + n_cys + n_tyr + 1  # +1 for C-terminus
 
-        # Rough estimate based on charged residues
         if positive_groups + negative_groups == 0:
             estimated_pi = 7.0
         else:
-            # Weighted average approach (simplified)
             estimated_pi = (
                 6.5
                 + (positive_groups - negative_groups) / (positive_groups + negative_groups) * 4.5
