@@ -4,9 +4,8 @@
 #   docker compose run --rm tests    # run the pytest suite
 #   docker compose run --rm shell    # interactive shell in the container
 #
-# The primary service ships with a self-contained code sandbox
-# (USE_LOCAL_EXECUTOR=true). Uncomment the `/var/run/docker.sock` mount
-# on the `bioagents` service to enable the nested DockerExecutor instead.
+# Code agents execute inside this application container by default.
+# For nested sandbox containers on Linux, also pass -f docker-compose.sandbox.yml.
 
 services:
   bioagents:
@@ -35,10 +34,8 @@ services:
       - sandbox:/app/sandbox_workdir
       - logs:/app/logs
       - cache:/app/.bioagents_cache
-      # Uncomment to enable nested DockerExecutor (USE_LOCAL_EXECUTOR=false):
-      # - /var/run/docker.sock:/var/run/docker.sock
     healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8000/health"]
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:$$PORT/health"]
       interval: 30s
       timeout: 5s
       retries: 3

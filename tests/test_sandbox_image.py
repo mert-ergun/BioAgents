@@ -101,13 +101,16 @@ def test_stdlib_and_project_modules_are_not_installed_as_packages():
     assert packages == ["pandas", "biopython"]
 
 
-def test_image_installs_cpu_torch_by_default():
+def test_image_installs_cpu_torch_by_default(monkeypatch):
     """The container gets no GPU, so CUDA wheels are 5+ GB that can never execute."""
+    from bioagents.sandbox import coder_executor
+
+    monkeypatch.setattr(coder_executor, "_SANDBOX_GPU", False)
     dockerfile = build_dockerfile()
 
     assert "download.pytorch.org/whl/cpu" in dockerfile
     assert "python:3.12-slim" in dockerfile
-    assert "--no-cache-dir" in dockerfile
+    assert "/opt/bioagents/install_environments.py" in dockerfile
 
 
 def test_image_uses_cuda_wheels_when_the_sandbox_is_given_a_gpu(monkeypatch):
@@ -118,7 +121,35 @@ def test_image_uses_cuda_wheels_when_the_sandbox_is_given_a_gpu(monkeypatch):
     dockerfile = mod.build_dockerfile()
 
     assert "download.pytorch.org/whl/cpu" not in dockerfile
-    assert "pip install --no-cache-dir torch" in dockerfile
+    assert "download.pytorch.org/whl/cu130" in dockerfile
+
+
+def test_automatic_image_contains_the_same_locked_inputs_as_explicit_build():
+    import ast
+    import base64
+    import json
+    import shlex
+    from importlib.resources import files
+
+    recipe = build_dockerfile()
+    line = next(line.strip() for line in recipe.splitlines() if "python -c " in line)
+    script = ast.parse(shlex.split(line)[3])
+    encoded = next(
+        node.args[0].value
+        for node in ast.walk(script)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "b64decode"
+    )
+    payload = json.loads(base64.b64decode(encoded))
+    resources = files("bioagents.sandbox").joinpath("requirements")
+    for name in ("coder", "boltz", "pytdc"):
+        filename = f"{name}.lock.txt"
+        assert (
+            payload[f"/opt/bioagents/requirements/{filename}"]
+            == resources.joinpath(filename).read_text()
+        )
+    assert "/usr/local/bin/bioagents-python" in payload
 
 
 def test_bioagents_is_never_pip_installed_into_the_image():

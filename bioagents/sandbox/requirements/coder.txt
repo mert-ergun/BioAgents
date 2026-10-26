@@ -1,0 +1,37 @@
+# General Coder / ML / DL environment. Boltz and PyTDC have separate environments.
+# The Torch wheel flavor is selected separately when building the image.
+torch==2.14.1
+jupyter-kernel-gateway==3.0.1
+jupyter-client==8.6.3
+ipykernel==7.1.0
+smolagents==1.26.0
+setuptools==80.9.0
+numpy==2.3.4
+pandas==2.3.3
+requests==2.32.5
+defusedxml==0.7.1
+scikit-learn==1.9.1
+scipy==1.18.1
+matplotlib==3.11.2
+biopython==1.86
+tooluniverse==1.5.6
+langchain-core==1.2.26
+transformers==5.19.0
+huggingface-hub==1.31.0
+vina==1.2.7
+rdkit==2026.9.1
+meeko==0.8.0
+gemmi==0.7.5
+accelerate==1.15.0
+openbabel-wheel==3.1.1.23
+fair-esm==2.0.0
+paper-qa==2026.8.12
+pymupdf==1.28.2
+fuzzywuzzy==0.18.0
+python-Levenshtein==0.27.5
+seaborn==0.13.2
+statsmodels==0.15.0
+joblib==1.6.0
+tqdm==4.70.1
+openpyxl==3.1.5
+chembl-webresource-client==0.10.9

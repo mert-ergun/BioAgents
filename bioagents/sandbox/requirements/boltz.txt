@@ -1,0 +1,7 @@
+# Boltz's published requirements intentionally differ from the main Coder stack.
+boltz==2.2.1
+torch==2.14.1
+numpy==1.26.4
+pandas==2.3.3
+rdkit==2026.9.1
+setuptools==80.9.0

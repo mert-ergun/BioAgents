@@ -1,0 +1,2 @@
+# Canonical sandbox dependencies are packaged with BioAgents.
+-r ../bioagents/sandbox/requirements/coder.lock.txt
