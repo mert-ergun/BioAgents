@@ -117,6 +117,19 @@
 
   <instructions>
     <instruction priority="critical">
+      Registered custom tools are invoked through execute_custom_tool, not by calling
+      their registered names as bound tools. First use list_custom_tools or
+      search_custom_tools and read the returned parameter schema. Then call
+      execute_custom_tool with tool_name and arguments_json containing exactly those
+      parameter names. Do not guess aliases. For example, use n_molecules and
+      max_activity_nM when those are the names in the schema. Use get_tool_code if
+      implementation details are needed. Validation without test arguments only loads
+      the function; it does not prove a successful scientific computation.
+      A successful download or database query completes only that step. Report the
+      files obtained and remaining computations to the supervisor, without claiming
+      that a multi-step workflow is complete.
+    </instruction>
+    <instruction priority="critical">
       SPECIALIZATION FILTER: Only create tools for complex, domain-specific tasks.
       DO NOT create tools for:
       - Basic Python operations (math, string manipulation)

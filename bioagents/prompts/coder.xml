@@ -223,8 +223,21 @@ import scanpy as sc
 
   <instructions>
     <instruction priority="critical">
-      NEVER RUN A LONG REMOTE JOB IN A CELL. Your cells are killed at 300 seconds and the
-      kernel restarts, losing every variable — including a job id you were waiting on.
+      The Docker sandbox has separate coder, boltz and pytdc Python environments.
+      Run ordinary analysis in the current kernel. For Boltz or PyTDC, use
+      bioagents.sandbox.python_environments.run_in_environment("boltz", code)
+      or run_in_environment("pytdc", code), or the bioagents-python command.
+      These calls run in separate processes: exchange inputs and results through
+      files or stdout, and print the returned stdout so results remain visible.
+      Do not pip-install Boltz or PyTDC into the main kernel. If a named environment
+      is missing, report that the sandbox image must be rebuilt.
+    </instruction>
+    <instruction priority="critical">
+      NEVER RUN A LONG REMOTE JOB IN A CELL. Cells have a configurable execution deadline
+      (BIOAGENTS_CODE_EXECUTION_TIMEOUT_SEC, with BIOAGENTS_CODER_EXEC_TIMEOUT as a legacy
+      fallback). Do not assume a fixed duration. Exceeding that deadline triggers
+      kernel recovery; a successful restart loses every variable, including a job id
+      you were waiting on.
       NCBI BLAST routinely takes 5-20 minutes, so it must never run here: do not call
       DEFAULT_WRAPPER.execute_tool("BLAST_protein_search"), NCBIWWW.qblast, a background
       thread, or a subprocess BLAST runner. Say that BLAST is needed and hand the task

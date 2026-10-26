@@ -10,7 +10,7 @@ from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, System
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from pydantic import BaseModel, Field
 
-from bioagents.agents.helpers import extract_best_content, get_message_content
+from bioagents.agents.helpers import extract_best_content
 from bioagents.agents.supervisor_helpers import (
     CODE_AGENTS,
     check_code_agent_task_completed,
@@ -181,32 +181,6 @@ def create_supervisor_agent(members: list[str]):
                 "messages": [clarification_marker],
             }
 
-        # Skip if a SystemMessage already handled it and let normal routing continue.
-        execution_already_handled = any(
-            isinstance(msg, SystemMessage)
-            or (hasattr(msg, "__class__") and msg.__class__.__name__ == "SystemMessage")
-            for msg in messages[-10:]
-            if "[EXECUTION_SUCCESS]" in get_message_content(msg)
-        )
-
-        if not execution_already_handled:
-            execution_success, exec_tool_name = check_tool_builder_execution_success(messages)
-            if execution_success:
-                logger.info(
-                    f"ToolBuilder successfully executed tool '{exec_tool_name}' and returned results. "
-                    "Routing to report to summarize findings."
-                )
-                # Mark execution success to prevent re-detection
-                success_marker = SystemMessage(
-                    content=f"[EXECUTION_SUCCESS] ToolBuilder successfully executed tool '{exec_tool_name}' and task is complete."
-                )
-                return {
-                    "next": "report",
-                    "reasoning": f"ToolBuilder successfully executed tool '{exec_tool_name}' and completed the task. "
-                    "Routing to report to summarize the results.",
-                    "messages": [success_marker],
-                }
-
         failed_agents: set = state.get("failed_agents") or set()
 
         force_finish, finish_reason = check_coder_should_force_finish(messages)
@@ -323,22 +297,6 @@ def create_supervisor_agent(members: list[str]):
             )
 
             if looping_agent == "ToolBuilder":
-                execution_success, exec_tool_name = check_tool_builder_execution_success(messages)
-                if execution_success:
-                    logger.info(
-                        f"ToolBuilder successfully executed tool '{exec_tool_name}' and returned results. "
-                        "Routing to report to summarize findings."
-                    )
-                    success_marker = SystemMessage(
-                        content=f"[EXECUTION_SUCCESS] ToolBuilder successfully executed tool '{exec_tool_name}' and task is complete."
-                    )
-                    return {
-                        "next": "report",
-                        "reasoning": f"ToolBuilder successfully executed tool '{exec_tool_name}' and completed the task. "
-                        "Routing to report to summarize the results.",
-                        "messages": [success_marker],
-                    }
-
                 tool_success, tool_name = check_tool_builder_success(messages)
                 if tool_success:
                     created_tools = get_all_created_tools(messages)
@@ -468,6 +426,20 @@ def create_supervisor_agent(members: list[str]):
 
         # Window history for the routing LLM: the user query plus the last 12 messages.
         routing_messages = messages[:1] + messages[-12:] if len(messages) > 14 else messages
+
+        execution_success, exec_tool_name = check_tool_builder_execution_success(messages)
+        if execution_success:
+            routing_messages = [
+                SystemMessage(
+                    content=(
+                        f"Custom tool '{exec_tool_name}' returned a successful result for one step. "
+                        "Compare that result with the original request and delegate the remaining "
+                        "computations to a capable agent. A tool success alone does not prove "
+                        "the full task is complete."
+                    )
+                ),
+                *list(routing_messages),
+            ]
 
         # Without concrete tool names the supervisor routes from prose and picks incapable agents.
         inventory = _agent_tool_inventory()

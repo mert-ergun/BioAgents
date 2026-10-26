@@ -109,7 +109,7 @@ def _content_for_exception(
 def create_coder_agent(
     tools: list[Tool] | None = None,
     additional_imports: list[str] | None = None,
-    max_steps: int = 20,
+    max_steps: int = 50,
 ) -> CodeAgent:
     """
     Create the Coder Agent instance.

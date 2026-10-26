@@ -11,6 +11,7 @@ the Tool Builder Agent. It handles:
 from __future__ import annotations
 
 import importlib.util
+import inspect
 import json
 import logging
 import re
@@ -21,12 +22,27 @@ from pathlib import Path
 from threading import Lock
 from typing import TYPE_CHECKING, Any, cast
 
+from bioagents.tools.result_status import tool_result_status
+
 if TYPE_CHECKING:
     from collections.abc import Callable
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_TOOLS_DIR = Path(__file__).parent / "custom_tools"
+
+
+def normalize_tool_type(type_name: str) -> str:
+    """Translate Python type aliases to schema/tool API types."""
+    normalized = type_name.strip().lower()
+    return {
+        "str": "string",
+        "int": "integer",
+        "float": "number",
+        "bool": "boolean",
+        "dict": "object",
+        "list": "array",
+    }.get(normalized, normalized)
 
 
 @dataclass
@@ -43,7 +59,7 @@ class ToolParameter:
     def to_schema(self) -> dict[str, Any]:
         """Convert to JSON Schema format."""
         schema: dict[str, Any] = {
-            "type": self.type,
+            "type": normalize_tool_type(self.type),
             "description": self.description,
         }
         if self.default is not None:
@@ -354,7 +370,7 @@ class ToolRegistry:
             module = self._loaded_modules[name]
             func_name = self._registry[name]._safe_name()
             func = getattr(module, func_name, None)
-            return cast("Callable[..., Any]", func) if func is not None else None
+            return cast("Callable[..., Any]", func) if callable(func) else None
 
         tool = self._registry.get(name)
         if not tool:
@@ -385,17 +401,14 @@ class ToolRegistry:
             func_name = tool._safe_name()
             func = getattr(module, func_name, None)
 
-            if func is None:
-                for attr_name in dir(module):
-                    if not attr_name.startswith("_"):
-                        attr = getattr(module, attr_name)
-                        if callable(attr):
-                            return cast("Callable[..., Any]", attr)
-
-            return cast("Callable[..., Any]", func) if func is not None else None
+            if not callable(func):
+                logger.error("Tool '%s' must define a callable named '%s'", name, func_name)
+                return None
+            return cast("Callable[..., Any]", func)
 
         except Exception as e:
             logger.error(f"Failed to load tool '{name}': {e}")
+            tool.validation_error = f"{type(e).__name__}: {e}"
             return None
 
     def validate_tool(self, name: str, test_args: dict[str, Any] | None = None) -> bool:
@@ -413,22 +426,22 @@ class ToolRegistry:
             return False
 
         try:
+            tool.validation_error = None
             func = self.load_tool_function(name, force_reload=True)
             if func is None:
                 tool.validated = False
-                tool.validation_error = "Failed to load function"
+                tool.validation_error = tool.validation_error or "Failed to load function"
                 self._save_registry()
                 return False
 
-            # Skip test execution for "Any" return type as it can cause instantiation errors
-            if test_args is not None and tool.return_type.lower() != "any":
-                try:
-                    func(**test_args)
-                except Exception as test_error:
-                    # If test execution fails, don't fail validation - just log it
-                    logger.warning(
-                        f"Test execution failed for tool '{name}': {test_error}. Validation continues."
-                    )
+            if test_args is not None:
+                if not isinstance(test_args, dict):
+                    raise ValueError("Test arguments must be a JSON object")
+                inspect.signature(func).bind(**test_args)
+                result = func(**test_args)
+                status = tool_result_status(result)
+                if status != "success":
+                    raise ValueError(f"Tool execution did not succeed (status={status}): {result}")
 
             tool.validated = True
             tool.validation_error = None

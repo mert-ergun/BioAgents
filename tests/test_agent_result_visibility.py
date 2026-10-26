@@ -248,12 +248,13 @@ def test_target_prediction_reports_unavailable_instead_of_a_fixed_gene_panel():
     assert out["available"] is False
 
 
-def test_the_sandbox_container_runs_as_the_host_user():
+def test_the_sandbox_container_runs_as_the_host_user(monkeypatch):
     """Root-owned artifacts made host agents treat finished work as stale relics."""
     import os
 
     from bioagents.sandbox.coder_executor import _sandbox_user
 
+    monkeypatch.delenv("BIOAGENTS_SANDBOX_UID", raising=False)
     assert _sandbox_user() == f"{os.getuid()}:{os.getgid()}"
 
 

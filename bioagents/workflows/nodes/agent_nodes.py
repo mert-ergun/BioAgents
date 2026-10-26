@@ -87,8 +87,11 @@ class _BaseAgentWorkflowNode(WorkflowNode):
     """Shared execution/runtime adapter for workflow-facing agent nodes."""
 
     _agent_name: ClassVar[str]
+    _default_max_steps: ClassVar[int] = 20
 
-    def __init__(self, *, max_steps: int = 20) -> None:
+    def __init__(self, *, max_steps: int | None = None) -> None:
+        if max_steps is None:
+            max_steps = self._default_max_steps
         if max_steps < 1:
             raise ValueError("max_steps must be >= 1")
         self._max_steps = max_steps
@@ -148,6 +151,7 @@ def _make_agent_node_class(spec: _AgentSpec) -> type[_BaseAgentWorkflowNode]:
     class _GeneratedAgentNode(_BaseAgentWorkflowNode):
         workflow_type_id: ClassVar[str] = spec.workflow_type_id
         _agent_name: ClassVar[str] = spec.display_name
+        _default_max_steps: ClassVar[int] = 50 if spec.workflow_type_id == "agent_coder" else 20
 
         def _build_runner(self) -> Callable[[dict[str, Any]], dict[str, Any]]:
             return spec.runner_factory(self._max_steps)

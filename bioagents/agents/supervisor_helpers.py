@@ -5,10 +5,11 @@ import logging
 import re
 from pathlib import Path
 
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
+from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
 from bioagents.agents.helpers import get_message_content
 from bioagents.sandbox.coder_helpers import COMPLETION_MARKER
+from bioagents.tools.result_status import tool_result_status
 
 
 def _env_int_local(name: str, default: int) -> int:
@@ -163,6 +164,8 @@ def check_coder_should_force_finish(messages) -> tuple[bool, str]:
         "[CODER_STATUS: max_steps_reached]" in content
         or "[CODER_STATUS: repeated_parse_errors]" in content
         or "[CODER_STATUS: timeout]" in content
+        or "[CODER_STATUS: empty_response]" in content
+        or "[CODER_STATUS: repeated_code]" in content
     ):
         return True, (
             "Code agent finished with step-limit, parse-loop exhaustion, or timeout; "
@@ -413,32 +416,7 @@ def check_for_missing_tool(messages) -> tuple[bool, str]:
 
 
 def check_tool_builder_execution_success(messages) -> tuple[bool, str]:
-    """
-    Check if tool_builder has successfully executed a tool and returned results.
-
-    This is different from tool creation - this means ToolBuilder executed an
-    existing tool and got results, indicating the task is complete.
-
-    Args:
-        messages: List of conversation messages
-
-    Returns:
-        Tuple of (execution_success, tool_name)
-    """
-    for msg in reversed(messages[-5:]):
-        if isinstance(msg, SystemMessage) or (
-            hasattr(msg, "__class__") and msg.__class__.__name__ == "SystemMessage"
-        ):
-            content = get_message_content(msg)
-            if "[EXECUTION_SUCCESS]" in content or "ToolBuilder successfully executed" in content:
-                tool_match = re.search(r"tool '([\w_]+)'", content)
-                if tool_match:
-                    tool_name = tool_match.group(1)
-                    logger.info(f"Execution success already marked for tool: {tool_name}")
-                    return True, tool_name
-                return True, ""
-
-    # Execution success shape: {"status": "success", "tool": ..., "result": {...}}
+    """Find a successful custom-tool step; this does not establish task completion."""
     for msg in reversed(messages[-10:]):
         if isinstance(msg, ToolMessage) or (
             hasattr(msg, "__class__") and msg.__class__.__name__ == "ToolMessage"
@@ -446,44 +424,18 @@ def check_tool_builder_execution_success(messages) -> tuple[bool, str]:
             content = get_message_content(msg)
             try:
                 result = json.loads(content)
-                if result.get("status") == "success" and "tool" in result and "result" in result:
+                if "tool" in result and "status" in result:
+                    # The latest execution is authoritative; do not fall back to an
+                    # older success after a failed, pending or diagnostic-only run.
+                    if tool_result_status(result) != "success" or "result" not in result:
+                        return False, ""
                     tool_name = result.get("tool")
+                    if not isinstance(tool_name, str) or not tool_name:
+                        return False, ""
                     logger.info(f"Detected tool execution success from ToolMessage: {tool_name}")
                     return True, tool_name
             except (json.JSONDecodeError, AttributeError, TypeError):
                 pass
-
-    for msg in reversed(messages[-5:]):
-        agent_name = getattr(msg, "name", "")
-        if agent_name == "ToolBuilder":
-            content = get_message_content(msg)
-            content_lower = content.lower()
-
-            execution_patterns = [
-                r"successfully performed.*analysis",
-                r"successfully.*executed.*tool",
-                r"successfully.*completed.*analysis",
-                r"i have successfully.*performed",
-                r"analysis.*completed.*successfully",
-                r"found.*significant.*pathways",
-                r"enrichment analysis.*completed",
-                r"successfully.*performed.*pathway",
-            ]
-
-            for pattern in execution_patterns:
-                if re.search(pattern, content_lower):
-                    tool_match = re.search(
-                        r"tool.*['\"`]([\w_]+)['\"`]|['\"`]([\w_]+)['\"`].*tool",
-                        content_lower,
-                    )
-                    if tool_match:
-                        tool_name = tool_match.group(1) or tool_match.group(2)
-                        logger.info(
-                            f"Detected tool execution success from pattern '{pattern}': {tool_name}"
-                        )
-                        return True, tool_name
-                    logger.info(f"Detected tool execution success from pattern '{pattern}'")
-                    return True, ""
 
     return False, ""
 
