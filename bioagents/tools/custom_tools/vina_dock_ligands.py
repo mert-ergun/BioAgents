@@ -14,18 +14,25 @@ was never found and Vina was never run.
 from __future__ import annotations
 
 import csv
+import hashlib
+import importlib
 import json
+import math
+import os
+import re
 import shutil
 import subprocess  # nosec B404
+import tempfile
 import time
-from typing import TYPE_CHECKING, Any
+from pathlib import Path
+from typing import Any
 
 from bioagents.sandbox.workspace import to_portable_path
-from bioagents.tools.docking_tools import _pdb_to_pdbqt, _smiles_to_pdbqt
-from bioagents.tools.workspace_paths import resolve_input_file, resolve_output_dir
-
-if TYPE_CHECKING:
-    from pathlib import Path
+from bioagents.tools.workspace_paths import (
+    prepare_output_file,
+    resolve_input_file,
+    resolve_output_dir,
+)
 
 DEFAULT_BOX_SIZE = [22.5, 22.5, 22.5]
 _RECEPTOR_SUFFIXES = (".pdb", ".ent", ".pdbqt")
@@ -41,10 +48,23 @@ def _load_ligands(path: Path) -> list[dict[str, Any]]:
     data = json.loads(path.read_text(encoding="utf-8"))
     mols = data.get("molecules", []) if isinstance(data, dict) else data
     ligands = []
+    if not isinstance(mols, list):
+        raise ValueError("Ligands must be a list of molecule objects")
+    seen = set()
     for i, m in enumerate(mols or [], start=1):
+        if not isinstance(m, dict):
+            raise ValueError("Each ligand must be a molecule object")
         smiles = (m or {}).get("smiles")
         if smiles:
-            ligands.append({"chembl_id": str(m.get("chembl_id") or f"lig_{i}"), "smiles": smiles})
+            cid = str(m.get("chembl_id") or f"lig_{i}")
+            if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}", cid):
+                raise ValueError(f"Unsafe ligand identifier: {cid!r}")
+            if cid in seen:
+                raise ValueError(f"Duplicate ligand identifier: {cid!r}")
+            if not isinstance(smiles, str):
+                raise ValueError("Ligand SMILES must be a string")
+            seen.add(cid)
+            ligands.append({"chembl_id": cid, "smiles": smiles})
     if not ligands:
         raise ValueError(f"No molecules with a 'smiles' field in {path}")
     return ligands
@@ -114,13 +134,56 @@ def _choose_center(receptor: Path, center: list[float] | None) -> tuple[list[flo
     return _protein_centroid(receptor), "protein centroid"
 
 
-def _prepare_receptor(receptor: Path, out_dir: Path) -> tuple[Path, str]:
+def _ensure(mod, pip_name=None):
+    """Require preinstalled dependencies without changing a running interpreter."""
+    try:
+        return importlib.import_module(mod)
+    except ModuleNotFoundError as exc:
+        if exc.name != mod and not mod.startswith((exc.name or "") + "."):
+            raise
+        raise ModuleNotFoundError(
+            f"Missing dependency {mod!r}; install {pip_name or mod!r} in the sandbox image before execution",
+            name=exc.name,
+        ) from exc
+
+
+def _convert_with_obabel(source, destination, *, options=(), timeout=60):
+    """Publish only a fresh nonempty CLI output; native crashes stay in the child."""
+    executable = shutil.which("obabel")
+    if not executable:
+        raise RuntimeError("obabel CLI is required; install openbabel-wheel in the sandbox image")
+    target = Path(destination)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    descriptor, temporary = tempfile.mkstemp(suffix=target.suffix, dir=target.parent)
+    os.close(descriptor)
+    try:
+        # Resolved executable and separate argv; inputs are never interpreted by a shell.
+        result = subprocess.run(  # nosec B603
+            [executable, str(source), "-O", temporary, *options],
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+        if result.returncode != 0 or Path(temporary).stat().st_size == 0:
+            raise RuntimeError(
+                f"obabel conversion failed (exit {result.returncode}): {result.stderr[-2000:]}"
+            )
+        Path(temporary).replace(target)
+    finally:
+        Path(temporary).unlink(missing_ok=True)
+
+
+def _receptor_to_pdbqt(source, destination, ph=7.4):
+    _convert_with_obabel(source, destination, options=("-xr", "-p", str(ph)), timeout=300)
+    return "obabel-cli"
+
+
+def _prepare_receptor(receptor: Path, out_dir: Path, ph=7.4) -> tuple[Path, str]:
     if receptor.suffix.lower() == ".pdbqt":
         return receptor, "provided"
-    target = out_dir / "receptor.pdbqt"
-    obabel = shutil.which("obabel")
-    if obabel:
-        clean = out_dir / "receptor_clean.pdb"
+    target, _ = prepare_output_file(out_dir / "receptor.pdbqt")
+    with tempfile.TemporaryDirectory(prefix="receptor-", dir=out_dir) as temporary:
+        clean = Path(temporary) / "receptor_clean.pdb"
         clean.write_text(
             "\n".join(
                 ln
@@ -129,45 +192,35 @@ def _prepare_receptor(receptor: Path, out_dir: Path) -> tuple[Path, str]:
             )
             + "\n"
         )
-        proc = subprocess.run(  # nosec B603
-            [obabel, str(clean), "-xr", "-p", "7.4", "-O", str(target)],
-            capture_output=True,
-            text=True,
-            timeout=300,
-            check=False,
-        )
-        if proc.returncode == 0 and target.is_file() and target.stat().st_size > 0:
-            return target, "obabel"
-    result = _pdb_to_pdbqt(str(receptor), str(target))
-    if result.get("status") != "success":
-        raise RuntimeError(f"Receptor preparation failed: {result.get('message')}")
-    return target, "builtin"
+        _receptor_to_pdbqt(clean, target, ph)
+    return target, "obabel-cli"
 
 
 def _dock_one(vina: Any, lig: dict[str, Any], out_dir: Path, n_poses: int, exh: int) -> dict:
+    from bioagents.tools.docking_tools import _smiles_to_pdbqt
+
     cid = lig["chembl_id"]
-    prep = _smiles_to_pdbqt(lig["smiles"], str(out_dir / f"{cid}.pdbqt"))
+    ligand_path, _ = prepare_output_file(out_dir / f"{cid}.pdbqt")
+    prep = _smiles_to_pdbqt(lig["smiles"], str(ligand_path))
     if prep.get("status") != "success":
         return {**lig, "status": "error", "error": prep.get("message")}
-    vina.set_ligand_from_file(str(out_dir / f"{cid}.pdbqt"))
+    vina.set_ligand_from_file(str(ligand_path))
     vina.dock(exhaustiveness=int(exh), n_poses=int(n_poses))
     energies = vina.energies()
-    pose = out_dir / f"{cid}_pose.pdbqt"
+    pose, _ = prepare_output_file(out_dir / f"{cid}_pose.pdbqt")
     vina.write_poses(str(pose), n_poses=int(n_poses))
     return {
         **lig,
         "status": "success",
         "affinity_kcal_mol": round(float(energies[0][0]), 3),
         "pose_affinities_kcal_mol": [round(float(e[0]), 3) for e in energies],
-        "ligand_pdbqt": to_portable_path(out_dir / f"{cid}.pdbqt"),
+        "ligand_pdbqt": to_portable_path(ligand_path),
         "pose_pdbqt": to_portable_path(pose),
     }
 
 
 def _write_results(out_dir: Path, summary: dict[str, Any]) -> tuple[str, str]:
     # A rerun writes a new version rather than replacing a completed docking run.
-    from bioagents.tools.workspace_paths import prepare_output_file
-
     json_path, _ = prepare_output_file(out_dir / "docking_results.json")
     csv_path, _ = prepare_output_file(out_dir / "docking_results.csv")
     json_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
@@ -177,6 +230,35 @@ def _write_results(out_dir: Path, summary: dict[str, Any]) -> tuple[str, str]:
         writer.writeheader()
         writer.writerows(summary["results"])
     return to_portable_path(json_path), to_portable_path(csv_path)
+
+
+def _resume_results(out_dir: Path, fingerprint: str, ligands: list[dict]) -> list[dict]:
+    """Resume the latest matching run, including versioned result files."""
+    candidates = [
+        p
+        for p in out_dir.glob("docking_results*.json")
+        if re.fullmatch(r"docking_results(?:_v\d+)?\.json", p.name)
+    ]
+    for path in sorted(candidates, key=lambda p: p.stat().st_mtime_ns, reverse=True):
+        try:
+            previous = json.loads(path.read_text())
+            if previous.get("input_fingerprint") != fingerprint:
+                continue
+            requested = {lig["chembl_id"]: lig["smiles"] for lig in ligands}
+            results = []
+            for record in previous.get("results", []):
+                if record.get("status") == "success" and requested.get(
+                    record.get("chembl_id")
+                ) == record.get("smiles"):
+                    try:
+                        resolve_input_file(record["pose_pdbqt"], "Docked pose", (".pdbqt",))
+                    except (KeyError, ValueError, FileNotFoundError):
+                        continue
+                    results.append(record)
+            return results
+        except (OSError, ValueError, TypeError, AttributeError):
+            continue
+    return []
 
 
 def vina_dock_ligands(
@@ -191,6 +273,7 @@ def vina_dock_ligands(
     dry_run: bool = False,
     resume: bool = False,
     time_budget_sec: float = 900,
+    ph: float = 7.4,
 ) -> dict[str, Any]:
     """Dock ligands into a receptor with AutoDock Vina.
 
@@ -209,6 +292,7 @@ def vina_dock_ligands(
         dry_run: Resolve inputs and report the plan without docking.
         resume: Skip ligands already present in ``docking_results.json``.
         time_budget_sec: Stop docking new ligands after this many seconds.
+        ph: Receptor hydrogenation pH used by the OpenBabel CLI.
 
     Returns:
         Dict with status, n_docked, n_failed, center, per-ligand results (affinity in
@@ -219,14 +303,22 @@ def vina_dock_ligands(
         ValueError: Invalid inputs.
     """
     t0 = time.monotonic()
+    box = [float(b) for b in (box_size if box_size is not None else DEFAULT_BOX_SIZE)]
+    if len(box) != 3 or any(not math.isfinite(b) or b <= 0 for b in box):
+        raise ValueError("box_size must contain three finite positive values")
+    if not math.isfinite(time_budget_sec) or time_budget_sec <= 0:
+        raise ValueError("time_budget_sec must be finite and positive")
+    if exhaustiveness < 1 or n_poses < 1 or not math.isfinite(ph) or not 0 <= ph <= 14:
+        raise ValueError("exhaustiveness/n_poses must be positive and pH must be between 0 and 14")
     receptor = resolve_input_file(receptor_pdb, "Receptor PDB", _RECEPTOR_SUFFIXES)
     ligands_path = resolve_input_file(ligands_json, "Ligands JSON", (".json",))
     ligands = _load_ligands(ligands_path)
     out_dir = resolve_output_dir(output_dir or None, default_subdir="docking")
-    box = [float(b) for b in (box_size or DEFAULT_BOX_SIZE)]
     box_center, center_source = _choose_center(receptor, center)
+    if len(box_center) != 3 or any(not math.isfinite(c) for c in box_center):
+        raise ValueError("center must contain three finite values")
 
-    plan = {
+    plan: dict[str, Any] = {
         "receptor_pdb": to_portable_path(receptor),
         "ligands_json": to_portable_path(ligands_path),
         "output_dir": to_portable_path(out_dir),
@@ -234,6 +326,21 @@ def vina_dock_ligands(
         "center": box_center,
         "center_source": center_source,
         "box_size": box,
+        "input_fingerprint": hashlib.sha256(
+            receptor.read_bytes()
+            + json.dumps(
+                {
+                    "ligands": ligands,
+                    "center": box_center,
+                    "box": box,
+                    "seed": seed,
+                    "exhaustiveness": exhaustiveness,
+                    "n_poses": n_poses,
+                    "ph": ph,
+                },
+                sort_keys=True,
+            ).encode()
+        ).hexdigest(),
     }
     if dry_run:
         return {"status": "dry_run", **plan}
@@ -243,15 +350,12 @@ def vina_dock_ligands(
     except ImportError as exc:
         raise RuntimeError("AutoDock Vina is not installed (pip install vina)") from exc
 
-    receptor_pdbqt, prep_method = _prepare_receptor(receptor, out_dir)
+    receptor_pdbqt, prep_method = _prepare_receptor(receptor, out_dir, ph)
     vina = Vina(sf_name="vina", seed=int(seed), verbosity=0)
     vina.set_receptor(str(receptor_pdbqt))
     vina.compute_vina_maps(center=box_center, box_size=box)
 
-    previous: list[dict[str, Any]] = []
-    results_file = out_dir / "docking_results.json"
-    if resume and results_file.is_file():
-        previous = json.loads(results_file.read_text()).get("results", [])
+    previous = _resume_results(out_dir, plan["input_fingerprint"], ligands) if resume else []
     done = {r["chembl_id"] for r in previous if r.get("status") == "success"}
     results = [r for r in previous if r["chembl_id"] in done]
     for lig in ligands:
@@ -268,7 +372,7 @@ def vina_dock_ligands(
     n_docked = sum(r.get("status") == "success" for r in results)
     summary = {
         **plan,
-        "status": "success" if n_docked else "error",
+        "status": ("success" if n_docked == len(ligands) else "partial" if n_docked else "error"),
         "receptor_pdbqt": to_portable_path(receptor_pdbqt),
         "prep_method": prep_method,
         "exhaustiveness": exhaustiveness,
@@ -279,4 +383,5 @@ def vina_dock_ligands(
         "elapsed_sec": round(time.monotonic() - t0, 1),
     }
     summary["results_json"], summary["results_csv"] = _write_results(out_dir, summary)
+    summary["json_file"], summary["csv_file"] = summary["results_json"], summary["results_csv"]
     return summary

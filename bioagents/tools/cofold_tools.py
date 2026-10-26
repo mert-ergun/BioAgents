@@ -9,9 +9,10 @@ fell back to docking, even though Boltz runs fine locally — in task1 the coder
 Backends, in order of preference:
 
 1. ``BIOAGENTS_BOLTZ_CMD`` — an explicit command (e.g. a dedicated venv's ``boltz``).
-2. ``boltz`` on ``PATH``.
-3. The ``boltz`` Python module importable in this interpreter.
-4. ``uvx`` — runs Boltz in an isolated, cached environment so its pins (numpy<2,
+2. The prebuilt sandbox's dedicated Boltz venv.
+3. ``boltz`` on ``PATH``.
+4. The ``boltz`` Python module importable in this interpreter.
+5. ``uvx`` — runs Boltz in an isolated, cached environment so its pins (numpy<2,
    its own torch) never touch the BioAgents environment. First use downloads Boltz.
    Disable with ``BIOAGENTS_COFOLD_UVX=0``.
 
@@ -27,12 +28,16 @@ import logging
 import os
 import shlex
 import shutil
-import subprocess  # nosec B404 - runs the Boltz CLI with an argument list
+
+# Runs the Boltz CLI with an argument list, without a shell.
+import subprocess  # nosec B404
 import sys
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+
+from bioagents.sandbox.python_environments import environment_python
 
 logger = logging.getLogger(__name__)
 
@@ -83,6 +88,16 @@ def detect_cofold_backend() -> CofoldBackend:
             f"BIOAGENTS_BOLTZ_CMD={explicit}",
             hosted,
         )
+    try:
+        python = environment_python("boltz")
+    except FileNotFoundError:
+        pass
+    else:
+        cli = python.parent / "boltz"
+        if cli.is_file():
+            return CofoldBackend(
+                "boltz-venv", (str(cli),), f"isolated Boltz environment at {python}", hosted
+            )
     on_path = shutil.which("boltz")
     if on_path:
         return CofoldBackend("boltz-cli", (on_path,), f"boltz executable at {on_path}", hosted)
@@ -244,7 +259,8 @@ def run_boltz_cofold(
     started = time.monotonic()
     try:
         with log_path.open("w") as log:
-            proc = subprocess.run(  # nosec B603 - fixed argv, no shell
+            # Fixed argv; paths and options are not interpreted by a shell.
+            proc = subprocess.run(  # nosec B603
                 cmd,
                 stdout=log,
                 stderr=subprocess.STDOUT,
