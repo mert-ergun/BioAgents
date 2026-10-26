@@ -402,3 +402,118 @@ class TestBindPreservesTimeoutAndRateLimit:
             assert br.invoke([]) is not None
             mock_inner.bind.assert_called_once_with(stop=["```"])
             bound.invoke.assert_called_once()
+
+
+def test_routing_uses_request_provider_override(monkeypatch):
+    from bioagents.llms import llm_provider as module
+
+    monkeypatch.setenv("LLM_PROVIDER", "openrouter")
+    token = module._provider_override.set("gemini")
+    try:
+        assert get_structured_output_kwargs_for_routing() == {"method": "json_schema"}
+    finally:
+        module._provider_override.reset(token)
+
+
+def test_openrouter_env_model_beats_prompt_but_not_explicit_choice(monkeypatch):
+    from bioagents.llms import llm_provider as module
+
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
+    monkeypatch.setenv("OPENROUTER_MODEL", "server/model")
+    model = Mock()
+    monkeypatch.setattr(module, "ChatOpenAI", model)
+    monkeypatch.setattr(module, "get_prompt_llm_model", lambda *a: "prompt/model")
+    get_llm(provider="openrouter", prompt_name="coder")
+    assert model.call_args.kwargs["model"] == "server/model"
+    get_llm(provider="openrouter", model="chosen/model", prompt_name="coder")
+    assert model.call_args.kwargs["model"] == "chosen/model"
+
+
+@pytest.mark.parametrize("provider", ["openai", "gemini", "ollama", "openrouter"])
+@pytest.mark.parametrize("setting", ["provider_model", "shared_model"])
+@patch.dict(os.environ, {}, clear=True)
+def test_all_providers_use_environment_model_before_prompt(provider, setting, monkeypatch):
+    from bioagents.llms import llm_provider as module
+
+    monkeypatch.setenv("LLM_PROVIDER", provider)
+    monkeypatch.setenv(f"{provider.upper()}_API_KEY", "test-key")
+    key = f"{provider.upper()}_MODEL" if setting == "provider_model" else "LLM_MODEL"
+    monkeypatch.setenv(key, "  custom/environment-model  ")
+    constructor = Mock()
+    monkeypatch.setattr(module, "ChatOpenAI", constructor)
+    monkeypatch.setattr(module, "ChatGoogleGenerativeAI", constructor)
+    metadata = Mock(return_value="prompt/model")
+    monkeypatch.setattr(module, "get_prompt_llm_model", metadata)
+    get_llm(prompt_name="supervisor")
+    assert constructor.call_args.kwargs["model"] == "custom/environment-model"
+    metadata.assert_not_called()
+    assert module.get_server_llm_config() == {
+        "provider": provider,
+        "model": "custom/environment-model",
+    }
+
+
+@pytest.mark.parametrize("provider", ["openai", "gemini", "ollama", "openrouter"])
+@patch.dict(os.environ, {}, clear=True)
+def test_provider_model_beats_shared_model_and_public_config_excludes_secrets(
+    provider, monkeypatch
+):
+    from bioagents.llms import llm_provider as module
+
+    monkeypatch.setenv("LLM_PROVIDER", f"  {provider.upper()}  ")
+    monkeypatch.setenv("LLM_MODEL", "shared/model")
+    monkeypatch.setenv(f"{provider.upper()}_MODEL", "specific/model")
+    monkeypatch.setenv(f"{provider.upper()}_API_KEY", "do-not-expose-this-key")
+    provider_token = module._provider_override.set("different-provider")
+    model_token = module._model_override.set("request/model")
+    try:
+        assert module.get_server_llm_config() == {"provider": provider, "model": "specific/model"}
+    finally:
+        module._provider_override.reset(provider_token)
+        module._model_override.reset(model_token)
+
+
+@patch.dict(os.environ, {}, clear=True)
+def test_shared_model_is_not_reused_for_a_different_explicit_provider(monkeypatch):
+    from bioagents.llms import llm_provider as module
+
+    monkeypatch.setenv("LLM_PROVIDER", "openrouter")
+    monkeypatch.setenv("LLM_MODEL", "openrouter-only-model")
+    monkeypatch.setenv("GEMINI_API_KEY", "test-key")
+    constructor = Mock()
+    monkeypatch.setattr(module, "ChatGoogleGenerativeAI", constructor)
+    monkeypatch.setattr(module, "get_prompt_llm_model", lambda *args: "gemini-prompt-model")
+    get_llm(provider="gemini", prompt_name="coder")
+    assert constructor.call_args.kwargs["model"] == "gemini-prompt-model"
+
+
+@patch.dict(os.environ, {}, clear=True)
+def test_blank_model_configuration_allows_prompt_defaults(monkeypatch):
+    from bioagents.llms import llm_provider as module
+
+    monkeypatch.setenv("LLM_PROVIDER", "openai")
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    monkeypatch.setenv("OPENAI_MODEL", "  ")
+    monkeypatch.setenv("LLM_MODEL", "  ")
+    constructor = Mock()
+    monkeypatch.setattr(module, "ChatOpenAI", constructor)
+    monkeypatch.setattr(module, "get_prompt_llm_model", lambda *args: "prompt/model")
+    get_llm(prompt_name="analysis")
+    assert constructor.call_args.kwargs["model"] == "prompt/model"
+    assert module.get_server_llm_config() == {"provider": "openai", "model": None}
+
+
+@pytest.mark.parametrize("provider", ["openai", "gemini", "ollama", "openrouter"])
+@patch.dict(os.environ, {}, clear=True)
+def test_blank_models_never_reach_provider_clients(provider, monkeypatch):
+    from bioagents.llms import llm_provider as module
+
+    monkeypatch.setenv("LLM_PROVIDER", provider)
+    monkeypatch.setenv(f"{provider.upper()}_API_KEY", "test-key")
+    monkeypatch.setenv(f"{provider.upper()}_MODEL", "  ")
+    monkeypatch.setenv("LLM_MODEL", "  ")
+    constructor = Mock()
+    monkeypatch.setattr(module, "ChatOpenAI", constructor)
+    monkeypatch.setattr(module, "ChatGoogleGenerativeAI", constructor)
+    get_llm()
+    assert constructor.call_args.kwargs["model"].strip()

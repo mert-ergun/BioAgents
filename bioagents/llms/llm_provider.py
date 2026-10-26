@@ -30,8 +30,30 @@ def set_api_keys_override(api_keys: dict[str, str] | None) -> None:
 
 def set_llm_overrides(provider: str | None = None, model: str | None = None) -> None:
     """Set provider and model overrides for the current context."""
-    _provider_override.set(provider)
-    _model_override.set(model)
+    _provider_override.set(provider.strip().lower() or None if provider else None)
+    _model_override.set(model.strip() or None if model else None)
+
+
+def _server_provider() -> str:
+    provider = os.getenv("LLM_PROVIDER", "openai").strip().lower()
+    if provider not in ("openai", "ollama", "gemini", "openrouter"):
+        raise ValueError(
+            f"Invalid LLM_PROVIDER: {provider}. Must be one of: openai, ollama, gemini, openrouter"
+        )
+    return provider
+
+
+def _environment_model(provider: str) -> str | None:
+    model = os.getenv(f"{provider.upper()}_MODEL", "").strip()
+    if not model and provider == os.getenv("LLM_PROVIDER", "openai").strip().lower():
+        model = os.getenv("LLM_MODEL", "").strip()
+    return model or None
+
+
+def get_server_llm_config() -> dict[str, str | None]:
+    """Public model settings only; never include credentials or request overrides."""
+    provider = _server_provider()
+    return {"provider": provider, "model": _environment_model(provider)}
 
 
 def _get_api_key(provider: str) -> str | None:
@@ -73,7 +95,7 @@ def get_structured_output_kwargs_for_routing() -> dict[str, Any]:
     Override (Gemini only): set ``GEMINI_STRUCTURED_ROUTING_METHOD`` to
     ``function_calling`` or ``json_schema`` to force a mode.
     """
-    provider = os.getenv("LLM_PROVIDER", "openai").lower()
+    provider = _provider_override.get() or _server_provider()
     if provider != "gemini":
         return {}
     override = os.getenv("GEMINI_STRUCTURED_ROUTING_METHOD", "").strip().lower()
@@ -131,8 +153,9 @@ def get_llm(
     Args:
         provider: The LLM provider to use ('openai', 'ollama', 'gemini', or 'openrouter').
                   If None, reads from LLM_PROVIDER env var (defaults to 'openai')
-        model: The model name. If None, uses defaults or prompt metadata:
-               - Prompt metadata (if prompt_name provided and models defined)
+        model: Explicit model, followed by a request override, PROVIDER_MODEL,
+               LLM_MODEL for the server provider, then prompt metadata:
+               - Prompt metadata (if prompt_name provided and no environment model)
                - Otherwise provider defaults:
                  * OpenAI: 'gpt-5.1'
                  * Ollama: 'qwen3:14b'
@@ -167,23 +190,20 @@ def get_llm(
           Docker/Jupyter kernel (pip installs, model downloads, etc.) is untimed.
         - BIOAGENTS_RATE_LIMIT_MAX_WAIT_SEC: Max seconds to wait for an RPM slot (default 120; 0 disables).
     """
-    if provider is None:
-        provider = _provider_override.get()  # type: ignore[assignment]
-    if provider is None:
-        provider_str = os.getenv("LLM_PROVIDER", "openai").lower()
-        if provider_str not in ("openai", "ollama", "gemini", "openrouter"):
-            raise ValueError(
-                f"Invalid LLM_PROVIDER: {provider_str}. Must be one of: openai, ollama, gemini, openrouter"
-            )
-        provider = provider_str  # type: ignore[assignment]
+    selected_provider = provider
+    if selected_provider is None:
+        selected_provider_name = _provider_override.get() or _server_provider()
+    else:
+        selected_provider_name = selected_provider
     if model is None:
         model = _model_override.get()
+    model = model.strip() or None if model else None
+    if model is None:
+        model = _environment_model(selected_provider_name)
     if model is None and prompt_name:
-        prompt_model = get_prompt_llm_model(prompt_name, provider)
-        if prompt_model:
-            model = prompt_model
+        model = get_prompt_llm_model(prompt_name, selected_provider_name)
 
-    if provider == "openai":
+    if selected_provider_name == "openai":
         model = model or "gpt-5.1"
         api_key = _get_api_key("openai") or os.getenv("OPENAI_API_KEY")
         if not api_key:
@@ -212,7 +232,7 @@ def get_llm(
 
         return llm
 
-    elif provider == "ollama":
+    elif selected_provider_name == "ollama":
         model = model or "qwen3:14b"
         base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434/v1")
 
@@ -238,7 +258,7 @@ def get_llm(
 
         return llm
 
-    elif provider == "gemini":
+    elif selected_provider_name == "gemini":
         model = model or "gemini-3.1-flash-lite"
         api_key = _get_api_key("gemini") or os.getenv("GEMINI_API_KEY")
         if not api_key:
@@ -275,7 +295,7 @@ def get_llm(
 
         return llm
 
-    elif provider == "openrouter":
+    elif selected_provider_name == "openrouter":
         model = model or "deepseek/deepseek-v4-flash"
         api_key = _get_api_key("openrouter") or os.getenv("OPENROUTER_API_KEY")
         if not api_key:
@@ -288,12 +308,17 @@ def get_llm(
             "OPENROUTER_REQUEST_TIMEOUT",
             _request_timeout_seconds("LLM_REQUEST_TIMEOUT", 600.0),
         )
+        default_headers = {
+            "HTTP-Referer": "https://github.com/mert-ergun/BioAgents",
+            "X-Title": "BioAgents",
+        }
         llm = ChatOpenAI(
             model=model,
             temperature=temperature,
             base_url="https://openrouter.ai/api/v1",
             api_key=SecretStr(api_key),
             timeout=openrouter_timeout,
+            default_headers=default_headers,
         )
         llm = _wrap_llm_with_invoke_timeout(llm)
 
@@ -307,4 +332,4 @@ def get_llm(
         return llm
 
     else:
-        raise ValueError(f"Unsupported provider: {provider}")
+        raise ValueError(f"Unsupported provider: {selected_provider_name}")

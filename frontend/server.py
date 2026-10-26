@@ -13,21 +13,28 @@ from pathlib import Path
 from typing import Any
 
 import requests
+from dotenv import load_dotenv
 from fastapi import FastAPI, File, HTTPException, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
-
-# Import BioAgents components
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from pydantic import BaseModel
 
-from bioagents.graph import ALL_MEMBERS, create_graph
-from bioagents.graph_streaming import aiter_graph_stream, iter_graph_stream
-from bioagents.limits import TOOL_APPROVAL_TIMEOUT_SEC
-from bioagents.llms.llm_provider import set_api_keys_override, set_llm_overrides
-from frontend.drug_discovery_routes import include_drug_discovery_routes
-from frontend.workflow_routes import include_workflow_routes
+# Project modules cache runtime settings while importing.
+load_dotenv(Path(__file__).resolve().parent.parent / ".env", override=False)
+
+# Import BioAgents components
+from bioagents.graph import ALL_MEMBERS, create_graph  # noqa: E402
+from bioagents.graph_streaming import aiter_graph_stream, iter_graph_stream  # noqa: E402
+from bioagents.limits import TOOL_APPROVAL_TIMEOUT_SEC  # noqa: E402
+from bioagents.llms.llm_provider import (  # noqa: E402
+    get_server_llm_config,
+    set_api_keys_override,
+    set_llm_overrides,
+)
+from frontend.drug_discovery_routes import include_drug_discovery_routes  # noqa: E402
+from frontend.workflow_routes import include_workflow_routes  # noqa: E402
 
 # Graph agent nodes whose assistant output is streamed to the chat (excludes supervisor + *_tools).
 STREAM_UI_AGENTS = frozenset([*ALL_MEMBERS, "summary"])
@@ -508,6 +515,12 @@ async def root():
 async def health_check():
     """Health check endpoint."""
     return {"status": "healthy", "service": "bioagents"}
+
+
+@app.get("/api/llm/config")
+async def llm_configuration():
+    """Expose the server's provider/model without API keys."""
+    return get_server_llm_config()
 
 
 @app.post("/api/query")

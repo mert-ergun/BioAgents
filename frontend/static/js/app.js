@@ -87,8 +87,6 @@ const state = {
         notifications: true,
         advancedMode: false,
         theme: 'dark',
-        llmProvider: 'gemini',
-        llmModel: 'gemini-3.1-flash-lite',
         apiKeys: {
             openai: '',
             gemini: '',
@@ -772,6 +770,12 @@ function loadFromStorage() {
             state.sessions = parsed.sessions || [];
             state.currentSessionId = parsed.currentSessionId;
             state.settings = { ...state.settings, ...parsed.settings };
+            // Model selection belongs to the server, including for existing clients.
+            const oldModelKeys = ['llmProvider', 'llmModel', 'llmSelectionExplicit'];
+            if (oldModelKeys.some(key => key in state.settings)) {
+                oldModelKeys.forEach(key => delete state.settings[key]);
+                saveToStorage();
+            }
             if (!state.settings.apiKeys) {
                 state.settings.apiKeys = { openai: '', gemini: '' };
             }
@@ -1075,7 +1079,7 @@ async function handleSubmit() {
     try {
         const apiKeys = getApiKeysPayload();
         if (state.isConnected && state.ws?.readyState === WebSocket.OPEN) {
-            state.ws.send(JSON.stringify({ type: 'query', content: query, api_keys: apiKeys, session_id: state.currentSessionId, client_id: state.clientId, provider: state.settings.llmProvider || undefined, model: state.settings.llmModel || undefined }));
+            state.ws.send(JSON.stringify({ type: 'query', content: query, api_keys: apiKeys, session_id: state.currentSessionId, client_id: state.clientId }));
         } else {
             await sendQueryViaRest(query, apiKeys);
         }
@@ -1116,8 +1120,6 @@ async function sendQueryViaRest(query, apiKeys) {
 
     const body = { query };
     if (apiKeys && Object.keys(apiKeys).length) body.api_keys = apiKeys;
-    if (state.settings.llmProvider) body.provider = state.settings.llmProvider;
-    if (state.settings.llmModel) body.model = state.settings.llmModel;
 
     const response = await fetch(`${CONFIG.apiBaseUrl}/api/query`, {
         method: 'POST',
@@ -3265,50 +3267,22 @@ function initSettings() {
     }
 }
 
-function showSettingsPanel() {
-    const MODELS = {
-        openai: [
-            { id: 'gpt-5.5', name: 'GPT-5.5', desc: 'Newest flagship' },
-            { id: 'gpt-5.5-pro', name: 'GPT-5.5 Pro', desc: 'Smarter & more precise' },
-            { id: 'gpt-5.4', name: 'GPT-5.4', desc: 'Affordable coding & work' },
-            { id: 'gpt-5.4-pro', name: 'GPT-5.4 Pro', desc: 'Smarter GPT-5.4' },
-            { id: 'gpt-5.4-mini', name: 'GPT-5.4 Mini', desc: 'Strong mini for coding' },
-            { id: 'gpt-5.4-nano', name: 'GPT-5.4 Nano', desc: 'Cheapest GPT-5.4' },
-            { id: 'gpt-5', name: 'GPT-5', desc: 'Agentic reasoning' },
-            { id: 'gpt-5-pro', name: 'GPT-5 Pro', desc: 'Smarter GPT-5' },
-            { id: 'gpt-5-mini', name: 'GPT-5 Mini', desc: 'Budget reasoning' },
-            { id: 'gpt-5-nano', name: 'GPT-5 Nano', desc: 'Fast & cheap' },
-            { id: 'o3', name: 'o3', desc: 'Advanced reasoning' },
-            { id: 'o3-pro', name: 'o3 Pro', desc: 'Max compute reasoning' },
-            { id: 'gpt-4.1', name: 'GPT-4.1', desc: 'Production workhorse' },
-            { id: 'gpt-4.1-mini', name: 'GPT-4.1 Mini', desc: 'Mid-tier production' },
-            { id: 'gpt-4.1-nano', name: 'GPT-4.1 Nano', desc: 'Ultra cheap' },
-        ],
-        gemini: [
-            { id: 'gemini-3.1-pro', name: 'Gemini 3.1 Pro', desc: 'Latest reasoning-first' },
-            { id: 'gemini-3-flash', name: 'Gemini 3 Flash', desc: 'Best multimodal' },
-            { id: 'gemini-3.1-flash-lite', name: 'Gemini 3.1 Flash-Lite', desc: 'Most cost-efficient' },
-            { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro', desc: 'Complex reasoning (stable)' },
-            { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash', desc: 'Fast & capable (stable)' },
-            { id: 'gemini-2.5-flash-lite', name: 'Gemini 2.5 Flash-Lite', desc: 'High-throughput (stable)' },
-            { id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash', desc: 'Cost-effective general' },
-            { id: 'gemini-2.0-flash-lite', name: 'Gemini 2.0 Flash-Lite', desc: 'Ultra-efficient simple' },
-        ],
-        openrouter: [
-            { id: 'deepseek/deepseek-v4-flash', name: 'DeepSeek V4 Flash', desc: 'Cost-effective reasoning' },
-            { id: 'anthropic/claude-sonnet-4.6', name: 'Claude Sonnet 4.6', desc: 'Balanced & capable' },
-            { id: 'anthropic/claude-opus-4.7', name: 'Claude Opus 4.7', desc: 'Most powerful' },
-            { id: 'openai/gpt-5.5', name: 'GPT-5.5', desc: 'Latest OpenAI' },
-            { id: 'google/gemini-3.5-flash', name: 'Gemini 3.5 Flash', desc: 'Latest Google' },
-            { id: 'google/gemini-2.5-flash', name: 'Gemini 2.5 Flash', desc: 'Fast & efficient' },
-            { id: 'deepseek/deepseek-v4-pro', name: 'DeepSeek V4 Pro', desc: 'Advanced reasoning' },
-            { id: 'qwen/qwen3-235b-a22b-2507', name: 'Qwen3 235B', desc: 'Alibaba MoE model' },
-            { id: 'openai/gpt-4o-mini', name: 'GPT-4o Mini', desc: 'Budget OpenAI' },
-        ],
-    };
-
-    const currentProvider = state.settings.llmProvider || 'gemini';
-    const currentModel = state.settings.llmModel || '';
+async function showSettingsPanel() {
+    let configuration = null;
+    try {
+        const response = await fetch(`${CONFIG.apiBaseUrl}/api/llm/config`, {cache: 'no-store'});
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const payload = await response.json();
+        if (typeof payload.provider !== 'string'
+            || !(payload.model === null || typeof payload.model === 'string')) {
+            throw new Error('Invalid server model configuration');
+        }
+        configuration = payload;
+    } catch (error) {
+        console.error('Could not load server model configuration:', error);
+    }
+    const currentProvider = configuration?.provider || 'Unavailable';
+    const currentModel = configuration ? (configuration.model || 'Agent defaults') : 'Unavailable';
 
     // Create modal
     const modal = document.createElement('div');
@@ -3355,33 +3329,20 @@ function showSettingsPanel() {
                     </button>
                 </div>
 
-                <!-- LLM Provider & Model Selection -->
+                <!-- Server LLM Configuration -->
                 <div class="pt-4 border-t border-border-subtle-inv space-y-3">
                     <p class="text-sm font-medium text-text-theme flex items-center gap-2">
                         <span class="material-symbols-outlined text-primary text-[18px]">tune</span>
                         LLM Configuration
                     </p>
+                    <p class="text-xs text-text-subtle">Provider and model are managed by the server.</p>
                     <div>
                         <label class="block text-xs text-text-muted mb-1">Provider</label>
-                        <select id="llmProvider" class="w-full px-3 py-2 rounded-lg bg-hover-bg-strong border border-border-inverse text-sm text-text-theme focus:border-primary/50 focus:ring-1 focus:ring-primary/30 outline-none">
-                            <option value="gemini" ${currentProvider === 'gemini' ? 'selected' : ''}>Google Gemini</option>
-                            <option value="openai" ${currentProvider === 'openai' ? 'selected' : ''}>OpenAI</option>
-                            <option value="ollama" ${currentProvider === 'ollama' ? 'selected' : ''}>Ollama (local)</option>
-                            <option value="openrouter" ${currentProvider === 'openrouter' ? 'selected' : ''}>OpenRouter</option>
-                        </select>
+                        <p id="llmProvider" class="text-sm text-text-theme">${escapeHtml(currentProvider)}</p>
                     </div>
                     <div>
                         <label class="block text-xs text-text-muted mb-1">Model</label>
-                        <select id="llmModel" class="w-full px-3 py-2 rounded-lg bg-hover-bg-strong border border-border-inverse text-sm text-text-theme focus:border-primary/50 focus:ring-1 focus:ring-primary/30 outline-none">
-                        </select>
-                    </div>
-                    <div id="ollamaModelRow" class="${currentProvider === 'ollama' ? '' : 'hidden'}">
-                        <label class="block text-xs text-text-muted mb-1">Ollama Model Name</label>
-                        <input type="text" id="ollamaModelInput" class="w-full px-3 py-2 rounded-lg bg-hover-bg-strong border border-border-inverse text-sm text-text-theme placeholder-slate-500 focus:border-primary/50 focus:ring-1 focus:ring-primary/30 outline-none" placeholder="qwen3:14b" value="${currentProvider === 'ollama' ? (currentModel || 'qwen3:14b') : 'qwen3:14b'}" autocomplete="off"/>
-                    </div>
-                    <div id="openrouterModelRow" class="${currentProvider === 'openrouter' ? '' : 'hidden'}">
-                        <label class="block text-xs text-text-muted mb-1">OpenRouter Custom Model</label>
-                        <input type="text" id="openrouterModelInput" class="w-full px-3 py-2 rounded-lg bg-hover-bg-strong border border-border-inverse text-sm text-text-theme placeholder-slate-500 focus:border-primary/50 focus:ring-1 focus:ring-primary/30 outline-none" placeholder="deepseek/deepseek-v4-flash" value="${currentProvider === 'openrouter' ? (currentModel || 'deepseek/deepseek-v4-flash') : 'deepseek/deepseek-v4-flash'}" autocomplete="off"/>
+                        <p id="llmModel" class="text-sm text-text-theme break-all">${escapeHtml(currentModel)}</p>
                     </div>
                 </div>
 
@@ -3417,47 +3378,6 @@ function showSettingsPanel() {
         </div>
     `;
 
-    // Populate model dropdown
-    function populateModels(provider, selectedModel) {
-        const select = modal.querySelector('#llmModel');
-        if (!select) return;
-        select.innerHTML = '';
-        if (provider === 'ollama') {
-            select.innerHTML = '<option value="qwen3:14b">qwen3:14b (default)</option>';
-            return;
-        }
-        if (provider === 'openrouter') {
-            const models = MODELS.openrouter || [];
-            models.forEach(m => {
-                const opt = document.createElement('option');
-                opt.value = m.id;
-                opt.textContent = `${m.name} — ${m.desc}`;
-                if (selectedModel && m.id === selectedModel) opt.selected = true;
-                select.appendChild(opt);
-            });
-            if (!selectedModel) {
-                select.value = 'deepseek/deepseek-v4-flash';
-            }
-            return;
-        }
-        const models = MODELS[provider] || [];
-        models.forEach(m => {
-            const opt = document.createElement('option');
-            opt.value = m.id;
-            opt.textContent = `${m.name} — ${m.desc}`;
-            if (selectedModel && m.id === selectedModel) opt.selected = true;
-            select.appendChild(opt);
-        });
-        // Default selection
-        if (!selectedModel && models.length > 0) {
-            const defaults = { openai: 'gpt-5', gemini: 'gemini-3.1-flash-lite', openrouter: 'deepseek/deepseek-v4-flash' };
-            const def = defaults[provider] || models[0].id;
-            select.value = def;
-        }
-    }
-
-    populateModels(currentProvider, currentModel);
-
     document.body.appendChild(modal);
 
     // Close button
@@ -3466,14 +3386,6 @@ function showSettingsPanel() {
     // Click outside to close
     modal.addEventListener('click', (e) => {
         if (e.target === modal) modal.remove();
-    });
-
-    // Provider change → repopulate models
-    modal.querySelector('#llmProvider')?.addEventListener('change', (e) => {
-        const provider = e.target.value;
-        populateModels(provider, null);
-        modal.querySelector('#ollamaModelRow')?.classList.toggle('hidden', provider !== 'ollama');
-        modal.querySelector('#openrouterModelRow')?.classList.toggle('hidden', provider !== 'openrouter');
     });
 
     // Toggle buttons
@@ -3507,30 +3419,16 @@ function showSettingsPanel() {
         });
     });
 
-    // Save all settings (API keys + provider/model)
+    // Save API keys; provider and model always come from the server.
     modal.querySelector('.settings-save-all')?.addEventListener('click', () => {
         const openaiInput = modal.querySelector('#apiKeyOpenAI');
         const geminiInput = modal.querySelector('#apiKeyGemini');
         const openrouterInput = modal.querySelector('#apiKeyOpenRouter');
-        const providerSelect = modal.querySelector('#llmProvider');
-        const modelSelect = modal.querySelector('#llmModel');
-        const ollamaInput = modal.querySelector('#ollamaModelInput');
-        const openrouterModelInput = modal.querySelector('#openrouterModelInput');
 
         if (!state.settings.apiKeys) state.settings.apiKeys = { openai: '', gemini: '', openrouter: '' };
         state.settings.apiKeys.openai = openaiInput?.value?.trim() || '';
         state.settings.apiKeys.gemini = geminiInput?.value?.trim() || '';
         state.settings.apiKeys.openrouter = openrouterInput?.value?.trim() || '';
-
-        const provider = providerSelect?.value || 'gemini';
-        state.settings.llmProvider = provider;
-        if (provider === 'ollama') {
-            state.settings.llmModel = ollamaInput?.value?.trim() || 'qwen3:14b';
-        } else if (provider === 'openrouter') {
-            state.settings.llmModel = openrouterModelInput?.value?.trim() || modelSelect?.value || 'deepseek/deepseek-v4-flash';
-        } else {
-            state.settings.llmModel = modelSelect?.value || '';
-        }
 
         saveToStorage();
         showToast('Settings saved', 'success');
