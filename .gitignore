@@ -230,8 +230,8 @@ redundant/
 
 # Runtime artifacts written by agent runs and tests. These were tracked, so every
 # run produced spurious diffs and risked committing scratch state.
-# experiment_runs/ and paper_benchmark_results/ are deliberately NOT listed: they
-# hold committed benchmark history.
+# Already tracked benchmark history remains versioned. New experiment run JSONs
+# are local outputs (see the local development section below).
 data/bioagents_admin.db
 data/bioagents_admin.db-shm
 data/bioagents_admin.db-wal
@@ -243,3 +243,34 @@ generated_artifacts/
 htmlcov/
 coverage.xml
 .coverage
+
+# Local development and image-debugging helpers (not part of shared fixes)
+/run_experiments.py
+/run_all_tasks_pipeline.py
+/tests/test_pipeline_smoke.py
+/bioagents/sandbox/dependency_audit.py
+/tests/test_dependency_audit.py
+dependency_audit*.json
+dependency_events*.jsonl
+
+# Performance measurement outputs (the benchmark code is shared)
+/benchmark_results/
+
+# Completed runs, generated data and machine-specific setup
+/deliverables
+/deliverables_*/
+/experiment_runs/*.json
+/oracle/
+/scripts/setup_nvidia_cdi.sh
+/use_cases/task[1-5]_*.yaml
+
+# Custom tool sources are versioned together with registry.json.
+
+# Local documentation and cleanup inventories
+/custom_docs/
+/docs/FILE_INVENTORY_*.csv
+
+# Personal tooling state
+/.agents/
+/.codex/
+/.aws/
