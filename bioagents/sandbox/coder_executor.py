@@ -5,6 +5,7 @@ import importlib.util
 import json
 import logging
 import os
+import re
 import shutil
 import socket
 import subprocess  # nosec B404
@@ -140,6 +141,9 @@ def apply_local_executor_runtime_env() -> None:
     from bioagents.sandbox.pip_guard import apply_pip_guard
 
     apply_pip_guard()
+    from bioagents.sandbox.dependency_events import enable_dependency_tracking
+
+    enable_dependency_tracking()
 
     override = os.getenv("BIOAGENTS_TORCH_CUDA", "").strip().lower()
     if override in ("1", "true", "yes"):
@@ -193,7 +197,7 @@ def find_available_port(start_port: int = 8888, max_retries: int = 100) -> int:
     )
 
 
-SANDBOX_IMAGE = os.getenv("BIOAGENTS_SANDBOX_IMAGE", "bioagents-sandbox")
+SANDBOX_IMAGE = os.getenv("BIOAGENTS_SANDBOX_IMAGE", "").strip() or "bioagents-sandbox"
 
 # Without an explicit GPU the CUDA torch build is 5+ GB of kernels that cannot run.
 _SANDBOX_GPU = os.getenv("BIOAGENTS_SANDBOX_GPU", "").strip().lower() in ("1", "true", "yes")
@@ -260,47 +264,86 @@ def sandbox_packages() -> list[str]:
         for pkg in _pip_packages(imports):
             if pkg not in union:
                 union.append(pkg)
+    from importlib.resources import files
+
+    requirements = files("bioagents.sandbox").joinpath("requirements/coder.txt").read_text()
+    for line in requirements.splitlines():
+        if not line or line.startswith("#"):
+            continue
+        pkg = re.split(r"[<>=!~;\[]", line, maxsplit=1)[0].strip()
+        if pkg not in union:
+            union.append(pkg)
     return union
 
 
 def build_dockerfile(packages: list[str] | None = None) -> str:
-    """Dockerfile for the shared sandbox image."""
+    """Self-contained image recipe using the same three venv inputs as the Dockerfile."""
+    import base64
+    import shlex
+    from importlib.resources import files
+
     packages = sandbox_packages() if packages is None else packages
-    others = [p for p in packages if p != "torch"]
-    kernel = "jupyter_kernel_gateway jupyter_client ipykernel"
-
-    if "torch" in packages and not _SANDBOX_GPU:
-        torch_line = (
-            f"RUN pip install --no-cache-dir --index-url {_TORCH_CPU_INDEX} torch\n        "
-        )
-    elif "torch" in packages:
-        torch_line = "RUN pip install --no-cache-dir torch\n        "
-    else:
-        torch_line = ""
-
+    resources = files("bioagents.sandbox")
+    requirements = resources.joinpath("requirements")
+    payload = {
+        f"/opt/bioagents/requirements/{entry.name}": entry.read_text()
+        for entry in requirements.iterdir()
+        if entry.name.endswith(".txt")
+    }
+    if packages:
+        # Optional extra authorized imports augment Coder only, never the other venvs.
+        source = payload["/opt/bioagents/requirements/coder.txt"]
+        existing = {
+            re.split(r"[<>=!~;\[]", line, maxsplit=1)[0].strip().lower().replace("_", "-")
+            for line in source.splitlines()
+            if line and not line.startswith("#")
+        }
+        extra = [
+            p for p in packages if p != "torch" and p.lower().replace("_", "-") not in existing
+        ]
+        if extra:
+            payload["/opt/bioagents/requirements/coder.lock.txt"] += "\n".join(extra) + "\n"
+    payload["/opt/bioagents/install_environments.py"] = resources.joinpath(
+        "install_environments.py"
+    ).read_text()
+    payload["/usr/local/bin/bioagents-python"] = resources.joinpath(
+        "python_environments.py"
+    ).read_text()
+    encoded = base64.b64encode(json.dumps(payload, sort_keys=True).encode()).decode()
+    unpack = (
+        "import base64,json; from pathlib import Path; "
+        f"files=json.loads(base64.b64decode({encoded!r})); "
+        "[(Path(p).parent.mkdir(parents=True,exist_ok=True),Path(p).write_text(s)) "
+        "for p,s in files.items()]"
+    )
+    torch_index = "https://download.pytorch.org/whl/cu130" if _SANDBOX_GPU else _TORCH_CPU_INDEX
     return f"""
         FROM python:3.12-slim
-
         WORKDIR /app
-
-        # The container runs as the host uid, which has no passwd entry and so no home.
-        # Jupyter, matplotlib and pip all need a writable one or the kernel never starts.
-        ENV PYTHONPATH=/app:$PYTHONPATH \\
-            PIP_NO_CACHE_DIR=1 \\
-            PIP_DISABLE_PIP_VERSION_CHECK=1 \\
+        # smolagents runs in Coder; Boltz and PyTDC have isolated dependencies.
+        ENV PYTHONPATH=/app \\
+            BIOAGENTS_VENV_ROOT=/opt/venvs \\
+            UV_PYTHON_INSTALL_DIR=/opt/python \\
+            PATH=/opt/venvs/coder/bin:$PATH \\
+            VIRTUAL_ENV=/opt/venvs/coder \\
             HOME=/tmp/sandbox-home \\
             JUPYTER_RUNTIME_DIR=/tmp/sandbox-home/jupyter/runtime \\
             JUPYTER_DATA_DIR=/tmp/sandbox-home/jupyter/data \\
             XDG_CACHE_HOME=/tmp/sandbox-home/cache \\
             MPLCONFIGDIR=/tmp/sandbox-home/matplotlib
-
-        RUN mkdir -p /tmp/sandbox-home/jupyter/runtime /tmp/sandbox-home/jupyter/data \\
-            /tmp/sandbox-home/cache /tmp/sandbox-home/matplotlib && chmod -R 777 /tmp/sandbox-home
-
-        {torch_line}RUN pip install --no-cache-dir {kernel} {" ".join(others)}
-
+        RUN apt-get update && apt-get install -y --no-install-recommends libgomp1 \\
+            && rm -rf /var/lib/apt/lists/* \\
+            && mkdir -p /tmp/sandbox-home/jupyter/runtime /tmp/sandbox-home/jupyter/data \\
+                /tmp/sandbox-home/cache /tmp/sandbox-home/matplotlib \\
+            && chmod -R 777 /tmp/sandbox-home
+        RUN /usr/local/bin/python -m pip install --no-cache-dir uv==0.12.5 \\
+            && uv python install --no-cache --no-bin 3.11
+        RUN /usr/local/bin/python -c {shlex.quote(unpack)}
+        RUN TORCH_VERSION=2.14.1 TORCH_INDEX_URL={torch_index} \\
+            /usr/local/bin/python /opt/bioagents/install_environments.py \\
+            && chmod +x /usr/local/bin/bioagents-python
         EXPOSE 8888
-        CMD ["jupyter", "kernelgateway", "--KernelGatewayApp.ip='0.0.0.0'", "--KernelGatewayApp.port=8888", "--KernelGatewayApp.allow_origin='*'"]
+        CMD ["jupyter", "kernelgateway", "--KernelGatewayApp.ip=0.0.0.0", "--KernelGatewayApp.port=8888", "--KernelGatewayApp.allow_origin=*"]
         """
 
 
@@ -327,19 +370,24 @@ def _sandbox_user() -> str | None:
 
 
 def _image_exists(image_name: str) -> bool:
+    return _existing_image_id(image_name) is not None
+
+
+def _existing_image_id(image_name: str) -> str | None:
     docker_path = shutil.which("docker")
     if not docker_path:
-        return False
+        return None
     try:
-        subprocess.run(  # nosec B603
-            [docker_path, "image", "inspect", image_name],
+        result = subprocess.run(  # nosec B603
+            [docker_path, "image", "inspect", "--format", "{{.Id}}", image_name],
             check=True,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+            capture_output=True,
+            text=True,
+            timeout=15,
         )
     except subprocess.CalledProcessError:
-        return False
-    return True
+        return None
+    return result.stdout.strip() or None
 
 
 _IDLE_ATTRS: dict[str, Callable[[], Any]] = {"fatal_error": lambda: None, "state": dict}
@@ -414,35 +462,141 @@ def create_executor(agent_type: str, additional_imports: list) -> Any:
             # got PermissionError and treated the finished work as a stale relic to
             # archive and redo. BIOAGENTS_SANDBOX_UID=0 restores running as root.
             container_run_kwargs: dict[str, Any] = {
-                "volumes": {str(Path.cwd()): {"bind": "/app", "mode": "rw"}},
+                "volumes": {
+                    os.getenv("BIOAGENTS_DOCKER_PROJECT_ROOT") or str(Path.cwd()): {
+                        "bind": "/app",
+                        "mode": "rw",
+                    }
+                },
                 "environment": {"BIOAGENTS_BLAST_IN_CELL": "1"},
+                "command": [
+                    "jupyter",
+                    "kernelgateway",
+                    "--KernelGatewayApp.ip=0.0.0.0",
+                    "--KernelGatewayApp.port=8888",
+                    "--KernelGatewayApp.allow_origin=*",
+                ],
             }
+            run_id = os.getenv("BIOAGENTS_RUN_ID", "")
+            from bioagents.sandbox.dependency_events import current_audit, dependency_environment
+
+            audit = current_audit()
+            if audit:
+                run_id = audit.run_id
+                audit.prepare()
+                container_run_kwargs["environment"].update(dependency_environment())
+                if audit.directory:
+                    audit.directory.mkdir(parents=True, exist_ok=True)
+                    from bioagents.sandbox.workspace import to_portable_path
+
+                    portable = to_portable_path(audit.directory)
+                    if not Path(portable).is_absolute():
+                        container_run_kwargs["environment"]["BIOAGENTS_DEPENDENCY_EVENTS_DIR"] = (
+                            "/app/" + portable
+                        )
+                    else:
+                        container_run_kwargs["volumes"][str(audit.directory.resolve())] = {
+                            "bind": "/bioagents-audit",
+                            "mode": "rw",
+                        }
+                        container_run_kwargs["environment"]["BIOAGENTS_DEPENDENCY_EVENTS_DIR"] = (
+                            "/bioagents-audit"
+                        )
+            if run_id:
+                if not re.fullmatch(r"[a-f0-9]{32}", run_id):
+                    raise ValueError("BIOAGENTS_RUN_ID must be a 32-character hexadecimal ID")
+                container_run_kwargs["labels"] = {
+                    "bioagents.run_id": run_id,
+                    "bioagents.agent": agent_type,
+                }
+            if os.getenv("BIOAGENTS_DOCKER_INHERIT_VOLUMES", "false").lower() in (
+                "1",
+                "true",
+                "yes",
+            ):
+                parent = os.getenv("HOSTNAME", "").strip()
+                if not parent:
+                    raise RuntimeError("HOSTNAME is required to inherit parent container volumes")
+                container_run_kwargs["volumes_from"] = [parent]
             user = _sandbox_user()
             if user:
                 container_run_kwargs["user"] = user
             if _SANDBOX_GPU:
                 from docker.types import DeviceRequest
 
-                container_run_kwargs["device_requests"] = [
-                    DeviceRequest(count=-1, capabilities=[["gpu"]])
-                ]
+                driver = os.getenv("BIOAGENTS_SANDBOX_GPU_DRIVER", "auto").strip().lower()
+                if driver == "auto":
+                    request = DeviceRequest(count=-1, capabilities=[["gpu"]])
+                elif driver == "cdi":
+                    request = DeviceRequest(driver="cdi", device_ids=["nvidia.com/gpu=all"])
+                elif driver == "nvidia":
+                    request = DeviceRequest(driver="nvidia", count=-1, capabilities=[["gpu"]])
+                else:
+                    raise ValueError("BIOAGENTS_SANDBOX_GPU_DRIVER must be auto, cdi or nvidia")
+                container_run_kwargs["device_requests"] = [request]
 
             from bioagents.sandbox.resilient_executor import ResilientDockerExecutor
 
             dockerfile = build_dockerfile()
-            image = sandbox_image_tag(dockerfile)
+            explicit_image = os.getenv("BIOAGENTS_SANDBOX_IMAGE", "").strip()
+            image = explicit_image or sandbox_image_tag(dockerfile)
+            image_id = _existing_image_id(image)
+            # Keep installations with prebuilt per-agent images working during migration.
+            if not image_id and not explicit_image:
+                image_id = _existing_image_id(f"bioagents-{agent_type}")
+            allow_build = os.getenv("BIOAGENTS_SANDBOX_ALLOW_BUILD", "false").lower() in (
+                "1",
+                "true",
+                "yes",
+            )
+            if not image_id and not allow_build:
+                raise RuntimeError(
+                    f"No existing sandbox image found for {image!r}. Build it explicitly or "
+                    "set BIOAGENTS_SANDBOX_IMAGE to an existing image. "
+                    "BIOAGENTS_SANDBOX_ALLOW_BUILD=true explicitly enables automatic builds."
+                )
             return ResilientDockerExecutor(
-                image_name=image,
+                image_name=image_id or image,
                 dockerfile_content=dockerfile,
                 additional_imports=[],
                 logger=logger,
                 port=find_available_port(),
-                build_new_image=not _image_exists(image),
+                build_new_image=not bool(image_id),
                 container_run_kwargs=container_run_kwargs,
             )
         except Exception as e:
-            print(f"Warning: Could not initialize DockerExecutor for {agent_type}: {e}")
-            print("Falling back to LocalExecutor (NOT SANDBOXED) for development purposes.")
-            return _local_executor(additional_imports)
+            raise RuntimeError(
+                f"Docker sandbox could not initialize for {agent_type}: {e}. "
+                "Set USE_LOCAL_EXECUTOR=true only if in-process execution is intended."
+            ) from e
 
     return LazyExecutor(factory)
+
+
+def cleanup_run_containers(run_id: str) -> list[str]:
+    """Release only sandbox containers labelled with this specific CLI run ID."""
+    if not re.fullmatch(r"[a-f0-9]{32}", run_id):
+        raise ValueError("A complete run ID is required for scoped container cleanup")
+    import docker
+
+    errors = []
+    client = None
+    try:
+        client = docker.from_env(timeout=10)
+        for container in client.containers.list(
+            all=True, filters={"label": f"bioagents.run_id={run_id}"}
+        ):
+            if container.labels.get("bioagents.run_id") != run_id:
+                continue
+            try:
+                container.remove(force=True)
+            except docker.errors.NotFound:
+                pass
+            except docker.errors.DockerException as exc:
+                errors.append(str(exc))
+    except docker.errors.DockerException as exc:
+        errors.append(str(exc))
+    finally:
+        if client is not None:
+            client.close()
+    return errors

@@ -150,4 +150,7 @@ def __bioagents_install_pip_guard():
 
 __bioagents_install_pip_guard()
 del __bioagents_install_pip_guard
+from bioagents.sandbox.dependency_events import enable_dependency_tracking as __bioagents_enable_tracking
+__bioagents_enable_tracking()
+del __bioagents_enable_tracking
 """

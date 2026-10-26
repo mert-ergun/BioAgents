@@ -18,8 +18,45 @@ from bioagents.benchmarks.use_case_models import (
     UseCase,
 )
 from bioagents.graph import create_graph
+from bioagents.sandbox.dependency_events import audit_use_case
 
 logger = logging.getLogger(__name__)
+
+
+class _UnexpectedGraphUpdate(ValueError):
+    """An update cannot be interpreted without discarding execution evidence."""
+
+
+def _check_stream_update(update: Any) -> None:
+    if not isinstance(update, dict) or not update:
+        raise _UnexpectedGraphUpdate(
+            f"Unexpected graph stream update: {type(update).__name__}; expected a nonempty dict"
+        )
+
+
+def _node_state(node_name: str, state: Any) -> dict:
+    if state is None:
+        return {}
+    if not isinstance(state, dict):
+        raise _UnexpectedGraphUpdate(
+            f"Unexpected state for graph node '{node_name}': {type(state).__name__}; "
+            "expected dict or None"
+        )
+    return state
+
+
+def _interrupt_message(interrupts: Any) -> str:
+    """Describe a graph pause without treating its tuple payload as node state."""
+    questions = []
+    for item in interrupts if isinstance(interrupts, (list, tuple)) else [interrupts]:
+        value = getattr(item, "value", item)
+        question = (
+            (value.get("question") or value.get("type")) if isinstance(value, dict) else value
+        )
+        if question:
+            questions.append(str(question)[:2000])
+    detail = "; ".join(questions) or "No question supplied."
+    return f"Workflow paused awaiting user input: {detail}"
 
 
 class Colors:
@@ -123,6 +160,16 @@ def run_benchmark_task(
             print(f"{Colors.BOLD}{'─' * 100}{Colors.RESET}\n")
 
         for step_output in graph.stream(initial_state, {"recursion_limit": max_steps}):
+            try:
+                _check_stream_update(step_output)
+            except _UnexpectedGraphUpdate as exc:
+                error_message = str(exc)
+                logger.warning(error_message)
+                break
+            if "__interrupt__" in step_output:
+                error_message = _interrupt_message(step_output["__interrupt__"])
+                logger.warning(error_message)
+                break
             elapsed = time.time() - start_time
             if elapsed > timeout:
                 error_message = f"Timeout after {timeout}s (elapsed: {elapsed:.1f}s)"
@@ -143,16 +190,19 @@ def run_benchmark_task(
             total_steps += 1
             node_name = next(iter(step_output))
             last_node_time = time.time()
-            node_state = step_output[node_name]
-
+            agent_flow.append(node_name)
+            try:
+                node_state = _node_state(node_name, step_output[node_name])
+            except _UnexpectedGraphUpdate as exc:
+                error_message = str(exc)
+                logger.warning(error_message)
+                break
             if node_state.get("messages"):
                 last_state_with_messages = {
                     k: (v.copy() if isinstance(v, list) else v) for k, v in node_state.items()
                 }
                 if "messages" in last_state_with_messages:
                     last_state_with_messages["messages"] = list(node_state["messages"])
-
-            agent_flow.append(node_name)
 
             if show_trace:
                 color = _get_agent_color(node_name)
@@ -257,12 +307,12 @@ def run_benchmark_task(
         if last_state_with_messages and "messages" in last_state_with_messages:
             messages = last_state_with_messages["messages"]
 
-            if agent_flow and agent_flow[-1] == "__end__":
+            if agent_flow and agent_flow[-1] == "__end__" and not error_message:
                 workflow_completed = True
             elif total_steps >= max_steps:
                 workflow_completed = False
                 error_message = f"Reached max_steps limit ({max_steps})"
-            else:
+            elif not error_message:
                 workflow_completed = True
 
             for msg in messages[-10:]:
@@ -439,11 +489,14 @@ def _derive_failure_mode(
     total_steps: int,
     max_steps: int,
     timed_out: bool,
+    interrupted: bool = False,
 ) -> FailureMode:
     if workflow_completed:
         return FailureMode.COMPLETED
     if timed_out:
         return FailureMode.TIMEOUT
+    if interrupted:
+        return FailureMode.INCOMPLETE
     if total_steps >= max_steps:
         return FailureMode.MAX_STEPS
     if error_message:
@@ -451,6 +504,7 @@ def _derive_failure_mode(
     return FailureMode.INCOMPLETE
 
 
+@audit_use_case
 def run_use_case(
     use_case: UseCase,
     config: ExperimentConfig | None = None,
@@ -482,6 +536,9 @@ def run_use_case(
         graph = create_graph()
 
     initial_state = {"messages": [HumanMessage(content=use_case.prompt)]}
+    output_dir = config.extra.get("output_dirs", {}).get(use_case.id)
+    if output_dir:
+        initial_state["output_dir"] = output_dir
 
     max_steps = config.max_steps
     timeout = config.timeout
@@ -490,6 +547,8 @@ def run_use_case(
     total_steps = 0
     workflow_completed = False
     timed_out = False
+    interrupted = False
+    invalid_update = False
     error_message: str | None = None
     agent_flow: list[str] = []
     agent_steps: list[AgentStep] = []
@@ -514,18 +573,29 @@ def run_use_case(
             print(f"{'─' * 80}\n")
 
         for step_output in graph.stream(initial_state, {"recursion_limit": max_steps}):
+            try:
+                _check_stream_update(step_output)
+            except _UnexpectedGraphUpdate as exc:
+                invalid_update = True
+                error_message = str(exc)
+                logger.warning(error_message)
+                break
+            if "__interrupt__" in step_output:
+                interrupted = True
+                error_message = _interrupt_message(step_output["__interrupt__"])
+                logger.warning(error_message)
+                break
             total_steps += 1
             node_name = next(iter(step_output))
             last_node_time = time.time()  # noqa: F841
             node_state = step_output[node_name]
             agent_flow.append(node_name)
-
-            # Must run before the timeout check so the final step's output is still recorded.
-            step_messages: list[dict] = []
-            internal_steps: list[dict] = []
-            internal_summary: dict | None = None
-            if node_state is None:
-                # Node update carried no state channels; record the step anyway.
+            try:
+                node_state = _node_state(node_name, node_state)
+            except _UnexpectedGraphUpdate as exc:
+                invalid_update = True
+                error_message = str(exc)
+                logger.warning(error_message)
                 agent_steps.append(
                     AgentStep(
                         step=total_steps,
@@ -533,7 +603,12 @@ def run_use_case(
                         elapsed_ms=(time.time() - start_time) * 1000,
                     )
                 )
-                continue
+                break
+
+            # Must run before the timeout check so the final step's output is still recorded.
+            step_messages: list[dict] = []
+            internal_steps: list[dict] = []
+            internal_summary: dict | None = None
             for msg in node_state.get("messages", []):
                 all_messages.append(msg)
                 msg_content = getattr(msg, "content", "")
@@ -595,9 +670,7 @@ def run_use_case(
 
         execution_time = time.time() - start_time
 
-        if (agent_flow and agent_flow[-1] == "__end__") or (
-            not timed_out and total_steps < max_steps and not error_message
-        ):
+        if not interrupted and not timed_out and not error_message and total_steps < max_steps:
             workflow_completed = True
 
         seen_content: set[str] = set()
@@ -641,7 +714,12 @@ def run_use_case(
     tool_calls = _extract_tool_calls_from_messages(all_messages)
     token_usage = _extract_token_usage_from_messages(all_messages)
     failure_mode = _derive_failure_mode(
-        workflow_completed, error_message, total_steps, max_steps, timed_out
+        workflow_completed,
+        error_message,
+        total_steps,
+        max_steps,
+        timed_out,
+        interrupted or invalid_update,
     )
 
     return RunResult(

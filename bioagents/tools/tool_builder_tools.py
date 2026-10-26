@@ -1,5 +1,6 @@
 """Tools for the Tool Builder Agent for discovering, creating, and managing custom tools."""
 
+import inspect
 import json
 import logging
 import os
@@ -7,10 +8,15 @@ import re
 import shutil
 import subprocess  # nosec B404
 import sys
+import time
 
 from langchain_core.tools import tool
 
 from bioagents.llms.llm_provider import get_llm
+from bioagents.llms.timeout_llm import remaining_workflow_seconds
+from bioagents.sandbox.dependency_events import run_install_command, track_dependencies
+from bioagents.tools.dependency_inference import extract_system_dependencies_from_code
+from bioagents.tools.result_status import tool_result_status
 from bioagents.tools.tool_registry import (
     ToolDefinition,
     ToolParameter,
@@ -20,140 +26,79 @@ from bioagents.tools.tool_registry import (
 logger = logging.getLogger(__name__)
 
 
-def _run_pip_install_streaming(pip_cmd, timeout=180):
-    """
-    Run pip install command with real-time output streaming.
-
-    Args:
-        pip_cmd: List of command arguments for pip install
-        timeout: Timeout in seconds
-
-    Returns:
-        Result object with returncode, stdout, and stderr attributes
-    """
-    process = subprocess.Popen(  # nosec B603
-        pip_cmd,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        bufsize=1,  # Line buffered for real-time output
-    )
-
-    output_lines = []
-    if process.stdout is not None:
-        for line in process.stdout:
-            line = line.rstrip()
-            if line:
-                logger.info(f"pip: {line}")
-                output_lines.append(line)
-
-    try:
-        returncode = process.wait(timeout=timeout)
-    except subprocess.TimeoutExpired:
-        process.kill()
-        process.wait()
-        logger.warning(f"Pip install timed out after {timeout}s")
-        returncode = 1
-
-    # Mimic subprocess.CompletedProcess so both install paths return the same shape.
-    class Result:
-        def __init__(self, returncode, output_lines):
-            self.returncode = returncode
-            self.stdout = "\n".join(output_lines)
-            self.stderr = ""
-
-    return Result(returncode, output_lines)
+class _EmptyWrapperResponse(ValueError):
+    pass
 
 
-def extract_system_dependencies_from_code(code: str) -> list[str]:
-    """Extract system dependency names from tool code.
-
-    Looks for patterns like:
-    - shutil.which("tool_name")
-    - subprocess.run(["tool_name", ...])
-    - "tool_name" in error messages about missing tools
-
-    Args:
-        code: Python code to analyze
-
-    Returns:
-        List of potential system dependency names
-    """
-    dependencies = []
-
-    # Pattern 1: shutil.which("tool_name")
-    pattern1 = r'shutil\.which\(["\']([^"\']+)["\']\)'
-    matches = re.findall(pattern1, code)
-    dependencies.extend(matches)
-
-    # Pattern 2: subprocess.run(["tool_name", ...])
-    pattern2 = r'subprocess\.run\(\[["\']([^"\']+)["\']'
-    matches = re.findall(pattern2, code)
-    dependencies.extend(matches)
-
-    # Pattern 3: "tool_name not found" or similar error messages
-    pattern3 = r'["\']([a-z_][a-z0-9_-]*)\s+not\s+found'
-    matches = re.findall(pattern3, code, re.IGNORECASE)
-    dependencies.extend(matches)
-
-    # Pattern 4: Check for common bioinformatics tools in comments/docstrings
-    bioinfo_tools = [
-        "samtools",
-        "blast",
-        "blastn",
-        "blastp",
-        "blastx",
-        "tblastn",
-        "tblastx",
-        "bowtie",
-        "bowtie2",
-        "bwa",
-        "gatk",
-        "picard",
-        "bedtools",
-        "vcftools",
-        "bcftools",
-        "htslib",
-    ]
-    for bioinfo_tool in bioinfo_tools:
-        if (
-            bioinfo_tool in code.lower()
-            and bioinfo_tool not in dependencies
-            and any(
-                pattern in code.lower()
-                for pattern in [
-                    f"{bioinfo_tool} command",
-                    f"{bioinfo_tool} not found",
-                    f"which {bioinfo_tool}",
-                    f"check.*{bioinfo_tool}",
-                ]
+def _invoke_wrapper(llm, prompt):
+    attempts = max(1, min(3, int(os.getenv("BIOAGENTS_TOOL_WRAPPER_ATTEMPTS", "2"))))
+    for attempt in range(attempts):
+        remaining = remaining_workflow_seconds()
+        if remaining is not None and remaining <= 0:
+            raise TimeoutError("Workflow deadline reached before wrapper generation")
+        try:
+            response = llm.invoke(prompt)
+            content = response.content if hasattr(response, "content") else str(response)
+            if isinstance(content, list):
+                content = "".join(
+                    part.get("text", "") if isinstance(part, dict) else str(part)
+                    for part in content
+                )
+            if not isinstance(content, str) or not content.strip():
+                raise _EmptyWrapperResponse("Wrapper generation returned empty content")
+            return content
+        except Exception as exc:
+            retryable = isinstance(
+                exc, (TimeoutError, ConnectionError, _EmptyWrapperResponse)
+            ) or getattr(exc, "status_code", None) in {429, 500, 502, 503, 504}
+            remaining = remaining_workflow_seconds()
+            if (
+                not retryable
+                or attempt + 1 == attempts
+                or (remaining is not None and remaining < 1)
+            ):
+                raise
+            delay = min(0.25 * 2**attempt, remaining if remaining is not None else 1.0)
+            logger.warning(
+                "Retrying wrapper generation after %s (%d/%d)",
+                type(exc).__name__,
+                attempt + 1,
+                attempts,
             )
-        ):
-            dependencies.append(bioinfo_tool)
+            time.sleep(delay)
 
-    dependencies = list(set(dependencies))
-    false_positives = [
-        "python",
-        "pip",
-        "conda",
-        "sh",
-        "bash",
-        "echo",
-        "cat",
-        "grep",
-        "ls",
-        "cd",
-        "mkdir",
-        "rm",
-        "cp",
-        "mv",
-        "tar",
-        "zip",
-        "unzip",
-    ]
-    dependencies = [d for d in dependencies if d not in false_positives]
 
-    return sorted(dependencies)
+def _run_pip_install_streaming(pip_cmd, timeout=180):
+    """Run pip with a real bounded communicate deadline and audited outcome."""
+    result = run_install_command(
+        pip_cmd, reason="missing_python_dependency", capture_output=True, text=True, timeout=timeout
+    )
+    for line in (result.stdout or "").splitlines():
+        logger.info("pip: %s", line)
+    return result
+
+
+_IMPORT_ALIASES = {
+    "scikit-learn": "sklearn",
+    "biopython": "Bio",
+    "pillow": "PIL",
+    "python-levenshtein": "Levenshtein",
+    "pyyaml": "yaml",
+    "openbabel-wheel": "openbabel",
+}
+
+
+def _missing_python_dependencies(dependencies):
+    missing = []
+    for requirement in dependencies:
+        name = re.split(r"[\[<>=!~ @]", requirement, maxsplit=1)[0]
+        normalized = name.lower().replace("_", "-")
+        module = _IMPORT_ALIASES.get(normalized, normalized.replace("-", "_"))
+        try:
+            __import__(module)
+        except ImportError:
+            missing.append(requirement)
+    return missing
 
 
 @tool
@@ -299,8 +244,7 @@ Return a JSON object with:
 """
 
     try:
-        response = llm.invoke(prompt)
-        content = response.content if hasattr(response, "content") else str(response)
+        content = _invoke_wrapper(llm, prompt)
 
         json_match = re.search(r"\{[\s\S]*\}", content)
         if json_match:
@@ -329,6 +273,7 @@ Return a JSON object with:
 
 
 @tool
+@track_dependencies(component="tool_builder", phase="registration")
 def register_custom_tool(
     name: str,
     description: str,
@@ -427,12 +372,13 @@ def register_custom_tool(
 
 
 @tool
-def validate_custom_tool(tool_name: str, test_args_json: str = "{}") -> str:
+@track_dependencies(component="tool_builder", phase="validation")
+def validate_custom_tool(tool_name: str, test_args_json: str = "") -> str:
     """Validate a custom tool by loading and optionally testing it.
 
     Args:
         tool_name: Name of the tool to validate
-        test_args_json: Optional JSON object with test arguments
+        test_args_json: Optional JSON object with test arguments. Omit to load without execution.
 
     Returns:
         Validation result
@@ -490,6 +436,9 @@ def list_custom_tools(category: str | None = None, validated_only: bool = False)
                     "validated": t.validated,
                     "usage_count": t.usage_count,
                     "source_software": t.source_software,
+                    "parameters": [p.__dict__ for p in t.parameters],
+                    "schema": t.get_schema(),
+                    "execution_tool": "execute_custom_tool",
                 }
                 for t in tools
             ],
@@ -523,6 +472,9 @@ def search_custom_tools(query: str, limit: int = 5) -> str:
                     "category": tool.category,
                     "score": score,
                     "validated": tool.validated,
+                    "parameters": [p.__dict__ for p in tool.parameters],
+                    "schema": tool.get_schema(),
+                    "execution_tool": "execute_custom_tool",
                 }
                 for tool, score in results
             ],
@@ -552,16 +504,27 @@ def get_tool_code(tool_name: str) -> str:
             "name": tool.name,
             "code": tool.code,
             "dependencies": tool.dependencies,
-            "parameters": [
-                {"name": p.name, "type": p.type, "description": p.description}
-                for p in tool.parameters
-            ],
+            "parameters": [p.__dict__ for p in tool.parameters],
+            "schema": tool.get_schema(),
+            "execution_tool": "execute_custom_tool",
         },
         indent=2,
     )
 
 
+def _argument_error(tool_def: ToolDefinition, message: str) -> str:
+    return json.dumps(
+        {
+            "status": "error",
+            "tool": tool_def.name,
+            "message": f"Invalid tool arguments: {message}",
+            "schema": tool_def.get_schema(),
+        }
+    )
+
+
 @tool
+@track_dependencies(component="tool_builder", phase="execution")
 def execute_custom_tool(tool_name: str, arguments_json: str = "{}") -> str:
     """Execute a custom tool from the registry.
 
@@ -574,7 +537,6 @@ def execute_custom_tool(tool_name: str, arguments_json: str = "{}") -> str:
     Returns:
         Tool execution result
     """
-    import subprocess  # nosec B404
 
     try:
         registry = get_registry()
@@ -584,8 +546,20 @@ def execute_custom_tool(tool_name: str, arguments_json: str = "{}") -> str:
             return json.dumps(
                 {
                     "status": "error",
+                    "tool": tool_name,
                     "message": f"Tool '{tool_name}' not found in registry",
                 }
+            )
+
+        args = json.loads(arguments_json)
+        if not isinstance(args, dict):
+            return _argument_error(tool_def, "arguments_json must contain a JSON object")
+        unknown = set(args) - {p.name for p in tool_def.parameters}
+        missing = {p.name for p in tool_def.parameters if p.required} - set(args)
+        if unknown or missing:
+            return _argument_error(
+                tool_def,
+                f"Unknown parameters: {sorted(unknown)}; missing required parameters: {sorted(missing)}",
             )
 
         if tool_def.system_dependencies:
@@ -615,8 +589,9 @@ def execute_custom_tool(tool_name: str, arguments_json: str = "{}") -> str:
                             "conda-forge",
                             *missing_deps,
                         ]
-                        result = subprocess.run(  # nosec B603
+                        result = run_install_command(
                             install_cmd,
+                            reason="missing_system_executable",
                             capture_output=True,
                             text=True,
                             timeout=60,  # 1 minute timeout (shorter to avoid workflow timeout)
@@ -650,8 +625,9 @@ def execute_custom_tool(tool_name: str, arguments_json: str = "{}") -> str:
                             "conda-forge",
                             *missing_deps,
                         ]
-                        result = subprocess.run(  # nosec B603
+                        result = run_install_command(
                             install_cmd,
+                            reason="missing_system_executable",
                             capture_output=True,
                             text=True,
                             timeout=60,  # 1 minute timeout (shorter to avoid workflow timeout)
@@ -696,17 +672,7 @@ def execute_custom_tool(tool_name: str, arguments_json: str = "{}") -> str:
                     )
 
         if tool_def.dependencies:
-            missing_pip_deps = []
-            for dep in tool_def.dependencies:
-                # Handle package name variations (e.g., "scikit-learn" -> "sklearn")
-                module_name = dep.replace("-", "_")
-                try:
-                    __import__(module_name)
-                except ImportError:
-                    try:
-                        __import__(dep)
-                    except ImportError:
-                        missing_pip_deps.append(dep)
+            missing_pip_deps = _missing_python_dependencies(tool_def.dependencies)
 
             if missing_pip_deps:
                 logger.info(
@@ -736,8 +702,9 @@ def execute_custom_tool(tool_name: str, arguments_json: str = "{}") -> str:
                         ensurepip_installed = False
 
                         try:
-                            ensurepip_result = subprocess.run(  # nosec B603
+                            ensurepip_result = run_install_command(
                                 ensurepip_cmd,
+                                reason="pip_bootstrap",
                                 capture_output=True,
                                 text=True,
                                 timeout=180,
@@ -786,8 +753,9 @@ def execute_custom_tool(tool_name: str, arguments_json: str = "{}") -> str:
                                     "--upgrade",
                                     "--user",
                                 ]
-                                ensurepip_user_result = subprocess.run(  # nosec B603
+                                ensurepip_user_result = run_install_command(
                                     ensurepip_user_cmd,
+                                    reason="pip_bootstrap",
                                     capture_output=True,
                                     text=True,
                                     timeout=180,
@@ -835,16 +803,7 @@ def execute_custom_tool(tool_name: str, arguments_json: str = "{}") -> str:
                         logger.info(
                             f"Successfully installed Python dependencies via pip: {missing_pip_deps}"
                         )
-                        still_missing_pip = []
-                        for dep in missing_pip_deps:
-                            module_name = dep.replace("-", "_")
-                            try:
-                                __import__(module_name)
-                            except ImportError:
-                                try:
-                                    __import__(dep)
-                                except ImportError:
-                                    still_missing_pip.append(dep)
+                        still_missing_pip = _missing_python_dependencies(missing_pip_deps)
                         if still_missing_pip:
                             logger.warning(
                                 f"Some Python dependencies could not be imported after installation: {still_missing_pip}"
@@ -870,11 +829,15 @@ def execute_custom_tool(tool_name: str, arguments_json: str = "{}") -> str:
             return json.dumps(
                 {
                     "status": "error",
+                    "tool": tool_name,
                     "message": f"Failed to load tool '{tool_name}'",
                 }
             )
 
-        args = json.loads(arguments_json)
+        try:
+            inspect.signature(func).bind(**args)
+        except TypeError as exc:
+            return _argument_error(tool_def, str(exc))
         result = func(**args)
 
         # Some tools return an error dict naming the missing dependency.
@@ -900,7 +863,7 @@ def execute_custom_tool(tool_name: str, arguments_json: str = "{}") -> str:
 
         return json.dumps(
             {
-                "status": "success",
+                "status": tool_result_status(result),
                 "tool": tool_name,
                 "result": result,
             },
@@ -929,6 +892,7 @@ def execute_custom_tool(tool_name: str, arguments_json: str = "{}") -> str:
                     return json.dumps(
                         {
                             "status": "error",
+                            "tool": tool_name,
                             "message": error_msg,
                             "install_instructions": install_instructions,
                             "note": "Please install the missing dependencies and try again.",
@@ -942,6 +906,7 @@ def execute_custom_tool(tool_name: str, arguments_json: str = "{}") -> str:
         return json.dumps(
             {
                 "status": "error",
+                "tool": tool_name,
                 "message": error_msg,
             }
         )
