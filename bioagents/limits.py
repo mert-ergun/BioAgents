@@ -155,3 +155,16 @@ TOOL_CELL_BUDGETS_SEC: dict[str, float] = {
 # written workspace files, examining at most RECOVERY_SCAN_MAX_ENTRIES paths.
 RECOVERY_RECENT_FILES_LIMIT = max(0, _env_int("BIOAGENTS_RECOVERY_RECENT_FILES_LIMIT", 15))
 RECOVERY_SCAN_MAX_ENTRIES = max(100, _env_int("BIOAGENTS_RECOVERY_SCAN_MAX_ENTRIES", 5000))
+
+# Attempts (including the first) for LLM tool-wrapper generation; only invoke
+# timeouts, empty responses and transient provider errors are retried.
+TOOL_WRAPPER_MAX_ATTEMPTS = max(1, min(5, _env_int("BIOAGENTS_TOOL_WRAPPER_ATTEMPTS", 3)))
+
+# Backoff between wrapper-generation attempts: base * 2**(attempt-1), capped.
+TOOL_WRAPPER_RETRY_BASE_DELAY_SEC = max(
+    0.0, _env_float("BIOAGENTS_TOOL_WRAPPER_RETRY_BASE_DELAY_SEC", 2.0)
+)
+TOOL_WRAPPER_RETRY_MAX_DELAY_SEC = max(
+    TOOL_WRAPPER_RETRY_BASE_DELAY_SEC,
+    _env_float("BIOAGENTS_TOOL_WRAPPER_RETRY_MAX_DELAY_SEC", 15.0),
+)

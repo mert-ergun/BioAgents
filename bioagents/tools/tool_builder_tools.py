@@ -9,12 +9,19 @@ import shutil
 import subprocess  # nosec B404
 import sys
 import time
+from datetime import datetime
 
 from langchain_core.tools import tool
 
+from bioagents.limits import (
+    TOOL_WRAPPER_MAX_ATTEMPTS,
+    TOOL_WRAPPER_RETRY_BASE_DELAY_SEC,
+    TOOL_WRAPPER_RETRY_MAX_DELAY_SEC,
+)
 from bioagents.llms.llm_provider import get_llm
 from bioagents.llms.timeout_llm import remaining_workflow_seconds
 from bioagents.sandbox.dependency_events import run_install_command, track_dependencies
+from bioagents.tools.code_api_check import check_generated_code
 from bioagents.tools.dependency_inference import extract_system_dependencies_from_code
 from bioagents.tools.result_status import tool_result_status
 from bioagents.tools.tool_registry import (
@@ -31,7 +38,7 @@ class _EmptyWrapperResponse(ValueError):
 
 
 def _invoke_wrapper(llm, prompt):
-    attempts = max(1, min(3, int(os.getenv("BIOAGENTS_TOOL_WRAPPER_ATTEMPTS", "2"))))
+    attempts = TOOL_WRAPPER_MAX_ATTEMPTS
     for attempt in range(attempts):
         remaining = remaining_workflow_seconds()
         if remaining is not None and remaining <= 0:
@@ -58,7 +65,11 @@ def _invoke_wrapper(llm, prompt):
                 or (remaining is not None and remaining < 1)
             ):
                 raise
-            delay = min(0.25 * 2**attempt, remaining if remaining is not None else 1.0)
+            delay = min(
+                TOOL_WRAPPER_RETRY_BASE_DELAY_SEC * 2**attempt, TOOL_WRAPPER_RETRY_MAX_DELAY_SEC
+            )
+            if remaining is not None:
+                delay = min(delay, max(0.0, remaining - 1))
             logger.warning(
                 "Retrying wrapper generation after %s (%d/%d)",
                 type(exc).__name__,
@@ -127,6 +138,28 @@ def _persist_tool(registry, tool_def: ToolDefinition) -> None:
         registry.register_tool(tool_def, overwrite=True)
     except Exception as exc:
         logger.warning("Could not persist registry entry for %s: %s", tool_def.name, exc)
+
+
+def _failure(phase: str, reasons: list[str]) -> dict[str, str]:
+    return {
+        "phase": phase,
+        "reason": "; ".join(reasons)[:2000],
+        "at": datetime.now().isoformat(),
+    }
+
+
+def _with_static_check(payload: str) -> str:
+    """Annotate generated wrapper JSON with import/API drift found in its code."""
+    try:
+        data = json.loads(payload)
+    except ValueError:
+        return payload
+    if not isinstance(data, dict) or not isinstance(data.get("code"), str):
+        return payload
+    problems = check_generated_code(data["code"])
+    if problems:
+        data["static_check_errors"] = problems
+    return json.dumps(data)
 
 
 def _usable_system_dependencies(registry, tool_def: ToolDefinition) -> list[str]:
@@ -314,16 +347,18 @@ Return a JSON object with:
 
         json_match = re.search(r"\{[\s\S]*\}", content)
         if json_match:
-            return json_match.group()
+            return _with_static_check(json_match.group())
 
         code_match = re.search(r"```python\n([\s\S]*?)```", content)
         if code_match:
-            return json.dumps(
-                {
-                    "code": code_match.group(1),
-                    "dependencies": [],
-                    "test_code": None,
-                }
+            return _with_static_check(
+                json.dumps(
+                    {
+                        "code": code_match.group(1),
+                        "dependencies": [],
+                        "test_code": None,
+                    }
+                )
             )
 
         return json.dumps(
@@ -419,20 +454,28 @@ def register_custom_tool(
             source_paper=source_paper,
             source_url=source_url,
             source_software=source_software,
+            static_check_errors=check_generated_code(code),
         )
+        if definition.static_check_errors:
+            definition.last_failure = _failure("static_check", definition.static_check_errors)
 
         registry = get_registry()
         success = registry.register_tool(definition, overwrite=True)
 
         if success:
-            return json.dumps(
-                {
-                    "status": "success",
-                    "message": f"Tool '{name}' registered successfully",
-                    "tool_name": name,
-                    "category": category,
-                }
-            )
+            response: dict[str, object] = {
+                "status": "success",
+                "message": f"Tool '{name}' registered successfully",
+                "tool_name": name,
+                "category": category,
+            }
+            if definition.static_check_errors:
+                response["static_check_errors"] = definition.static_check_errors
+                response["warning"] = (
+                    "The code does not match the installed environment; fix these "
+                    "problems and re-register before validating."
+                )
+            return json.dumps(response)
         else:
             return json.dumps(
                 {
@@ -462,6 +505,24 @@ def validate_custom_tool(tool_name: str, test_args_json: str = "") -> str:
         registry = get_registry()
         test_args = json.loads(test_args_json) if test_args_json else None
 
+        tool = registry.get_tool(tool_name)
+        if tool is not None:
+            tool.static_check_errors = check_generated_code(tool.code)
+            if tool.static_check_errors:
+                tool.validated = False
+                tool.validation_error = "Static check failed: " + "; ".join(
+                    tool.static_check_errors
+                )
+                tool.last_failure = _failure("static_check", tool.static_check_errors)
+                _persist_tool(registry, tool)
+                return json.dumps(
+                    {
+                        "status": "error",
+                        "message": f"Validation failed: {tool.validation_error}",
+                        "static_check_errors": tool.static_check_errors,
+                    }
+                )
+
         success = registry.validate_tool(tool_name, test_args)
 
         if success:
@@ -475,6 +536,9 @@ def validate_custom_tool(tool_name: str, test_args_json: str = "") -> str:
         else:
             tool = registry.get_tool(tool_name)
             error = tool.validation_error if tool else "Tool not found"
+            if tool:
+                tool.last_failure = _failure("validation", [str(error)])
+                _persist_tool(registry, tool)
             return json.dumps(
                 {
                     "status": "error",
@@ -924,11 +988,15 @@ def execute_custom_tool(tool_name: str, arguments_json: str = "{}") -> str:
         func = registry.load_tool_function(tool_name)
 
         if func is None:
+            reason = tool_def.validation_error or "unknown load error"
+            tool_def.validated = False
+            tool_def.last_failure = _failure("load", [reason])
+            _persist_tool(registry, tool_def)
             return json.dumps(
                 {
                     "status": "error",
                     "tool": tool_name,
-                    "message": f"Failed to load tool '{tool_name}'",
+                    "message": f"Failed to load tool '{tool_name}': {reason}",
                 }
             )
 

@@ -104,6 +104,10 @@ class ToolDefinition:
     version: str = "1.0.0"
     validated: bool = False
     validation_error: str | None = None
+    # Import/API drift found by static checks of the code against the installed env.
+    static_check_errors: list[str] = field(default_factory=list)
+    # Most recent load/validation failure: {"phase", "reason", "at"}.
+    last_failure: dict[str, str] | None = None
 
     usage_count: int = 0
     last_used: str | None = None
