@@ -20,7 +20,13 @@ from bioagents.limits import (
 )
 from bioagents.llms.llm_provider import get_llm
 from bioagents.llms.timeout_llm import remaining_workflow_seconds
-from bioagents.sandbox.dependency_events import run_install_command, track_dependencies
+from bioagents.sandbox.dependency_events import (
+    record_blocked_install,
+    record_dependency_event,
+    run_install_command,
+    track_dependencies,
+)
+from bioagents.sandbox.pip_guard import filter_install_requests
 from bioagents.tools.code_api_check import check_generated_code
 from bioagents.tools.dependency_inference import extract_system_dependencies_from_code
 from bioagents.tools.result_status import tool_result_status
@@ -806,6 +812,11 @@ def execute_custom_tool(tool_name: str, arguments_json: str = "{}") -> str:
 
                 # apt-get needs sudo, so only log manual instructions.
                 if missing_deps and os.name != "nt" and shutil.which("apt-get"):
+                    record_blocked_install(
+                        ["sudo", "apt-get", "install", "-y", *missing_deps],
+                        reason="missing_system_executable",
+                        detail="requires_sudo",
+                    )
                     logger.warning(
                         f"apt-get installation requires sudo privileges. "
                         f"Please install manually: sudo apt-get install {' '.join(missing_deps)}"
@@ -835,6 +846,16 @@ def execute_custom_tool(tool_name: str, arguments_json: str = "{}") -> str:
 
         if tool_def.dependencies:
             missing_pip_deps = _missing_python_dependencies(tool_def.dependencies)
+            missing_pip_deps, guarded_pip_deps = filter_install_requests(missing_pip_deps)
+            if guarded_pip_deps:
+                record_blocked_install(
+                    [sys.executable, "-m", "pip", "install", *guarded_pip_deps],
+                    reason="missing_python_dependency",
+                    detail="pip_guard",
+                )
+                logger.warning(
+                    f"Not installing pinned/project packages for {tool_name}: {guarded_pip_deps}"
+                )
 
             if missing_pip_deps:
                 logger.info(
@@ -967,6 +988,11 @@ def execute_custom_tool(tool_name: str, arguments_json: str = "{}") -> str:
                         )
                         still_missing_pip = _missing_python_dependencies(missing_pip_deps)
                         if still_missing_pip:
+                            record_dependency_event(
+                                "install_unverified",
+                                packages=still_missing_pip,
+                                reason="missing_python_dependency",
+                            )
                             logger.warning(
                                 f"Some Python dependencies could not be imported after installation: {still_missing_pip}"
                             )

@@ -318,6 +318,24 @@ class ExperimentRun:
             counts[key] = counts.get(key, 0) + 1
         return counts
 
+    def dependency_audit_totals(self) -> dict[str, Any]:
+        """Install attempts summed over use cases so runs can be checked without logs."""
+        attempts = 0
+        outcomes: dict[str, int] = {}
+        by_component: dict[str, int] = {}
+        for r in self.results:
+            audit = r.dependency_audit or {}
+            attempts += int(audit.get("install_attempts", 0) or 0)
+            for key, value in (audit.get("outcomes") or {}).items():
+                outcomes[key] = outcomes.get(key, 0) + int(value)
+            for key, value in (audit.get("by_component") or {}).items():
+                by_component[key] = by_component.get(key, 0) + int(value)
+        return {
+            "install_attempts": attempts,
+            "outcomes": outcomes,
+            "by_component": by_component,
+        }
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "run_id": self.run_id,
@@ -333,5 +351,6 @@ class ExperimentRun:
                 "total_tokens": self.total_tokens(),
                 "failure_mode_counts": self.failure_mode_counts(),
                 "total_use_cases": len(self.use_cases),
+                "dependency_audit": self.dependency_audit_totals(),
             },
         }
