@@ -13,9 +13,11 @@ import json
 import logging
 import tempfile
 from pathlib import Path
+from typing import Any
 
 from langchain_core.tools import BaseTool, tool
 
+from bioagents.sandbox.time_budget import in_sandbox_cell, run_in_budgeted_process
 from bioagents.sandbox.workspace import to_portable_path
 from bioagents.tools.workspace_paths import resolve_input_file, resolve_output_dir
 
@@ -377,8 +379,7 @@ def prepare_ligand(
         return json.dumps({"status": "error", "message": str(e)})
 
 
-@tool
-def run_docking(
+def _run_docking_impl(
     receptor_pdbqt_path: str,
     ligand_pdbqt_path: str,
     center_x: float,
@@ -391,29 +392,7 @@ def run_docking(
     num_poses: int = 5,
     output_dir: str | None = None,
 ) -> str:
-    """Run molecular docking using AutoDock Vina.
-
-    Performs protein-ligand docking with the prepared receptor and ligand
-    PDBQT files. Returns binding affinities and RMSD values for all poses.
-    The best-docked poses are saved as a PDBQT file.
-
-    Args:
-        receptor_pdbqt_path: Path to prepared receptor PDBQT file.
-        ligand_pdbqt_path: Path to prepared ligand PDBQT file.
-        center_x: Grid box center X coordinate in Angstroms.
-        center_y: Grid box center Y coordinate in Angstroms.
-        center_z: Grid box center Z coordinate in Angstroms.
-        box_size_x: Grid box size X in Angstroms (default: 20).
-        box_size_y: Grid box size Y in Angstroms (default: 20).
-        box_size_z: Grid box size Z in Angstroms (default: 20).
-        exhaustiveness: Sampling thoroughness, higher = more accurate but slower (default: 8).
-        num_poses: Maximum number of poses to generate (default: 5).
-        output_dir: Optional directory for docking output files.
-
-    Returns:
-        JSON string with docking results including binding affinities,
-        RMSD values, and paths to output pose files.
-    """
+    """Body of :func:`run_docking`; module-level so a child process can run it."""
     try:
         from vina import Vina
     except ImportError:
@@ -492,6 +471,71 @@ def run_docking(
     except Exception as e:
         logger.error("Error running docking: %s", e)
         return json.dumps({"status": "error", "message": str(e)})
+
+
+@tool
+def run_docking(
+    receptor_pdbqt_path: str,
+    ligand_pdbqt_path: str,
+    center_x: float,
+    center_y: float,
+    center_z: float,
+    box_size_x: float = 20.0,
+    box_size_y: float = 20.0,
+    box_size_z: float = 20.0,
+    exhaustiveness: int = 8,
+    num_poses: int = 5,
+    output_dir: str | None = None,
+) -> str:
+    """Run molecular docking using AutoDock Vina.
+
+    Performs protein-ligand docking with the prepared receptor and ligand
+    PDBQT files. Returns binding affinities and RMSD values for all poses.
+    The best-docked poses are saved as a PDBQT file.
+
+    Args:
+        receptor_pdbqt_path: Path to prepared receptor PDBQT file.
+        ligand_pdbqt_path: Path to prepared ligand PDBQT file.
+        center_x: Grid box center X coordinate in Angstroms.
+        center_y: Grid box center Y coordinate in Angstroms.
+        center_z: Grid box center Z coordinate in Angstroms.
+        box_size_x: Grid box size X in Angstroms (default: 20).
+        box_size_y: Grid box size Y in Angstroms (default: 20).
+        box_size_z: Grid box size Z in Angstroms (default: 20).
+        exhaustiveness: Sampling thoroughness, higher = more accurate but slower (default: 8).
+        num_poses: Maximum number of poses to generate (default: 5).
+        output_dir: Optional directory for docking output files.
+
+    Returns:
+        JSON string with docking results including binding affinities,
+        RMSD values, and paths to output pose files.
+    """
+    kwargs: dict[str, Any] = {
+        "receptor_pdbqt_path": receptor_pdbqt_path,
+        "ligand_pdbqt_path": ligand_pdbqt_path,
+        "center_x": center_x,
+        "center_y": center_y,
+        "center_z": center_z,
+        "box_size_x": box_size_x,
+        "box_size_y": box_size_y,
+        "box_size_z": box_size_z,
+        "exhaustiveness": exhaustiveness,
+        "num_poses": num_poses,
+        "output_dir": output_dir,
+    }
+    if in_sandbox_cell():
+        # Vina.dock cannot be interrupted in-process; inline it would outlive the cell
+        # deadline and take the kernel (and every variable) down with it (issue #67).
+        return run_in_budgeted_process(
+            _run_docking_impl,
+            kwargs,
+            tool="vina",
+            hint=(
+                "Retry with lower exhaustiveness or fewer num_poses, a smaller box, or "
+                "dock ligands one per cell; poses already written stay on disk."
+            ),
+        )
+    return _run_docking_impl(**kwargs)
 
 
 @tool

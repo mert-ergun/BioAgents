@@ -31,11 +31,10 @@ from __future__ import annotations
 import base64
 import contextlib
 import logging
-import math
-import os
 
 # Serializes agent variables for transport into the trusted kernel.
 import pickle  # nosec B403
+import time
 import uuid
 from typing import Any
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
@@ -47,8 +46,14 @@ from smolagents.remote_executors import RemotePythonExecutor, _create_kernel_htt
 from smolagents.tools import Tool, get_tools_definition_code
 from smolagents.utils import AgentError
 
+from bioagents.limits import CELL_SETUP_TIMEOUT_SEC, DEFAULT_CELL_EXECUTION_TIMEOUT_SEC
 from bioagents.sandbox.dependency_events import record_dependency_event
 from bioagents.sandbox.pip_guard import filter_install_requests, kernel_guard_code
+from bioagents.sandbox.time_budget import (
+    KERNEL_RESTARTED_MESSAGE,  # noqa: F401 - re-exported for existing importers
+    cell_execution_timeout_sec,
+    recovery_notice,
+)
 from bioagents.sandbox.websocket_runner import RemoteExecutionError, run_code_over_websocket
 
 logger = logging.getLogger(__name__)
@@ -56,17 +61,9 @@ logger = logging.getLogger(__name__)
 #: Marker put at the start of the final answer when the sandbox is unrecoverable.
 SANDBOX_UNRECOVERABLE_MARKER = "[CODER_STATUS: sandbox_unrecoverable]"
 
-DEFAULT_EXEC_TIMEOUT_S = 1800.0
+DEFAULT_EXEC_TIMEOUT_S = DEFAULT_CELL_EXECUTION_TIMEOUT_SEC
 #: Fresh kernels one executor may start per ``agent.run()`` before giving up.
 MAX_KERNEL_RECOVERIES = 2
-
-KERNEL_RESTARTED_MESSAGE = (
-    "The Jupyter kernel died while executing this code (typically out-of-memory or a "
-    "native crash, e.g. a pip install replacing an already-imported extension). A fresh "
-    "kernel was started and final_answer plus the tools were restored, but ALL variables "
-    "and imports from previous steps are gone: recompute what you need (results already "
-    "written to files are still on disk)."
-)
 
 
 class KernelGoneError(RuntimeError):
@@ -82,14 +79,8 @@ class GatewayUnreachableError(RuntimeError):
 
 
 def exec_timeout_seconds() -> float:
-    """Read the execution budget; the newer setting overrides the legacy alias."""
-    raw = os.getenv("BIOAGENTS_CODE_EXECUTION_TIMEOUT_SEC")
-    if raw is None:
-        raw = os.getenv("BIOAGENTS_CODER_EXEC_TIMEOUT")
-    value = DEFAULT_EXEC_TIMEOUT_S if raw is None else float(raw)
-    if not math.isfinite(value) or value <= 0:
-        raise ValueError("Code execution timeout must be finite and > 0")
-    return value
+    """Read the user-cell budget; the newer setting overrides the legacy alias."""
+    return cell_execution_timeout_sec()
 
 
 def _is_not_found(exc: BaseException) -> bool:
@@ -125,6 +116,8 @@ class ResilientKernelMixin:
         self.fatal_error: str | None = None
         self.kernel_restarts = 0
         self._execution_failure: str | None = None
+        #: Start of the current agent.run(); files newer than this are listed on restart.
+        self._run_started_at: float | None = None
 
     # -- hooks overridable in tests -------------------------------------------------
     def _connect(self, url: str):
@@ -181,10 +174,12 @@ class ResilientKernelMixin:
     def _apply_setup(self) -> None:
         # A short user-cell budget must not prevent a cold kernel from restoring
         # tools after restart. Setup has its own bounded recovery budget.
-        self._raw_execute(self.setup_code(), timeout=30.0)
+        self._raw_execute(self.setup_code(), timeout=CELL_SETUP_TIMEOUT_SEC)
 
     def _final_answer_defined(self) -> bool:
-        probe = self._raw_execute("print('final_answer' in globals())", timeout=30.0)
+        probe = self._raw_execute(
+            "print('final_answer' in globals())", timeout=CELL_SETUP_TIMEOUT_SEC
+        )
         return "True" in (probe.logs or "")
 
     def _ensure_session(self) -> None:
@@ -258,6 +253,10 @@ class ResilientKernelMixin:
                 raise KernelRestartedError(str(exc)) from exc
             raise
 
+    def _restart_notice(self) -> str:
+        """Restart message listing the workspace files that survived."""
+        return recovery_notice(getattr(self, "_run_started_at", None))
+
     def _fatal_output(self) -> CodeOutput:
         return CodeOutput(output=self.fatal_error, logs="", is_final_answer=True)
 
@@ -287,7 +286,7 @@ class ResilientKernelMixin:
             if self.kernel_restarts > restarts_before:
                 # The kernel had died since the previous step; the code above ran in a
                 # fresh namespace, so tell the agent why earlier variables are missing.
-                notice = f"[sandbox notice] {KERNEL_RESTARTED_MESSAGE}\n"
+                notice = f"[sandbox notice] {self._restart_notice()}\n"
                 output = CodeOutput(
                     output=output.output,
                     logs=notice + (output.logs or ""),
@@ -301,10 +300,15 @@ class ResilientKernelMixin:
             except Exception as recovery_error:
                 self.logger.log_error(f"Kernel restart/setup failed: {recovery_error}")
             notice = (
-                KERNEL_RESTARTED_MESSAGE
+                self._restart_notice()
                 if not self._execution_failure
                 else "Kernel recovery will be retried before the next execution."
             )
+            if isinstance(exc, TimeoutError):
+                notice += (
+                    " Split long work into smaller cells and save intermediate results "
+                    "with bioagents.sandbox.checkpoint.save_checkpoint as they complete."
+                )
             raise AgentError(f"{exc}. {notice}", self.logger) from exc
         except KernelRestartedError:
             self.kernel_restarts += 1
@@ -317,12 +321,12 @@ class ResilientKernelMixin:
                 self.logger.log_error(f"Kernel setup restoration failed: {exc}")
             if self.fatal_error:
                 return self._fatal_output()
-            raise AgentError(KERNEL_RESTARTED_MESSAGE, self.logger) from None
+            raise AgentError(self._restart_notice(), self.logger) from None
         except (KernelGoneError, GatewayUnreachableError):
             self._recover_kernel()
             if self.fatal_error:
                 return self._fatal_output()
-            raise AgentError(KERNEL_RESTARTED_MESSAGE, self.logger) from None
+            raise AgentError(self._restart_notice(), self.logger) from None
 
 
 class ResilientDockerExecutor(ResilientKernelMixin, DockerExecutor):
@@ -358,6 +362,7 @@ class ResilientDockerExecutor(ResilientKernelMixin, DockerExecutor):
         # but only if the kernel actually answers again.
         self._recoveries = 0
         self.fatal_error = None
+        self._run_started_at = time.time()
         if "final_answer" in tools:
             self._patch_final_answer_with_exception(tools["final_answer"])
         requirements = {
@@ -385,7 +390,7 @@ class ResilientDockerExecutor(ResilientKernelMixin, DockerExecutor):
             "locals().update(vars_dict)\n"
         )
         try:
-            self._raw_execute(self._variables_code, timeout=30.0)
+            self._raw_execute(self._variables_code, timeout=CELL_SETUP_TIMEOUT_SEC)
         except (KernelGoneError, GatewayUnreachableError, KernelRestartedError):
             self._recover_kernel()  # setup_code() replays the variables on the new kernel
 

@@ -260,7 +260,12 @@ Docker failure does not switch to host execution.
 Kernel timeouts restart the session and restore agent tools and setup. Computed
 in-memory variables must be recreated. `BIOAGENTS_CODE_EXECUTION_TIMEOUT_SEC`
 takes precedence over the legacy `BIOAGENTS_CODER_EXEC_TIMEOUT` setting; without
-either setting, the per-cell limit is 1800 seconds. Final answers accept plain
+either setting, the per-cell limit is 1800 seconds. Long tools started inside a
+cell (BLAST, ESMFold, Vina docking) get a per-tool budget from `bioagents/limits.py`
+that is clamped strictly below that limit, so they return a resumable `timeout`
+status instead of killing the kernel; agent code can persist intermediate results
+with `bioagents.sandbox.checkpoint`. After a restart the notice lists files written
+during the run. Final answers accept plain
 Python data; custom objects should be written to files and returned as paths.
 
 Sandbox GPUs are opt-in with `BIOAGENTS_SANDBOX_GPU=true`. Driver mode `auto`

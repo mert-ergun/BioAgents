@@ -6,7 +6,6 @@ import base64
 import io
 import json
 import math
-import os
 
 # Required by the upstream wire format; opcode checks and find_class reject objects.
 import pickle  # nosec B403
@@ -56,11 +55,13 @@ def _decode_final_answer(payload):
 
 
 def execution_timeout_seconds() -> float:
-    """Read a finite, positive per-execution budget (independent of agent steps)."""
-    value = float(os.getenv("BIOAGENTS_CODE_EXECUTION_TIMEOUT_SEC", "300"))
-    if not math.isfinite(value) or value <= 0:
-        raise ValueError("BIOAGENTS_CODE_EXECUTION_TIMEOUT_SEC must be finite and > 0")
-    return value
+    """Read a finite, positive per-execution budget (independent of agent steps).
+
+    Same source of truth as the resilient executor, so a cell has one deadline.
+    """
+    from bioagents.sandbox.time_budget import cell_execution_timeout_sec
+
+    return cell_execution_timeout_sec()
 
 
 def run_code_over_websocket(code, ws, logger, *, timeout=None) -> CodeOutput:
