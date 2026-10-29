@@ -11,6 +11,7 @@ from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from pydantic import BaseModel, Field
 
 from bioagents.agents.helpers import extract_best_content
+from bioagents.agents.supervisor_completion import check_completed_work_guard
 from bioagents.agents.supervisor_helpers import (
     CODE_AGENTS,
     check_code_agent_task_completed,
@@ -533,6 +534,21 @@ def create_supervisor_agent(members: list[str]):
                 )
                 result.reasoning = f"{guard_reason} (was routed to {result.next_agent})"
                 result.next_agent = replacement
+
+        # Finished work must not be commissioned again under a new agent's name.
+        done_route, done_reason, done_task = check_completed_work_guard(
+            messages, result.next_agent, result.task_for_agent or "", members
+        )
+        if done_route:
+            logger.info(
+                "Supervisor: redirecting '%s' -> '%s'. %s",
+                result.next_agent,
+                done_route,
+                done_reason,
+            )
+            result.reasoning = f"{done_reason} (was routed to {result.next_agent})"
+            result.next_agent = done_route
+            result.task_for_agent = done_task
 
         handoff_messages: list[BaseMessage] = []
         if result.next_agent != "FINISH" and result.task_for_agent:

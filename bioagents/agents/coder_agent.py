@@ -29,6 +29,7 @@ from bioagents.sandbox.coder_helpers import (
     serialize_code_agent_steps,
     summarize_code_agent_steps,
 )
+from bioagents.sandbox.time_budget import set_recovery_roots
 from bioagents.tools.smol_tool_wrappers import ToolUniverseExecuteTool, ToolUniverseSearchTool
 
 logger = logging.getLogger("BioAgents")
@@ -174,6 +175,8 @@ def create_coder_node(agent: CodeAgent) -> Callable:
         available_data = extract_available_data(messages)
         output_dir = state.get("output_dir")
         artifact_dir = infer_output_dir(output_dir, original_query)
+        # A kernel restart lists files written here so the agent can resume from them.
+        set_recovery_roots([artifact_dir, output_dir])
 
         task = build_task_with_output_dir(
             original_query,

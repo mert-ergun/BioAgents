@@ -1,5 +1,6 @@
 """Helper functions for building tasks for the coder agent."""
 
+import contextlib
 import importlib.util
 import os
 import re
@@ -183,13 +184,20 @@ def build_task_with_output_dir(
 
     task = "\n".join(task_parts) if task_parts else "Please complete the requested task."
 
+    # Cells in the Docker sandbox have a deadline; state it so the agent can size its
+    # cells and checkpoint instead of losing the kernel (issue #67).
+    if os.getenv("USE_LOCAL_EXECUTOR", "false").lower() not in ("true", "1", "yes"):
+        from bioagents.sandbox.time_budget import time_budget_guidance
+
+        # An invalid timeout setting is reported by the executor itself.
+        with contextlib.suppress(ValueError):
+            task += "\n\n" + time_budget_guidance()
+
     if output_dir:
         output_path = Path(output_dir)
         output_path.mkdir(parents=True, exist_ok=True)
 
         try:
-            import os
-
             project_root = Path.cwd()
             if output_path.is_absolute():
                 try:

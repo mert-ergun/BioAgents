@@ -9,12 +9,25 @@ import shutil
 import subprocess  # nosec B404
 import sys
 import time
+from datetime import datetime
 
 from langchain_core.tools import tool
 
+from bioagents.limits import (
+    TOOL_WRAPPER_MAX_ATTEMPTS,
+    TOOL_WRAPPER_RETRY_BASE_DELAY_SEC,
+    TOOL_WRAPPER_RETRY_MAX_DELAY_SEC,
+)
 from bioagents.llms.llm_provider import get_llm
 from bioagents.llms.timeout_llm import remaining_workflow_seconds
-from bioagents.sandbox.dependency_events import run_install_command, track_dependencies
+from bioagents.sandbox.dependency_events import (
+    record_blocked_install,
+    record_dependency_event,
+    run_install_command,
+    track_dependencies,
+)
+from bioagents.sandbox.pip_guard import filter_install_requests
+from bioagents.tools.code_api_check import check_generated_code
 from bioagents.tools.dependency_inference import extract_system_dependencies_from_code
 from bioagents.tools.result_status import tool_result_status
 from bioagents.tools.tool_registry import (
@@ -31,7 +44,7 @@ class _EmptyWrapperResponse(ValueError):
 
 
 def _invoke_wrapper(llm, prompt):
-    attempts = max(1, min(3, int(os.getenv("BIOAGENTS_TOOL_WRAPPER_ATTEMPTS", "2"))))
+    attempts = TOOL_WRAPPER_MAX_ATTEMPTS
     for attempt in range(attempts):
         remaining = remaining_workflow_seconds()
         if remaining is not None and remaining <= 0:
@@ -58,7 +71,11 @@ def _invoke_wrapper(llm, prompt):
                 or (remaining is not None and remaining < 1)
             ):
                 raise
-            delay = min(0.25 * 2**attempt, remaining if remaining is not None else 1.0)
+            delay = min(
+                TOOL_WRAPPER_RETRY_BASE_DELAY_SEC * 2**attempt, TOOL_WRAPPER_RETRY_MAX_DELAY_SEC
+            )
+            if remaining is not None:
+                delay = min(delay, max(0.0, remaining - 1))
             logger.warning(
                 "Retrying wrapper generation after %s (%d/%d)",
                 type(exc).__name__,
@@ -86,6 +103,94 @@ _IMPORT_ALIASES = {
     "pyyaml": "yaml",
     "openbabel-wheel": "openbabel",
 }
+
+
+_EXECUTABLE_NAME = re.compile(r"[a-z0-9][a-z0-9_.+-]*")
+_INSTALL_FAILED = "install_failed"
+
+
+def _screen_system_dependencies(
+    dependencies: list, previous: dict[str, str] | None = None
+) -> tuple[list[str], dict[str, str]]:
+    """Keep plausible executables; reject prose such as "Directory" from error text.
+
+    Lowercase executable-like names are kept even when missing so they can be
+    installed. Any other spelling is kept only if it already resolves on PATH
+    (e.g. ``Rscript``), because installers cannot be expected to provide it.
+    A recorded install failure is preserved so it is not retried on every call.
+    """
+    previous = previous or {}
+    kept: list[str] = []
+    status: dict[str, str] = {}
+    for dep in dependencies:
+        name = dep.strip() if isinstance(dep, str) else ""
+        if not name or name in status:
+            continue
+        if shutil.which(name):
+            status[name] = "available"
+        elif not _EXECUTABLE_NAME.fullmatch(name):
+            status[name] = "rejected: not an executable-like name and not found on PATH"
+            continue
+        elif previous.get(name) == _INSTALL_FAILED:
+            status[name] = _INSTALL_FAILED
+        else:
+            status[name] = "missing"
+        kept.append(name)
+    return kept, status
+
+
+def _persist_tool(registry, tool_def: ToolDefinition) -> None:
+    try:
+        registry.register_tool(tool_def, overwrite=True)
+    except Exception as exc:
+        logger.warning("Could not persist registry entry for %s: %s", tool_def.name, exc)
+
+
+def _failure(phase: str, reasons: list[str]) -> dict[str, str]:
+    return {
+        "phase": phase,
+        "reason": "; ".join(reasons)[:2000],
+        "at": datetime.now().isoformat(),
+    }
+
+
+def _with_static_check(payload: str) -> str:
+    """Annotate generated wrapper JSON with import/API drift found in its code."""
+    try:
+        data = json.loads(payload)
+    except ValueError:
+        return payload
+    if not isinstance(data, dict) or not isinstance(data.get("code"), str):
+        return payload
+    problems = check_generated_code(data["code"])
+    if problems:
+        data["static_check_errors"] = problems
+    return json.dumps(data)
+
+
+def _usable_system_dependencies(registry, tool_def: ToolDefinition) -> list[str]:
+    """Sanitize persisted dependencies (older registries may contain prose words)."""
+    kept, status = _screen_system_dependencies(
+        tool_def.system_dependencies, tool_def.system_dependency_status
+    )
+    status = {
+        **{
+            k: v
+            for k, v in tool_def.system_dependency_status.items()
+            if v.startswith("rejected") and k not in status
+        },
+        **status,
+    }
+    if kept != tool_def.system_dependencies or status != tool_def.system_dependency_status:
+        rejected = sorted(set(tool_def.system_dependencies) - set(kept))
+        if rejected:
+            logger.info(
+                "Dropping implausible system dependencies for %s: %s", tool_def.name, rejected
+            )
+        tool_def.system_dependencies = kept
+        tool_def.system_dependency_status = status
+        _persist_tool(registry, tool_def)
+    return kept
 
 
 def _missing_python_dependencies(dependencies):
@@ -248,16 +353,18 @@ Return a JSON object with:
 
         json_match = re.search(r"\{[\s\S]*\}", content)
         if json_match:
-            return json_match.group()
+            return _with_static_check(json_match.group())
 
         code_match = re.search(r"```python\n([\s\S]*?)```", content)
         if code_match:
-            return json.dumps(
-                {
-                    "code": code_match.group(1),
-                    "dependencies": [],
-                    "test_code": None,
-                }
+            return _with_static_check(
+                json.dumps(
+                    {
+                        "code": code_match.group(1),
+                        "dependencies": [],
+                        "test_code": None,
+                    }
+                )
             )
 
         return json.dumps(
@@ -330,6 +437,14 @@ def register_custom_tool(
             if extracted_deps:
                 system_dependencies = extracted_deps
                 logger.info(f"Auto-extracted system dependencies from code: {extracted_deps}")
+        if not isinstance(system_dependencies, list):
+            system_dependencies = []
+        system_dependencies, system_dependency_status = _screen_system_dependencies(
+            system_dependencies
+        )
+        rejected = {k: v for k, v in system_dependency_status.items() if v.startswith("rejected")}
+        if rejected:
+            logger.info(f"Rejected implausible system dependencies for {name}: {sorted(rejected)}")
 
         definition = ToolDefinition(
             name=name,
@@ -341,23 +456,32 @@ def register_custom_tool(
             code=code,
             dependencies=dependencies,
             system_dependencies=system_dependencies,
+            system_dependency_status=system_dependency_status,
             source_paper=source_paper,
             source_url=source_url,
             source_software=source_software,
+            static_check_errors=check_generated_code(code),
         )
+        if definition.static_check_errors:
+            definition.last_failure = _failure("static_check", definition.static_check_errors)
 
         registry = get_registry()
         success = registry.register_tool(definition, overwrite=True)
 
         if success:
-            return json.dumps(
-                {
-                    "status": "success",
-                    "message": f"Tool '{name}' registered successfully",
-                    "tool_name": name,
-                    "category": category,
-                }
-            )
+            response: dict[str, object] = {
+                "status": "success",
+                "message": f"Tool '{name}' registered successfully",
+                "tool_name": name,
+                "category": category,
+            }
+            if definition.static_check_errors:
+                response["static_check_errors"] = definition.static_check_errors
+                response["warning"] = (
+                    "The code does not match the installed environment; fix these "
+                    "problems and re-register before validating."
+                )
+            return json.dumps(response)
         else:
             return json.dumps(
                 {
@@ -387,6 +511,24 @@ def validate_custom_tool(tool_name: str, test_args_json: str = "") -> str:
         registry = get_registry()
         test_args = json.loads(test_args_json) if test_args_json else None
 
+        tool = registry.get_tool(tool_name)
+        if tool is not None:
+            tool.static_check_errors = check_generated_code(tool.code)
+            if tool.static_check_errors:
+                tool.validated = False
+                tool.validation_error = "Static check failed: " + "; ".join(
+                    tool.static_check_errors
+                )
+                tool.last_failure = _failure("static_check", tool.static_check_errors)
+                _persist_tool(registry, tool)
+                return json.dumps(
+                    {
+                        "status": "error",
+                        "message": f"Validation failed: {tool.validation_error}",
+                        "static_check_errors": tool.static_check_errors,
+                    }
+                )
+
         success = registry.validate_tool(tool_name, test_args)
 
         if success:
@@ -400,6 +542,9 @@ def validate_custom_tool(tool_name: str, test_args_json: str = "") -> str:
         else:
             tool = registry.get_tool(tool_name)
             error = tool.validation_error if tool else "Tool not found"
+            if tool:
+                tool.last_failure = _failure("validation", [str(error)])
+                _persist_tool(registry, tool)
             return json.dumps(
                 {
                     "status": "error",
@@ -562,11 +707,29 @@ def execute_custom_tool(tool_name: str, arguments_json: str = "{}") -> str:
                 f"Unknown parameters: {sorted(unknown)}; missing required parameters: {sorted(missing)}",
             )
 
-        if tool_def.system_dependencies:
+        # Canonicalise path-like arguments against the workspace root (issue #68).
+        from bioagents.sandbox.workspace import WorkspacePathError, resolve_path_arguments
+
+        try:
+            args, resolved_paths = resolve_path_arguments(args)
+        except WorkspacePathError as exc:
+            return _argument_error(tool_def, str(exc))
+
+        if _usable_system_dependencies(registry, tool_def):
             missing_deps = []
             for dep in tool_def.system_dependencies:
                 if not shutil.which(dep):
                     missing_deps.append(dep)
+            not_retried = [
+                d
+                for d in missing_deps
+                if tool_def.system_dependency_status.get(d) == _INSTALL_FAILED
+            ]
+            if not_retried:
+                logger.info(
+                    f"Not retrying installs that previously failed for {tool_name}: {not_retried}"
+                )
+                missing_deps = [d for d in missing_deps if d not in not_retried]
 
             if missing_deps:
                 logger.info(
@@ -649,6 +812,11 @@ def execute_custom_tool(tool_name: str, arguments_json: str = "{}") -> str:
 
                 # apt-get needs sudo, so only log manual instructions.
                 if missing_deps and os.name != "nt" and shutil.which("apt-get"):
+                    record_blocked_install(
+                        ["sudo", "apt-get", "install", "-y", *missing_deps],
+                        reason="missing_system_executable",
+                        detail="requires_sudo",
+                    )
                     logger.warning(
                         f"apt-get installation requires sudo privileges. "
                         f"Please install manually: sudo apt-get install {' '.join(missing_deps)}"
@@ -656,6 +824,11 @@ def execute_custom_tool(tool_name: str, arguments_json: str = "{}") -> str:
 
                 still_missing = [d for d in missing_deps if not shutil.which(d)]
                 if still_missing:
+                    tool_def.system_dependency_status = {
+                        **tool_def.system_dependency_status,
+                        **dict.fromkeys(still_missing, _INSTALL_FAILED),
+                    }
+                    _persist_tool(registry, tool_def)
                     install_instructions = {
                         "mamba": f"mamba install -c bioconda -c conda-forge {' '.join(still_missing)}",
                         "conda": f"conda install -c bioconda -c conda-forge {' '.join(still_missing)}",
@@ -673,6 +846,16 @@ def execute_custom_tool(tool_name: str, arguments_json: str = "{}") -> str:
 
         if tool_def.dependencies:
             missing_pip_deps = _missing_python_dependencies(tool_def.dependencies)
+            missing_pip_deps, guarded_pip_deps = filter_install_requests(missing_pip_deps)
+            if guarded_pip_deps:
+                record_blocked_install(
+                    [sys.executable, "-m", "pip", "install", *guarded_pip_deps],
+                    reason="missing_python_dependency",
+                    detail="pip_guard",
+                )
+                logger.warning(
+                    f"Not installing pinned/project packages for {tool_name}: {guarded_pip_deps}"
+                )
 
             if missing_pip_deps:
                 logger.info(
@@ -805,6 +988,11 @@ def execute_custom_tool(tool_name: str, arguments_json: str = "{}") -> str:
                         )
                         still_missing_pip = _missing_python_dependencies(missing_pip_deps)
                         if still_missing_pip:
+                            record_dependency_event(
+                                "install_unverified",
+                                packages=still_missing_pip,
+                                reason="missing_python_dependency",
+                            )
                             logger.warning(
                                 f"Some Python dependencies could not be imported after installation: {still_missing_pip}"
                             )
@@ -826,11 +1014,15 @@ def execute_custom_tool(tool_name: str, arguments_json: str = "{}") -> str:
         func = registry.load_tool_function(tool_name)
 
         if func is None:
+            reason = tool_def.validation_error or "unknown load error"
+            tool_def.validated = False
+            tool_def.last_failure = _failure("load", [reason])
+            _persist_tool(registry, tool_def)
             return json.dumps(
                 {
                     "status": "error",
                     "tool": tool_name,
-                    "message": f"Failed to load tool '{tool_name}'",
+                    "message": f"Failed to load tool '{tool_name}': {reason}",
                 }
             )
 
@@ -866,6 +1058,7 @@ def execute_custom_tool(tool_name: str, arguments_json: str = "{}") -> str:
                 "status": tool_result_status(result),
                 "tool": tool_name,
                 "result": result,
+                "resolved_paths": resolved_paths,
             },
             default=str,
         )

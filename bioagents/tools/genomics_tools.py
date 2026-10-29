@@ -6,7 +6,6 @@ import json
 import logging
 import os
 import re
-import sys
 import threading
 import time
 import xml.etree.ElementTree as ET  # nosec B405
@@ -17,10 +16,10 @@ from langchain_core.tools import tool
 from bioagents.limits import (
     BLAST_BACKOFF_BASE_SEC,
     BLAST_BACKOFF_MAX_SEC,
-    BLAST_CELL_BUDGET_SEC,
     BLAST_POLL_INTERVAL_SEC,
     BLAST_TIMEOUT_SEC,
 )
+from bioagents.sandbox.time_budget import active_cell_timeout_sec, in_sandbox_cell, tool_cell_budget
 
 logger = logging.getLogger(__name__)
 
@@ -116,8 +115,6 @@ BLAST_MIN_SUBMIT_INTERVAL_SEC = 10.0
 BLAST_RID_TTL_SEC = 20 * 3600.0  # NCBI keeps results ~24 h
 BLAST_WORKFLOW_MARGIN_SEC = 15.0
 BLAST_MAX_HITS = 50
-# smolagents kills a sandbox Jupyter cell at this age and restarts the kernel.
-BLAST_SANDBOX_CELL_KILL_SEC = 300.0
 _RATE_LIMIT_MARKERS = ("cpu usage limit", "rate limit", "too many requests", "exceeded the")
 _RID_RE = re.compile(r"^\s*RID = (\S+)", re.MULTILINE)
 _RTOE_RE = re.compile(r"^\s*RTOE = (\d+)", re.MULTILINE)
@@ -300,38 +297,19 @@ def _parse_blast_xml(xml_text: str, max_hits: int) -> list[dict]:
 def _in_sandbox_cell() -> bool:
     """True when this code is running inside the coder sandbox's Jupyter kernel.
 
-    smolagents' Docker executor kills a cell at ``BLAST_SANDBOX_CELL_KILL_SEC`` and
-    restarts the kernel, so a BLAST still polling at that point dies with its RID
-    unreported — the task3 failure. Detect the kernel so the budget can be capped
-    below the cell limit and the RID always makes it back to the agent.
-
-    ``BIOAGENTS_BLAST_IN_CELL`` forces the answer either way (set it in the sandbox
-    image if the kernel ever stops being a ZMQInteractiveShell).
+    The sandbox kills a cell at its deadline and restarts the kernel, so a BLAST still
+    polling at that point dies with its RID unreported — the task3 failure. Detect the
+    kernel so the budget can be capped below the cell limit and the RID always makes it
+    back to the agent. See ``bioagents.sandbox.time_budget.in_sandbox_cell``.
     """
-    override = os.getenv("BIOAGENTS_BLAST_IN_CELL", "").strip().lower()
-    if override in ("1", "true", "yes"):
-        return True
-    if override in ("0", "false", "no"):
-        return False
-    # ipykernel is only imported where a kernel is actually running, never in the
-    # parent agent process (verified against the full graph + coder-executor imports).
-    if "ipykernel" in sys.modules:
-        return True
-    ipython = sys.modules.get("IPython")
-    if ipython is None:
-        return False
-    try:
-        shell = ipython.get_ipython()
-    except Exception:
-        return False
-    # A plain terminal IPython has no cell timeout; only the kernel (ZMQ) shell does.
-    return shell is not None and type(shell).__name__ == "ZMQInteractiveShell"
+    return in_sandbox_cell()
 
 
 def _blast_budget(timeout_sec: float) -> float:
     budget = BLAST_TIMEOUT_SEC if timeout_sec <= 0 else min(timeout_sec, BLAST_TIMEOUT_SEC)
     if _in_sandbox_cell():
-        budget = min(budget, BLAST_CELL_BUDGET_SEC)
+        # BLAST_CELL_BUDGET_SEC, clamped strictly below the active cell deadline.
+        budget = min(budget, tool_cell_budget("blast"))
     try:
         from bioagents.llms import timeout_llm
 
@@ -353,7 +331,7 @@ def _timeout_hint(rid: str, elapsed: float, in_cell: bool) -> str:
     if in_cell:
         hint += (
             f" This ran inside the coder sandbox, whose cells are killed at "
-            f"{BLAST_SANDBOX_CELL_KILL_SEC:.0f}s, so the budget was capped to keep the RID "
+            f"{active_cell_timeout_sec():.0f}s, so the budget was capped to keep the RID "
             "recoverable. Do not script BLAST here: hand this RID to the genomics agent's "
             "run_blast_search, which has the full budget."
         )

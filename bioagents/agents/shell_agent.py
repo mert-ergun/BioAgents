@@ -17,6 +17,21 @@ SHELL_AGENT_PROMPT = (
 )
 
 
+def build_shell_agent_prompt() -> str:
+    """Return the shell prompt plus the canonical workspace root the commands run in."""
+    try:
+        from bioagents.sandbox.workspace import describe_workspace_root, workspace_root
+
+        root = workspace_root()
+    except Exception:  # pragma: no cover - the prompt must survive a sandbox failure
+        return SHELL_AGENT_PROMPT
+    return (
+        f"{SHELL_AGENT_PROMPT}\n\n{describe_workspace_root(root)}\n"
+        f"Your commands start in {root}; use paths relative to it (or absolute paths under "
+        "it). Do not cd to other prefixes to look for the workspace."
+    )
+
+
 def create_shell_agent():
     """Create the Shell Agent node function.
 
@@ -32,7 +47,7 @@ def create_shell_agent():
         """The shell agent node function."""
         messages = state["messages"]
         windowed = prepare_messages_for_agent(messages, "shell")
-        messages_with_system = [SystemMessage(content=SHELL_AGENT_PROMPT), *windowed]
+        messages_with_system = [SystemMessage(content=build_shell_agent_prompt()), *windowed]
 
         return create_retry_response("Shell", messages_with_system, tool_names, llm_with_tools)
 

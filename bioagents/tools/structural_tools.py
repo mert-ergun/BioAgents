@@ -604,27 +604,8 @@ ABodyBuilder3Provider = Literal["Tamarind Bio", "Neurosnap"]
 UniMolProvider = Literal["Hugging Face (Weights)", "Tamarind Bio"]
 
 
-@tool
-def run_esmfold(sequence: str, output_dir: str = "esmfold_output") -> str:
-    """Predict a protein's 3D structure from sequence with ESMFold (runs locally).
-
-    Runs the real ESMFold model via HuggingFace transformers and writes an actual PDB
-    file. ESMFold is single-sequence (no MSA), so it is fast but less accurate than
-    AlphaFold2 for sequences with deep homolog coverage.
-
-    Note: the model is ~2.6 GB on first use and is very slow on CPU for sequences
-    longer than ~300 residues. Prefer fetch_alphafold_structure when the protein
-    already has an AlphaFold DB entry.
-
-    Args:
-        sequence: Protein sequence in single-letter amino acid code.
-        output_dir: Directory to write the predicted structure into.
-
-    Returns:
-        JSON with status, the path to the written PDB file, mean pLDDT confidence and
-        per-residue pLDDT. Returns status='error' naming exactly what failed — it never
-        claims a structure was predicted when none was.
-    """
+def _run_esmfold_impl(sequence: str, output_dir: str = "esmfold_output") -> str:
+    """Body of :func:`run_esmfold`; module-level so a child process can run it."""
     from bioagents.tools.capability_reporting import (
         capability_unavailable,
         check_modules,
@@ -723,6 +704,45 @@ def run_esmfold(sequence: str, output_dir: str = "esmfold_output") -> str:
             use_instead="fetch_alphafold_structure (AlphaFold DB lookup)",
             sequence_length=len(seq),
         )
+
+
+@tool
+def run_esmfold(sequence: str, output_dir: str = "esmfold_output") -> str:
+    """Predict a protein's 3D structure from sequence with ESMFold (runs locally).
+
+    Runs the real ESMFold model via HuggingFace transformers and writes an actual PDB
+    file. ESMFold is single-sequence (no MSA), so it is fast but less accurate than
+    AlphaFold2 for sequences with deep homolog coverage.
+
+    Note: the model is ~2.6 GB on first use and is very slow on CPU for sequences
+    longer than ~300 residues. Prefer fetch_alphafold_structure when the protein
+    already has an AlphaFold DB entry.
+
+    Args:
+        sequence: Protein sequence in single-letter amino acid code.
+        output_dir: Directory to write the predicted structure into.
+
+    Returns:
+        JSON with status, the path to the written PDB file, mean pLDDT confidence and
+        per-residue pLDDT. Returns status='error' naming exactly what failed — it never
+        claims a structure was predicted when none was.
+    """
+    from bioagents.sandbox.time_budget import in_sandbox_cell, run_in_budgeted_process
+
+    kwargs = {"sequence": sequence, "output_dir": output_dir}
+    if in_sandbox_cell():
+        # Model staging plus a CPU forward pass can outlive the cell deadline and cannot
+        # be interrupted in-process; a bounded child keeps the kernel alive (issue #67).
+        return run_in_budgeted_process(
+            _run_esmfold_impl,
+            kwargs,
+            tool="esmfold",
+            hint=(
+                "Downloaded weights stay cached, so a retry is faster; otherwise fold a "
+                "shorter sequence or use fetch_alphafold_structure."
+            ),
+        )
+    return _run_esmfold_impl(**kwargs)
 
 
 @tool

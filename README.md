@@ -260,7 +260,12 @@ Docker failure does not switch to host execution.
 Kernel timeouts restart the session and restore agent tools and setup. Computed
 in-memory variables must be recreated. `BIOAGENTS_CODE_EXECUTION_TIMEOUT_SEC`
 takes precedence over the legacy `BIOAGENTS_CODER_EXEC_TIMEOUT` setting; without
-either setting, the per-cell limit is 1800 seconds. Final answers accept plain
+either setting, the per-cell limit is 1800 seconds. Long tools started inside a
+cell (BLAST, ESMFold, Vina docking) get a per-tool budget from `bioagents/limits.py`
+that is clamped strictly below that limit, so they return a resumable `timeout`
+status instead of killing the kernel; agent code can persist intermediate results
+with `bioagents.sandbox.checkpoint`. After a restart the notice lists files written
+during the run. Final answers accept plain
 Python data; custom objects should be written to files and returned as paths.
 
 Sandbox GPUs are opt-in with `BIOAGENTS_SANDBOX_GPU=true`. Driver mode `auto`
@@ -484,6 +489,8 @@ provider block is required.
 | `LANGCHAIN_TRACING_V2`         | Enable LangSmith tracing (`true` / `false`)                                   |
 | `LANGCHAIN_API_KEY`            | LangSmith API key                                                              |
 | `LANGCHAIN_PROJECT`            | LangSmith project name (default `bioagents`)                                  |
+| `BIOAGENTS_TOOL_UNIVERSE_FINDER` | Tool discovery strategy: `hybrid` (default; semantic + keyword, keyword-only with a logged reason if no semantic finder loads), `keyword`, `llm`, `embedding` |
+| `BIOAGENTS_TOOL_UNIVERSE_SEMANTIC_FINDERS` | Semantic finders `hybrid` tries, in order (default `embedding`; e.g. `embedding,llm`) |
 | `BOLTZ_MCP_SERVER_HOST`        | Boltz ToolUniverse MCP endpoint (optional)                                    |
 | `EXPERT_FEEDBACK_MCP_SERVER_URL` | Expert feedback MCP endpoint (optional)                                     |
 | `HF_TOKEN`                     | Hugging Face token — needed for gated ESM-2 checkpoints                       |

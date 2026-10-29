@@ -456,6 +456,7 @@ def create_executor(agent_type: str, additional_imports: list) -> Any:
         try:
             terminal_console = Console(file=sys.stdout, width=None, force_terminal=True)
             logger = AgentLogger(level=LogLevel.INFO, console=terminal_console)
+            from bioagents.sandbox.time_budget import sandbox_time_budget_env
 
             # Run as the host user: files the container writes into the shared
             # workspace were root-owned, so a host-side agent editing the same artifact
@@ -468,7 +469,9 @@ def create_executor(agent_type: str, additional_imports: list) -> Any:
                         "mode": "rw",
                     }
                 },
-                "environment": {"BIOAGENTS_BLAST_IN_CELL": "1"},
+                # In-cell tools cap their budgets below the cell deadline, so they
+                # need the host's deadline and budget overrides (issue #67).
+                "environment": {"BIOAGENTS_BLAST_IN_CELL": "1", **sandbox_time_budget_env()},
                 "command": [
                     "jupyter",
                     "kernelgateway",

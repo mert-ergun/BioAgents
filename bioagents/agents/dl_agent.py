@@ -22,6 +22,7 @@ from bioagents.sandbox.coder_helpers import (
     extract_original_query,
     format_coder_result,
 )
+from bioagents.sandbox.time_budget import set_recovery_roots
 from bioagents.tools.smol_tool_wrappers import ToolUniverseExecuteTool, ToolUniverseSearchTool
 
 logger = logging.getLogger("BioAgents")
@@ -102,6 +103,7 @@ def create_dl_node(agent: CodeAgent) -> Callable:
         original_query = extract_original_query(messages)
         available_data = extract_available_data(messages)
         output_dir = state.get("output_dir")
+        set_recovery_roots([output_dir])
 
         task = build_task_with_output_dir(
             original_query,

@@ -235,9 +235,17 @@ import scanpy as sc
     <instruction priority="critical">
       NEVER RUN A LONG REMOTE JOB IN A CELL. Cells have a configurable execution deadline
       (BIOAGENTS_CODE_EXECUTION_TIMEOUT_SEC, with BIOAGENTS_CODER_EXEC_TIMEOUT as a legacy
-      fallback). Do not assume a fixed duration. Exceeding that deadline triggers
-      kernel recovery; a successful restart loses every variable, including a job id
-      you were waiting on.
+      fallback). Do not assume a fixed duration: the [TIME BUDGET] block in the task
+      states the current deadline. Exceeding that deadline triggers kernel recovery; a
+      successful restart loses every variable, including a job id you were waiting on.
+      Keep each cell well under the deadline: split long work (docking several ligands,
+      folding several sequences, training) into one item per cell, and save every
+      intermediate result as soon as it exists with
+      bioagents.sandbox.checkpoint.save_checkpoint(name, value); on the next step (and
+      after any restart) call load_checkpoint(name) before recomputing. Long tools
+      (run_docking, run_esmfold, BLAST) stop themselves before the deadline and return
+      status: timeout with cell_bounded: true — shrink the work rather than repeating
+      the same call. After a restart the notice lists files already written: load them.
       NCBI BLAST routinely takes 5-20 minutes, so it must never run here: do not call
       DEFAULT_WRAPPER.execute_tool("BLAST_protein_search"), NCBIWWW.qblast, a background
       thread, or a subprocess BLAST runner. Say that BLAST is needed and hand the task
@@ -276,6 +284,9 @@ import scanpy as sc
       tool_list = tools_data["result"]  # This is a list of tool dicts
 
       # If you forget to use ["result"], you'll get errors like "None" or wrong data structure
+      # Each tool dict also has "source" ("custom_registry", "local" or "sdk"), "validated" and
+      # "metadata_warnings". Non-empty metadata_warnings means the registry's name, description
+      # and parameters disagree: verify the tool before relying on it and report it.
 
       # Step 3: Extract tool name and check its parameter schema
       if tool_list and len(tool_list) > 0:

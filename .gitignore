@@ -265,6 +265,11 @@ dependency_events*.jsonl
 /use_cases/task[1-5]_*.yaml
 
 # Custom tool sources are versioned together with registry.json.
+# Registry persistence sidecars (backup, lock, corrupt copies, temp files).
+bioagents/tools/custom_tools/registry.json.bak
+bioagents/tools/custom_tools/registry.json.lock
+bioagents/tools/custom_tools/registry.json.corrupt-*
+bioagents/tools/custom_tools/.registry.json*.tmp
 
 # Local documentation and cleanup inventories
 /custom_docs/

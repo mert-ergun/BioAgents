@@ -258,6 +258,9 @@ class RunAudit:
             "outcomes": dict(statuses),
             "event_counts": dict(Counter(e["kind"] for e in unique.values())),
             "by_component": dict(Counter(e.get("component", "unknown") for e in starts.values())),
+            "by_phase": dict(Counter(e.get("phase", "unknown") for e in starts.values())),
+            "by_reason": dict(Counter(e.get("reason", "unknown") for e in starts.values())),
+            "by_tool": dict(Counter(e["tool"] for e in starts.values() if e.get("tool"))),
             "tracking_errors": list(self.errors),
             "unobserved_install_branches": sum(
                 e["kind"] == "unobserved_install_branch" for e in unique.values()
@@ -439,8 +442,35 @@ def _start(command: Any) -> _Attempt | None:
     return attempt
 
 
+DISABLE_INSTALLS_ENV = "BIOAGENTS_DISABLE_DYNAMIC_INSTALLS"
+
+
+def dynamic_installs_disabled() -> bool:
+    return os.getenv(DISABLE_INSTALLS_ENV, "").strip().lower() in {"1", "true", "yes"}
+
+
+def record_blocked_install(command: list[str], *, reason: str, detail: str) -> None:
+    """Count an install that was requested but deliberately not executed."""
+    with dependency_scope(reason=reason):
+        attempt = _start(command)
+        if attempt:
+            attempt.finish("blocked", error_type=detail)
+
+
 def run_install_command(command: list[str], *, reason: str, **kwargs):
-    """One audited boundary for controlled installs, including mockable failures."""
+    """One audited boundary for controlled installs, including mockable failures.
+
+    Every attempt is recorded with its component, phase, tool and reason. When
+    ``BIOAGENTS_DISABLE_DYNAMIC_INSTALLS`` is set the command is not executed and
+    the attempt is recorded as ``blocked``.
+    """
+    if dynamic_installs_disabled():
+        record_blocked_install(command, reason=reason, detail="dynamic_installs_disabled")
+        empty = "" if kwargs.get("text") or kwargs.get("universal_newlines") else b""
+        message = f"Dynamic dependency installs are disabled ({DISABLE_INSTALLS_ENV})"
+        return subprocess.CompletedProcess(
+            command, 1, stdout=empty, stderr=message if isinstance(empty, str) else message.encode()
+        )
     with dependency_scope(reason=reason):
         attempt = _start(command)
         token = _suppressed.set(True)
