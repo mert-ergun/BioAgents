@@ -88,6 +88,72 @@ _IMPORT_ALIASES = {
 }
 
 
+_EXECUTABLE_NAME = re.compile(r"[a-z0-9][a-z0-9_.+-]*")
+_INSTALL_FAILED = "install_failed"
+
+
+def _screen_system_dependencies(
+    dependencies: list, previous: dict[str, str] | None = None
+) -> tuple[list[str], dict[str, str]]:
+    """Keep plausible executables; reject prose such as "Directory" from error text.
+
+    Lowercase executable-like names are kept even when missing so they can be
+    installed. Any other spelling is kept only if it already resolves on PATH
+    (e.g. ``Rscript``), because installers cannot be expected to provide it.
+    A recorded install failure is preserved so it is not retried on every call.
+    """
+    previous = previous or {}
+    kept: list[str] = []
+    status: dict[str, str] = {}
+    for dep in dependencies:
+        name = dep.strip() if isinstance(dep, str) else ""
+        if not name or name in status:
+            continue
+        if shutil.which(name):
+            status[name] = "available"
+        elif not _EXECUTABLE_NAME.fullmatch(name):
+            status[name] = "rejected: not an executable-like name and not found on PATH"
+            continue
+        elif previous.get(name) == _INSTALL_FAILED:
+            status[name] = _INSTALL_FAILED
+        else:
+            status[name] = "missing"
+        kept.append(name)
+    return kept, status
+
+
+def _persist_tool(registry, tool_def: ToolDefinition) -> None:
+    try:
+        registry.register_tool(tool_def, overwrite=True)
+    except Exception as exc:
+        logger.warning("Could not persist registry entry for %s: %s", tool_def.name, exc)
+
+
+def _usable_system_dependencies(registry, tool_def: ToolDefinition) -> list[str]:
+    """Sanitize persisted dependencies (older registries may contain prose words)."""
+    kept, status = _screen_system_dependencies(
+        tool_def.system_dependencies, tool_def.system_dependency_status
+    )
+    status = {
+        **{
+            k: v
+            for k, v in tool_def.system_dependency_status.items()
+            if v.startswith("rejected") and k not in status
+        },
+        **status,
+    }
+    if kept != tool_def.system_dependencies or status != tool_def.system_dependency_status:
+        rejected = sorted(set(tool_def.system_dependencies) - set(kept))
+        if rejected:
+            logger.info(
+                "Dropping implausible system dependencies for %s: %s", tool_def.name, rejected
+            )
+        tool_def.system_dependencies = kept
+        tool_def.system_dependency_status = status
+        _persist_tool(registry, tool_def)
+    return kept
+
+
 def _missing_python_dependencies(dependencies):
     missing = []
     for requirement in dependencies:
@@ -330,6 +396,14 @@ def register_custom_tool(
             if extracted_deps:
                 system_dependencies = extracted_deps
                 logger.info(f"Auto-extracted system dependencies from code: {extracted_deps}")
+        if not isinstance(system_dependencies, list):
+            system_dependencies = []
+        system_dependencies, system_dependency_status = _screen_system_dependencies(
+            system_dependencies
+        )
+        rejected = {k: v for k, v in system_dependency_status.items() if v.startswith("rejected")}
+        if rejected:
+            logger.info(f"Rejected implausible system dependencies for {name}: {sorted(rejected)}")
 
         definition = ToolDefinition(
             name=name,
@@ -341,6 +415,7 @@ def register_custom_tool(
             code=code,
             dependencies=dependencies,
             system_dependencies=system_dependencies,
+            system_dependency_status=system_dependency_status,
             source_paper=source_paper,
             source_url=source_url,
             source_software=source_software,
@@ -570,11 +645,21 @@ def execute_custom_tool(tool_name: str, arguments_json: str = "{}") -> str:
         except WorkspacePathError as exc:
             return _argument_error(tool_def, str(exc))
 
-        if tool_def.system_dependencies:
+        if _usable_system_dependencies(registry, tool_def):
             missing_deps = []
             for dep in tool_def.system_dependencies:
                 if not shutil.which(dep):
                     missing_deps.append(dep)
+            not_retried = [
+                d
+                for d in missing_deps
+                if tool_def.system_dependency_status.get(d) == _INSTALL_FAILED
+            ]
+            if not_retried:
+                logger.info(
+                    f"Not retrying installs that previously failed for {tool_name}: {not_retried}"
+                )
+                missing_deps = [d for d in missing_deps if d not in not_retried]
 
             if missing_deps:
                 logger.info(
@@ -664,6 +749,11 @@ def execute_custom_tool(tool_name: str, arguments_json: str = "{}") -> str:
 
                 still_missing = [d for d in missing_deps if not shutil.which(d)]
                 if still_missing:
+                    tool_def.system_dependency_status = {
+                        **tool_def.system_dependency_status,
+                        **dict.fromkeys(still_missing, _INSTALL_FAILED),
+                    }
+                    _persist_tool(registry, tool_def)
                     install_instructions = {
                         "mamba": f"mamba install -c bioconda -c conda-forge {' '.join(still_missing)}",
                         "conda": f"conda install -c bioconda -c conda-forge {' '.join(still_missing)}",

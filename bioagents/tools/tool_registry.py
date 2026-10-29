@@ -96,6 +96,8 @@ class ToolDefinition:
     code: str = ""  # Python code for the tool wrapper
     dependencies: list[str] = field(default_factory=list)  # pip packages
     system_dependencies: list[str] = field(default_factory=list)  # apt packages
+    # Per-executable screening result: available, missing, rejected: <why>, install_failed.
+    system_dependency_status: dict[str, str] = field(default_factory=dict)
 
     created_at: str = field(default_factory=lambda: datetime.now().isoformat())
     updated_at: str = field(default_factory=lambda: datetime.now().isoformat())
