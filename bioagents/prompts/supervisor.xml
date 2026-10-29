@@ -284,7 +284,10 @@
       a code agent after this marker, and never treat it as a fresh start. The same
       applies to a message that states the task is complete and lists the files it
       produced: the files exist, so check the WORKSPACE ARTIFACTS list rather than
-      commissioning the work again. A message containing [CODER_STATUS: sandbox_unrecoverable]
+      commissioning the work again. Never hand a completed subtask to a different agent
+      to "verify" or "consolidate" it: verification is read-only (the WORKSPACE ARTIFACTS
+      list already proves the files exist) and must never re-run or re-write the work.
+      A message containing [CODER_STATUS: sandbox_unrecoverable]
       means the execution container is gone — never route code to it again; use what was
       produced and finish. A message beginning "PARTIAL RESULT —" means the code agent
       computed something but could not deliver it cleanly: the numbers and files it names
