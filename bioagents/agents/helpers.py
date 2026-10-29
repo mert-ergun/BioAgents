@@ -62,10 +62,9 @@ def _conduct_message_content() -> str:
     where those files land and in what form paths are exchanged.
     """
     try:
-        from bioagents.sandbox.sandbox_manager import get_sandbox
-        from bioagents.sandbox.workspace import describe_shared_workspace
+        from bioagents.sandbox.workspace import describe_shared_workspace, workspace_root
 
-        return f"{AGENT_CONDUCT_RULES}\n\n{describe_shared_workspace(get_sandbox().workdir)}"
+        return f"{AGENT_CONDUCT_RULES}\n\n{describe_shared_workspace(workspace_root())}"
     except Exception:  # pragma: no cover - the rules must survive a sandbox failure
         logger.debug("Could not describe shared workspace; sending conduct rules only.")
         return AGENT_CONDUCT_RULES

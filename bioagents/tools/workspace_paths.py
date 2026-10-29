@@ -25,7 +25,13 @@ import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from bioagents.sandbox.workspace import CONTAINER_PROJECT_ROOT, project_root
+from bioagents.sandbox.workspace import (
+    CONTAINER_PROJECT_ROOT,
+    case_insensitive_lookup,
+    project_root,
+    strip_workspace_prefix,
+    workspace_root,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -40,11 +46,9 @@ _MAX_VERSIONS = 20
 
 
 def workspace_dir() -> Path | None:
-    """Return the active run workspace (the shell/file agents' cwd), if one exists."""
+    """Return the canonical workspace root (the shell/file agents' cwd), if one exists."""
     try:
-        from bioagents.sandbox.sandbox_manager import get_sandbox
-
-        return get_sandbox().workdir.resolve()
+        return workspace_root()
     except Exception as exc:  # pragma: no cover - defensive; sandbox is optional
         logger.debug("No sandbox workspace available: %s", exc)
         return None
@@ -91,19 +95,24 @@ def _from_container(path_str: str) -> Path | None:
 
 
 def _case_insensitive_match(path: Path) -> Path | None:
-    """Find ``path`` ignoring the case of its final component."""
-    parent = path.parent
-    if not parent.is_dir():
-        return None
-    wanted = path.name.lower()
-    matches = [p for p in parent.iterdir() if p.name.lower() == wanted]
-    return matches[0] if len(matches) == 1 else None
+    """Find ``path`` ignoring the case of any of its components."""
+    return case_insensitive_lookup(path)
+
+
+def _strip_workspace(path_str: str) -> Path | None:
+    """Map ``sandbox_workdir/<ws>/...`` and doubled workspace prefixes onto the workspace."""
+    workspace = workspace_dir()
+    return strip_workspace_prefix(path_str, workspace) if workspace is not None else None
 
 
 def _candidate_paths(path_str: str) -> list[Path]:
     container = _from_container(path_str)
     if container is not None:
-        return [container]
+        stripped = _strip_workspace(str(container))
+        return [stripped or container]
+    stripped = _strip_workspace(path_str)
+    if stripped is not None:
+        return [stripped]
     raw = Path(path_str).expanduser()
     if raw.is_absolute():
         return [raw]
@@ -188,8 +197,11 @@ def resolve_output_dir(path_str: str | None, default_subdir: str = "") -> Path:
         path_str = str(path_str).strip()
         _reject_traversal(path_str)
         container = _from_container(path_str)
+        stripped = _strip_workspace(str(container or path_str))
         raw = Path(path_str).expanduser()
-        if container is not None:
+        if stripped is not None:
+            target = stripped
+        elif container is not None:
             target = container
         elif raw.is_absolute():
             target = raw

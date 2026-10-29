@@ -15,6 +15,7 @@ import subprocess  # nosec B404
 from pathlib import Path
 
 from bioagents.sandbox.dependency_events import track_dependencies
+from bioagents.sandbox.workspace import WORKSPACE_ROOT_ENV
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +28,12 @@ class SandboxManager:
 
     def __init__(self, workspace_id: str | None = None):
         self.workspace_id = workspace_id or "default"
-        self.workspace_dir = (SANDBOX_BASE_DIR / self.workspace_id).resolve()
+        configured_root = os.getenv(WORKSPACE_ROOT_ENV)
+        if workspace_id is None and configured_root:
+            # The canonical root wins so the shell cwd matches what tools resolve against.
+            self.workspace_dir = Path(configured_root).expanduser().resolve()
+        else:
+            self.workspace_dir = (SANDBOX_BASE_DIR / self.workspace_id).resolve()
         self.workspace_dir.mkdir(parents=True, exist_ok=True)
         self._command_history: list[dict] = []
         logger.info(f"Sandbox initialized at {self.workspace_dir}")
@@ -63,6 +69,7 @@ class SandboxManager:
             work_dir = self.workspace_dir
 
         run_env = os.environ.copy()
+        run_env.setdefault(WORKSPACE_ROOT_ENV, str(self.workspace_dir))
         if env:
             run_env.update(env)
 

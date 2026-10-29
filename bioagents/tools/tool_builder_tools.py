@@ -562,6 +562,14 @@ def execute_custom_tool(tool_name: str, arguments_json: str = "{}") -> str:
                 f"Unknown parameters: {sorted(unknown)}; missing required parameters: {sorted(missing)}",
             )
 
+        # Canonicalise path-like arguments against the workspace root (issue #68).
+        from bioagents.sandbox.workspace import WorkspacePathError, resolve_path_arguments
+
+        try:
+            args, resolved_paths = resolve_path_arguments(args)
+        except WorkspacePathError as exc:
+            return _argument_error(tool_def, str(exc))
+
         if tool_def.system_dependencies:
             missing_deps = []
             for dep in tool_def.system_dependencies:
@@ -866,6 +874,7 @@ def execute_custom_tool(tool_name: str, arguments_json: str = "{}") -> str:
                 "status": tool_result_status(result),
                 "tool": tool_name,
                 "result": result,
+                "resolved_paths": resolved_paths,
             },
             default=str,
         )
