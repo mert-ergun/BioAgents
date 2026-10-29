@@ -89,3 +89,31 @@ BLAST_BACKOFF_BASE_SEC = max(1.0, _env_float("BIOAGENTS_BLAST_BACKOFF_BASE_SEC",
 BLAST_BACKOFF_MAX_SEC = max(
     BLAST_BACKOFF_BASE_SEC, _env_float("BIOAGENTS_BLAST_BACKOFF_MAX_SEC", 600.0)
 )
+
+# Read-only discovery tools. Repeating the same search over a large tool index is normal
+# search behaviour, so these get their own (higher) consecutive-identical-call threshold.
+# BIOAGENTS_DISCOVERY_TOOL_NAMES adds comma-separated names to the defaults.
+DISCOVERY_TOOL_NAMES: frozenset[str] = frozenset(
+    {
+        "tool_universe_find_tools",
+        "find_tools",
+        "search_custom_tools",
+        "list_custom_tools",
+        "get_tool_code",
+    }
+    | {
+        name.strip()
+        for name in os.getenv("BIOAGENTS_DISCOVERY_TOOL_NAMES", "").split(",")
+        if name.strip()
+    }
+)
+
+# Consecutive identical discovery calls (see DISCOVERY_TOOL_NAMES) before forced break.
+MAX_CONSECUTIVE_IDENTICAL_DISCOVERY_CALLS = max(
+    MAX_CONSECUTIVE_IDENTICAL_TOOL_CALLS,
+    _env_int("BIOAGENTS_MAX_CONSECUTIVE_IDENTICAL_DISCOVERY_CALLS", 4),
+)
+
+# Rounds before the hard MAX_AGENT_TOOL_ROUNDS cut at which the agent is told to wrap up
+# and report its findings. 0 disables the warning.
+AGENT_TOOL_ROUNDS_WARNING_MARGIN = max(0, _env_int("BIOAGENTS_AGENT_TOOL_ROUNDS_WARNING_MARGIN", 1))

@@ -105,6 +105,10 @@ class AgentState(dict):
 def _detect_consecutive_duplicate_calls(messages: list, agent_name: str) -> tuple[bool, str]:
     """Detect consecutive identical tool calls (same name + same args) by the same agent.
 
+    Read-only discovery tools (``DISCOVERY_TOOL_NAMES``) get the higher
+    ``MAX_CONSECUTIVE_IDENTICAL_DISCOVERY_CALLS`` threshold: repeating a search over a
+    large tool index is normal search behaviour, not a loop.
+
     Returns (is_loop, description) where description explains the loop.
     """
     import hashlib
@@ -112,9 +116,13 @@ def _detect_consecutive_duplicate_calls(messages: list, agent_name: str) -> tupl
 
     from langchain_core.messages import AIMessage, HumanMessage
 
-    from bioagents.limits import MAX_CONSECUTIVE_IDENTICAL_TOOL_CALLS
+    from bioagents.limits import (
+        DISCOVERY_TOOL_NAMES,
+        MAX_CONSECUTIVE_IDENTICAL_DISCOVERY_CALLS,
+        MAX_CONSECUTIVE_IDENTICAL_TOOL_CALLS,
+    )
 
-    call_hashes: list[str] = []
+    calls: list[tuple[str, str]] = []
     for msg in reversed(messages):
         if isinstance(msg, HumanMessage):
             break
@@ -131,25 +139,134 @@ def _detect_consecutive_duplicate_calls(messages: list, agent_name: str) -> tupl
                 call_hash = hashlib.md5(
                     f"{tool_name}:{args_str}".encode(), usedforsecurity=False
                 ).hexdigest()
-                call_hashes.append(call_hash)
+                calls.append((call_hash, tool_name))
 
-    if not call_hashes:
+    if not calls:
         return False, ""
 
+    first_hash, first_tool = calls[0]
     consecutive = 1
-    for i in range(1, len(call_hashes)):
-        if call_hashes[i] == call_hashes[0]:
+    for call_hash, _ in calls[1:]:
+        if call_hash == first_hash:
             consecutive += 1
         else:
             break
 
-    if consecutive >= MAX_CONSECUTIVE_IDENTICAL_TOOL_CALLS:
+    limit = (
+        MAX_CONSECUTIVE_IDENTICAL_DISCOVERY_CALLS
+        if first_tool in DISCOVERY_TOOL_NAMES
+        else MAX_CONSECUTIVE_IDENTICAL_TOOL_CALLS
+    )
+    if consecutive >= limit:
         return True, (
-            f"Agent '{agent_name}' made {consecutive} consecutive identical tool calls. "
-            f"Breaking loop (limit: {MAX_CONSECUTIVE_IDENTICAL_TOOL_CALLS})."
+            f"Agent '{agent_name}' made {consecutive} consecutive identical tool calls "
+            f"('{first_tool}'). Breaking loop (limit: {limit})."
         )
 
     return False, ""
+
+
+_FILE_ARG_KEYS = ("file_path", "path", "filename", "output_path", "output_file")
+_WRITE_TOOL_HINTS = ("write", "save", "create", "register", "generate", "download")
+_PROGRESS_EXCERPT_CHARS = 400
+_PROGRESS_MAX_ITEMS = 10
+
+
+def _task_start_index(messages: list) -> int:
+    """Index of the most recent [SUPERVISOR TASK] handoff (0 when there is none)."""
+    from langchain_core.messages import HumanMessage
+
+    from bioagents.agents.helpers import get_message_content
+
+    for i in range(len(messages) - 1, -1, -1):
+        msg = messages[i]
+        if isinstance(msg, HumanMessage) and "[SUPERVISOR TASK]" in get_message_content(msg):
+            return i
+    return 0
+
+
+def _first_text_arg(args: dict) -> str:
+    return next((v for v in args.values() if isinstance(v, str) and v.strip()), "")
+
+
+def _summarize_agent_progress(messages: list, agent_name: str) -> str:
+    """Compact digest of what ``agent_name`` did since the last supervisor handoff.
+
+    Appended to forced-return messages so the supervisor (and whichever agent it picks
+    next) inherits the discovered tools, written files and latest results instead of
+    restarting the subtask from zero.
+    """
+    from langchain_core.messages import AIMessage, ToolMessage
+
+    from bioagents.agents.helpers import get_message_content
+    from bioagents.limits import DISCOVERY_TOOL_NAMES
+
+    task_messages = messages[_task_start_index(messages) :]
+    tool_counts: dict[str, int] = {}
+    discovery_queries: list[str] = []
+    files_written: list[str] = []
+    own_call_ids: set[str] = set()
+    results: list[str] = []
+
+    for msg in task_messages:
+        if isinstance(msg, AIMessage) and getattr(msg, "name", "") == agent_name:
+            for tc in getattr(msg, "tool_calls", None) or []:
+                tool_name = tc.get("name", "")
+                args = tc.get("args") or {}
+                tool_counts[tool_name] = tool_counts.get(tool_name, 0) + 1
+                if tc.get("id"):
+                    own_call_ids.add(tc["id"])
+                if not isinstance(args, dict):
+                    continue
+                query = _first_text_arg(args)[:120]
+                if tool_name in DISCOVERY_TOOL_NAMES and query and query not in discovery_queries:
+                    discovery_queries.append(query)
+                if any(h in tool_name.lower() for h in _WRITE_TOOL_HINTS):
+                    for key in _FILE_ARG_KEYS:
+                        value = args.get(key)
+                        if isinstance(value, str) and value and value not in files_written:
+                            files_written.append(value)
+        elif isinstance(msg, ToolMessage) and getattr(msg, "tool_call_id", "") in own_call_ids:
+            text = get_message_content(msg).strip()
+            if text:
+                label = getattr(msg, "name", "") or "tool"
+                results.append(f"{label}: {text[:_PROGRESS_EXCERPT_CHARS]}")
+
+    if not tool_counts:
+        return ""
+
+    lines = ["[PROGRESS SUMMARY] Work done before the cut-off (reuse it, do not redo it):"]
+    lines.append("- Tools called: " + ", ".join(f"{n} x{c}" for n, c in tool_counts.items()))
+    if discovery_queries:
+        lines.append(
+            "- Discovery searches run: " + "; ".join(discovery_queries[:_PROGRESS_MAX_ITEMS])
+        )
+    if files_written:
+        lines.append("- Files written: " + ", ".join(files_written[:_PROGRESS_MAX_ITEMS]))
+    if results:
+        lines.append("- Latest results:")
+        lines.extend(f"  * {r}" for r in results[-2:])
+    notes = _extract_best_agent_content(task_messages, agent_name)
+    if notes:
+        lines.append(f"- Last agent notes: {notes[:_PROGRESS_EXCERPT_CHARS]}")
+    return "\n".join(lines)
+
+
+def _with_progress(text: str, messages: list, agent_name: str) -> str:
+    """Append the agent's progress summary to a forced-return message, when there is one."""
+    summary = _summarize_agent_progress(messages, agent_name)
+    return f"{text}\n\n{summary}" if summary else text
+
+
+def _wrap_up_notice(agent_name: str, rounds_used: int, budget: int) -> str:
+    remaining = budget - rounds_used
+    return (
+        f"[TOOL_BUDGET_WARNING] Agent '{agent_name}' has used {rounds_used} of {budget} "
+        f"tool-calling rounds for this task; {remaining} remaining. Wrap up now: if you "
+        "already have enough, reply WITHOUT tool calls and report your findings (tools "
+        "found, files written, results). Otherwise make only the single most important "
+        "remaining call, then report. Work not reported before the limit is lost."
+    )
 
 
 def _count_tu_tool_calls(messages: list, agent_name: str) -> int:
@@ -252,20 +369,30 @@ def agent_node(state, agent, name):
     """Wrapper for agent nodes that adds agent identification and ACE tracking."""
     from langchain_core.messages import AIMessage
 
-    from bioagents.limits import MAX_AGENT_TOOL_ROUNDS, MAX_TU_TOOL_CALLS_PER_AGENT
+    from bioagents.limits import (
+        AGENT_TOOL_ROUNDS_WARNING_MARGIN,
+        MAX_AGENT_TOOL_ROUNDS,
+        MAX_TU_TOOL_CALLS_PER_AGENT,
+    )
 
-    is_loop, loop_desc = _detect_consecutive_duplicate_calls(state.get("messages", []), name)
+    messages = state.get("messages", [])
+
+    is_loop, loop_desc = _detect_consecutive_duplicate_calls(messages, name)
     if is_loop:
         logger.warning("Loop detected for agent '%s': %s", name, loop_desc)
         error_msg = AIMessage(
-            content=f"[LOOP_DETECTED] {loop_desc} The supervisor should try a different approach.",
+            content=_with_progress(
+                f"[LOOP_DETECTED] {loop_desc} The supervisor should try a different approach.",
+                messages,
+                name,
+            ),
             name=name,
         )
         return {"messages": [error_msg]}
 
     # Checked here, not on the conditional edge, so the agent stops with a clean message
     # instead of pending tool_calls that have no matching results.
-    tool_rounds = count_agent_tool_rounds(state.get("messages", []), name)
+    tool_rounds = count_agent_tool_rounds(messages, name)
     if tool_rounds >= MAX_AGENT_TOOL_ROUNDS:
         logger.warning(
             "Agent '%s' hit its tool-round budget (%d) for this task — "
@@ -274,20 +401,22 @@ def agent_node(state, agent, name):
             MAX_AGENT_TOOL_ROUNDS,
         )
         error_msg = AIMessage(
-            content=(
+            content=_with_progress(
                 f"[MAX_TOOL_ROUNDS] Agent '{name}' used its full budget of "
                 f"{MAX_AGENT_TOOL_ROUNDS} tool-calling rounds for this task without "
                 f"finishing it. Control is returning to the supervisor. The supervisor "
                 f"should either delegate the remaining work to a better-suited agent "
                 f"(for example, the Coder agent for computation rather than an agent "
                 f"that can only read and write files), or finish with the results "
-                f"already obtained. Do not re-delegate the same task to '{name}'."
+                f"already obtained. Do not re-delegate the same task to '{name}'.",
+                messages,
+                name,
             ),
             name=name,
         )
         return {"messages": [error_msg]}
 
-    tu_count = _count_tu_tool_calls(state.get("messages", []), name)
+    tu_count = _count_tu_tool_calls(messages, name)
     if tu_count >= MAX_TU_TOOL_CALLS_PER_AGENT:
         logger.warning(
             "Agent '%s' hit TU tool call limit (%d) — forcing return to supervisor.",
@@ -295,17 +424,28 @@ def agent_node(state, agent, name):
             MAX_TU_TOOL_CALLS_PER_AGENT,
         )
         error_msg = AIMessage(
-            content=(
+            content=_with_progress(
                 f"[MAX_TU_CALLS] Agent '{name}' exceeded the ToolUniverse "
                 f"call limit ({MAX_TU_TOOL_CALLS_PER_AGENT}). The supervisor "
-                f"should proceed with available results or try a different approach."
+                f"should proceed with available results or try a different approach.",
+                messages,
+                name,
             ),
             name=name,
         )
         return {"messages": [error_msg]}
 
+    agent_state = state
+    warn_at = max(1, MAX_AGENT_TOOL_ROUNDS - AGENT_TOOL_ROUNDS_WARNING_MARGIN)
+    if AGENT_TOOL_ROUNDS_WARNING_MARGIN and tool_rounds >= warn_at:
+        # Shown to the agent for this call only. Persisting it as a HumanMessage would
+        # reset the duplicate-call scan, which stops at the latest HumanMessage.
+        logger.info("Agent '%s' is near its tool-round budget; asking it to wrap up.", name)
+        notice = HumanMessage(content=_wrap_up_notice(name, tool_rounds, MAX_AGENT_TOOL_ROUNDS))
+        agent_state = {**state, "messages": [*messages, notice]}
+
     try:
-        result = agent(state)
+        result = agent(agent_state)
     except (TimeoutError, Exception) as exc:
         is_timeout = isinstance(exc, TimeoutError) or "timeout" in str(exc).lower()
         if is_timeout:
