@@ -238,6 +238,7 @@ class RunResult:
     judge_reasoning: str | None = None
     judge_breakdown: JudgeBreakdown | None = None
     agent_steps: list[AgentStep] = field(default_factory=list)
+    dependency_audit: dict[str, Any] = field(default_factory=dict)
 
     def subagent_internal_step_counts(self) -> dict[str, int]:
         """Internal steps per sub-agent (e.g. the coder's smolagents steps) in this run.
@@ -254,6 +255,7 @@ class RunResult:
     def to_dict(self) -> dict[str, Any]:
         return {
             "use_case_id": self.use_case_id,
+            "dependency_audit": self.dependency_audit,
             "use_case_name": self.use_case_name,
             "prompt": self.prompt,
             "execution_time": self.execution_time,

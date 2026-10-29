@@ -1,0 +1,15 @@
+# Keep the complete published PyTDC dependency set isolated from Boltz and Coder.
+PyTDC==1.1.15
+# 0.7/0.8 declare Python <3.7; 0.6 satisfies PyTDC without that upper bound.
+dataclasses==0.6
+torch==2.14.1
+numpy==1.26.4
+pandas==2.3.3
+rdkit==2023.9.6
+transformers==4.50.3
+accelerate==0.33.0
+# datasets<2.20 still uses PyExtensionType, removed in newer PyArrow releases.
+pyarrow==17.0.0
+fuzzywuzzy==0.18.0
+python-Levenshtein==0.27.5
+setuptools==80.9.0

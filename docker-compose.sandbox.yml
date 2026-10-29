@@ -1,0 +1,17 @@
+# Optional nested Docker sandboxes on Linux; see README.md for image setup.
+# docker compose -f docker-compose.yml -f docker-compose.sandbox.yml up --build
+# Requires Compose with !reset support (Compose 2.24.4+ recommended).
+services:
+  bioagents:
+    # The executor publishes its Jupyter gateway on the Docker host's loopback.
+    network_mode: host
+    ports: !reset []
+    group_add:
+      - "${DOCKER_GID:?Set DOCKER_GID to the group ID of /var/run/docker.sock}"
+    environment:
+      USE_LOCAL_EXECUTOR: "false"
+      PORT: "${BIOAGENTS_PORT:-8000}"
+      BIOAGENTS_DOCKER_PROJECT_ROOT: "${BIOAGENTS_DOCKER_PROJECT_ROOT:-${PWD}}"
+      BIOAGENTS_DOCKER_INHERIT_VOLUMES: "true"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock

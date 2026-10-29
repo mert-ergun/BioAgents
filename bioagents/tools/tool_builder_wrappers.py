@@ -12,6 +12,10 @@ from typing import TYPE_CHECKING, Any, ClassVar
 
 from smolagents import Tool
 
+from bioagents.sandbox.dependency_events import track_dependencies
+from bioagents.tools.result_status import tool_result_status
+from bioagents.tools.tool_registry import normalize_tool_type
+
 if TYPE_CHECKING:
     from smolagents import Tool as SmolTool
 
@@ -38,7 +42,7 @@ def create_smolagent_tool_from_registry(tool_name: str) -> SmolTool:
     inputs_schema = {}
     for param in tool_def.parameters:
         inputs_schema[param.name] = {
-            "type": param.type,
+            "type": param.to_schema()["type"],
             "description": param.description,
             "nullable": not param.required,
         }
@@ -46,18 +50,22 @@ def create_smolagent_tool_from_registry(tool_name: str) -> SmolTool:
     _tool_name = tool_def.name
     _tool_desc = tool_def.description
     _tool_inputs = inputs_schema
-    _tool_output = tool_def.return_type
+    _tool_output = normalize_tool_type(tool_def.return_type)
 
     class CustomRegistryTool(Tool):
         name = _tool_name
         description = _tool_desc
         inputs = _tool_inputs
         output_type = _tool_output
+        # The registry supplies the input schema; this adapter forwards **kwargs
+        # to a function whose real signature is enforced by Python at invocation.
+        skip_forward_signature_validation = True
 
         def __init__(self, tool_name_arg: str):
             super().__init__()
             self._tool_name = tool_name_arg
 
+        @track_dependencies(component="coder_tool", phase="execution")
         def forward(self, **kwargs) -> Any:
             registry = get_registry()
             func = registry.load_tool_function(self._tool_name)
@@ -222,6 +230,7 @@ class CustomToolExecuteTool(Tool):
     }
     output_type = "string"
 
+    @track_dependencies(component="coder_tool", phase="execution")
     def forward(
         self,
         tool_name: str,
@@ -236,6 +245,7 @@ class CustomToolExecuteTool(Tool):
             return json.dumps(
                 {
                     "status": "error",
+                    "tool": tool_name,
                     "message": f"Tool '{tool_name}' not found or failed to load",
                 }
             )
@@ -247,7 +257,7 @@ class CustomToolExecuteTool(Tool):
 
             return json.dumps(
                 {
-                    "status": "success",
+                    "status": tool_result_status(result),
                     "tool": tool_name,
                     "result": result,
                 },

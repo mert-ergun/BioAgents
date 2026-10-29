@@ -10,10 +10,13 @@ from smolagents import ChatMessage, MessageRole, Model
 
 logger = logging.getLogger(__name__)
 
-# smolagents passes the closing fence as a stop sequence, which also halts on a fence
-# inside a docstring and truncates the code.
+# smolagents CodeAgent passes the markdown closing fence as a stop sequence. That halts
+# generation at the *first* "```" in the stream — including inside Python docstrings or
+# strings — truncating code and causing parse/retry loops and huge malformed outputs.
 _CODE_AGENT_FENCE_STOPS = frozenset({"```", "\n```", "```\n"})
 
+EMPTY_RESPONSE_FINAL_ANSWER = "[CODER_STATUS: empty_response] The model returned empty responses repeatedly without producing code."
+_MAX_EMPTY_RETRIES = 2
 _MAX_DUPLICATE_CODE = 2
 _CODE_BLOCK_RE = re.compile(r"```python\n(.*?)```", re.DOTALL)
 
@@ -68,6 +71,7 @@ class LangChainModelAdapter(Model):
         self.langchain_model = langchain_model
         self._last_code_hash: str | None = None
         self._duplicate_code_count = 0
+        self._empty_response_count = 0
 
     def generate(
         self,
@@ -100,6 +104,7 @@ class LangChainModelAdapter(Model):
 
         content = _fix_code_fences(content)
 
+        # Log raw LLM output for debugging empty-response loops
         logger.debug(
             "LangChainModelAdapter.generate raw output: "
             "content_type=%s, content_len=%d, "
@@ -111,7 +116,9 @@ class LangChainModelAdapter(Model):
             "```python" in content if content else False,
         )
 
-        # Break the loop when the model re-emits identical broken code N times.
+        # Detect repeated identical code generation (the LLM keeps generating the
+        # same broken code without learning from execution errors).  Break the loop
+        # by injecting a final_answer after N consecutive duplicates.
         code_match = _CODE_BLOCK_RE.search(content) if content else None
         if code_match and "final_answer" not in code_match.group(1):
             code_hash = hashlib.md5(
@@ -128,7 +135,7 @@ class LangChainModelAdapter(Model):
                     "Thoughts: The same code was generated repeatedly and keeps "
                     "failing. Stopping retries to avoid an infinite loop.\n"
                     "```python\n"
-                    'final_answer("Code execution repeatedly failed with the same '
+                    'final_answer("[CODER_STATUS: repeated_code] Code execution repeatedly failed with the same '
                     'error. A different approach is needed.")\n'
                     "```"
                 )
@@ -136,28 +143,52 @@ class LangChainModelAdapter(Model):
                 self._last_code_hash = None
 
         if _is_nonproductive(content):
-            # Truly empty response — force termination
-            content = (
-                "Thoughts: The model returned an empty response. Finishing.\n"
-                "```python\n"
-                'final_answer("Task completed.")\n'
-                "```"
-            )
+            self._empty_response_count += 1
+            if self._empty_response_count <= _MAX_EMPTY_RETRIES:
+                logger.warning(
+                    "Empty LLM response (%d/%d) — nudging the agent to retry.",
+                    self._empty_response_count,
+                    _MAX_EMPTY_RETRIES,
+                )
+                content = (
+                    "Thoughts: The previous response was empty. Retrying with an "
+                    "explicit reminder to emit code.\n"
+                    "```python\n"
+                    'print("REMINDER: no code was produced in the previous step. '
+                    "Write the Python code that actually performs the task now, and "
+                    'only call final_answer() after it has run successfully.")\n'
+                    "```"
+                )
+            else:
+                logger.error(
+                    "Empty LLM responses exhausted retries (%d) — finishing with an "
+                    "explicit failure answer.",
+                    self._empty_response_count,
+                )
+                self._empty_response_count = 0
+                content = (
+                    "Thoughts: The model returned empty responses repeatedly. "
+                    "Finishing with an explicit failure.\n"
+                    "```python\n"
+                    f'final_answer("{EMPTY_RESPONSE_FINAL_ANSWER}")\n'
+                    "```"
+                )
         elif content is not None and "```python" not in content:
-            # A summary with no code block: wrap it so smolagents sees task completion.
-            answer = content.replace('"', '\\"').strip()
+            self._empty_response_count = 0
+            answer = content.strip()
             content = (
                 "Thoughts: Task completed, providing final answer.\n"
                 "```python\n"
-                f'final_answer("{answer}")\n'
+                f"final_answer({answer!r})\n"
                 "```"
             )
+        else:
+            self._empty_response_count = 0
 
         return ChatMessage(role=MessageRole.ASSISTANT, content=content, raw=response)
 
     def _convert_messages(self, messages: list[ChatMessage]) -> list[BaseMessage]:
         lc_messages: list[BaseMessage] = []
-        # Check if model is Gemini (ChatGoogleGenerativeAI) - it may not support SystemMessage
         is_gemini = (
             "google" in str(type(self.langchain_model)).lower()
             or "gemini" in str(type(self.langchain_model)).lower()
@@ -165,15 +196,34 @@ class LangChainModelAdapter(Model):
 
         for msg in messages:
             content = msg.content
+            if isinstance(content, list):
+                text_content = ""
+                for part in content:
+                    if isinstance(part, dict) and "text" in part:
+                        text_content += part["text"]
+                    elif isinstance(part, str):
+                        text_content += part
+                    else:
+                        text_content += str(part)
+                content = text_content
+
             if msg.role == MessageRole.USER:
                 lc_messages.append(HumanMessage(content=content))
             elif msg.role == MessageRole.ASSISTANT:
                 lc_messages.append(AIMessage(content=content))
+            elif msg.role == MessageRole.TOOL_CALL:
+                lc_messages.append(AIMessage(content=f"Calling tools:\n{content}"))
+            elif msg.role == MessageRole.TOOL_RESPONSE:
+                lc_messages.append(HumanMessage(content=f"Tool output:\n{content}"))
             elif msg.role == MessageRole.SYSTEM:
-                # Gemini may not support SystemMessage, convert to HumanMessage
                 if is_gemini:
-                    # Prepend system message as a user message for Gemini
                     lc_messages.append(HumanMessage(content=f"System: {content}"))
                 else:
                     lc_messages.append(SystemMessage(content=content))
+            else:
+                lc_messages.append(HumanMessage(content=str(content)))
+
+        if is_gemini and lc_messages and isinstance(lc_messages[-1], AIMessage):
+            lc_messages.append(HumanMessage(content="Continue the task."))
+
         return lc_messages

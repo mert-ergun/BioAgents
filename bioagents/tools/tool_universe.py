@@ -20,7 +20,15 @@ from dataclasses import dataclass
 from pathlib import Path
 from threading import Lock
 
-from langchain_core.tools import tool
+try:
+    from langchain_core.tools import tool
+except ModuleNotFoundError as exc:
+    if exc.name != "langchain_core" and not (exc.name or "").startswith("langchain_core."):
+        raise
+    raise ModuleNotFoundError(
+        "ToolUniverse LangChain wrappers require langchain-core; install the project dependencies",
+        name=exc.name,
+    ) from exc
 
 from bioagents.limits import BLAST_CELL_BUDGET_SEC, BLAST_TIMEOUT_SEC
 from bioagents.tools.tool_policy import ToolPolicy, get_default_policy

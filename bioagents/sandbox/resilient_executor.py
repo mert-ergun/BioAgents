@@ -30,13 +30,15 @@ from __future__ import annotations
 
 import base64
 import contextlib
-import json
 import logging
+import math
 import os
-import pickle  # nosec B403 - mirrors upstream smolagents final-answer transport
-import time
+
+# Serializes agent variables for transport into the trusted kernel.
+import pickle  # nosec B403
 import uuid
 from typing import Any
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 import requests
 from smolagents import DockerExecutor
@@ -45,7 +47,9 @@ from smolagents.remote_executors import RemotePythonExecutor, _create_kernel_htt
 from smolagents.tools import Tool, get_tools_definition_code
 from smolagents.utils import AgentError
 
+from bioagents.sandbox.dependency_events import record_dependency_event
 from bioagents.sandbox.pip_guard import filter_install_requests, kernel_guard_code
+from bioagents.sandbox.websocket_runner import RemoteExecutionError, run_code_over_websocket
 
 logger = logging.getLogger(__name__)
 
@@ -53,8 +57,6 @@ logger = logging.getLogger(__name__)
 SANDBOX_UNRECOVERABLE_MARKER = "[CODER_STATUS: sandbox_unrecoverable]"
 
 DEFAULT_EXEC_TIMEOUT_S = 1800.0
-#: How often a blocked ``recv`` wakes up to check the deadline and kernel liveness.
-_POLL_INTERVAL_S = 15.0
 #: Fresh kernels one executor may start per ``agent.run()`` before giving up.
 MAX_KERNEL_RECOVERIES = 2
 
@@ -80,13 +82,14 @@ class GatewayUnreachableError(RuntimeError):
 
 
 def exec_timeout_seconds() -> float:
-    """Per-execution wall-clock limit, overridable via ``BIOAGENTS_CODER_EXEC_TIMEOUT``."""
-    raw = os.getenv("BIOAGENTS_CODER_EXEC_TIMEOUT", "")
-    try:
-        value = float(raw) if raw else DEFAULT_EXEC_TIMEOUT_S
-    except ValueError:
-        return DEFAULT_EXEC_TIMEOUT_S
-    return value if value > 0 else DEFAULT_EXEC_TIMEOUT_S
+    """Read the execution budget; the newer setting overrides the legacy alias."""
+    raw = os.getenv("BIOAGENTS_CODE_EXECUTION_TIMEOUT_SEC")
+    if raw is None:
+        raw = os.getenv("BIOAGENTS_CODER_EXEC_TIMEOUT")
+    value = DEFAULT_EXEC_TIMEOUT_S if raw is None else float(raw)
+    if not math.isfinite(value) or value <= 0:
+        raise ValueError("Code execution timeout must be finite and > 0")
+    return value
 
 
 def _is_not_found(exc: BaseException) -> bool:
@@ -121,12 +124,23 @@ class ResilientKernelMixin:
         self._recoveries = 0
         self.fatal_error: str | None = None
         self.kernel_restarts = 0
+        self._execution_failure: str | None = None
 
     # -- hooks overridable in tests -------------------------------------------------
     def _connect(self, url: str):
         from websocket import create_connection
 
-        return create_connection(url, timeout=30)
+        # Fresh sockets need distinct client sessions. Reusing Jupyter's default
+        # session can send the next shell reply into the previous socket's buffer.
+        parts = urlsplit(url)
+        query = [
+            (key, value)
+            for key, value in parse_qsl(parts.query, keep_blank_values=True)
+            if key != "session_id"
+        ]
+        query.append(("session_id", uuid.uuid4().hex))
+        target = urlunsplit(parts._replace(query=urlencode(query)))
+        return create_connection(target, timeout=30)
 
     def _create_kernel(self) -> str:
         return str(_create_kernel_http(f"{self.base_url}/api/kernels", self.logger))
@@ -147,6 +161,17 @@ class ResilientKernelMixin:
         with contextlib.suppress(requests.RequestException):
             requests.post(f"{self.base_url}/api/kernels/{self.kernel_id}/interrupt", timeout=5)
 
+    def _restart_kernel(self) -> None:
+        """Restart the same kernel and only clear failure after setup succeeds."""
+        response = requests.post(
+            f"{self.base_url}/api/kernels/{self.kernel_id}/restart", timeout=30
+        )
+        response.raise_for_status()
+        self.kernel_restarts += 1
+        self._apply_setup()
+        self._execution_failure = None
+        self.logger.log("Jupyter kernel restarted and agent setup restored")
+
     def setup_code(self) -> str:
         """Everything a fresh kernel needs before agent code can run."""
         return "\n\n".join(
@@ -154,10 +179,12 @@ class ResilientKernelMixin:
         )
 
     def _apply_setup(self) -> None:
-        self._raw_execute(self.setup_code())
+        # A short user-cell budget must not prevent a cold kernel from restoring
+        # tools after restart. Setup has its own bounded recovery budget.
+        self._raw_execute(self.setup_code(), timeout=30.0)
 
     def _final_answer_defined(self) -> bool:
-        probe = self._raw_execute("print('final_answer' in globals())")
+        probe = self._raw_execute("print('final_answer' in globals())", timeout=30.0)
         return "True" in (probe.logs or "")
 
     def _ensure_session(self) -> None:
@@ -196,6 +223,7 @@ class ResilientKernelMixin:
             self._mark_fatal(f"a fresh kernel was started but setup failed: {exc}")
             return
         self.logger.log(f"Started fresh Jupyter kernel {new_id} and restored agent setup")
+        self._execution_failure = None
 
     def _mark_fatal(self, reason: str) -> None:
         self.fatal_error = (
@@ -206,92 +234,29 @@ class ResilientKernelMixin:
 
     def _raw_execute(self, code: str, timeout: float | None = None) -> CodeOutput:
         """Execute ``code`` once over a fresh websocket. Raises typed kernel errors."""
+        budget = exec_timeout_seconds() if timeout is None else timeout
         try:
             ws = self._connect(self.ws_url)
         except Exception as exc:
             if _is_not_found(exc):
                 raise KernelGoneError(str(exc)) from exc
-            if _is_connection_refused(exc):
+            from websocket import WebSocketException
+
+            if _is_connection_refused(exc) or isinstance(exc, (OSError, WebSocketException)):
                 raise GatewayUnreachableError(str(exc)) from exc
             raise
         with contextlib.closing(ws):
-            return self._run_on_socket(code, ws, timeout or exec_timeout_seconds())
+            return self._run_on_socket(code, ws, budget)
 
     def _run_on_socket(self, code: str, ws, timeout: float) -> CodeOutput:
-        from websocket import WebSocketConnectionClosedException, WebSocketTimeoutException
-
-        msg_id = str(uuid.uuid4())
-        ws.send(
-            json.dumps(
-                {
-                    "header": {
-                        "msg_id": msg_id,
-                        "username": "anonymous",
-                        "session": str(uuid.uuid4()),
-                        "msg_type": "execute_request",
-                        "version": "5.0",
-                    },
-                    "parent_header": {},
-                    "metadata": {},
-                    "content": {
-                        "code": code,
-                        "silent": False,
-                        "store_history": True,
-                        "user_expressions": {},
-                        "allow_stdin": False,
-                    },
-                }
-            )
-        )
-        with_settimeout = getattr(ws, "settimeout", None)
-        if with_settimeout:
-            with_settimeout(min(_POLL_INTERVAL_S, timeout))
-
-        deadline = time.monotonic() + timeout
-        outputs: list[str] = []
-        result: Any = None
-        is_final_answer = False
-        while True:
-            if time.monotonic() > deadline:
-                self._interrupt_kernel()
-                raise AgentError(
-                    f"Code execution exceeded {timeout:.0f}s and was interrupted. Run long "
-                    "jobs in the background (subprocess.Popen writing to a log file) and "
-                    "poll for completion in later steps.",
-                    self.logger,
-                )
-            try:
-                raw = ws.recv()
-            except WebSocketTimeoutException:
-                if not self._kernel_alive():
-                    raise KernelGoneError("kernel disappeared while executing") from None
-                continue
-            except WebSocketConnectionClosedException as exc:
-                if not self._kernel_alive():
-                    raise KernelGoneError("kernel websocket closed and kernel is gone") from exc
-                raise KernelRestartedError("kernel websocket closed mid-execution") from exc
-            if not raw:
-                continue
-            msg = json.loads(raw)
-            msg_type = msg.get("msg_type", "")
-            content = msg.get("content", {}) or {}
-            if msg_type == "status" and content.get("execution_state") in ("restarting", "dead"):
-                raise KernelRestartedError(f"kernel entered state {content['execution_state']}")
-            if msg.get("parent_header", {}).get("msg_id") != msg_id:
-                continue
-            if msg_type == "stream":
-                outputs.append(content.get("text", ""))
-            elif msg_type == "execute_result":
-                result = content.get("data", {}).get("text/plain")
-            elif msg_type == "error":
-                if content.get("ename", "") == self.FINAL_ANSWER_EXCEPTION:
-                    result = pickle.loads(base64.b64decode(content.get("evalue", "")))  # nosec B301
-                    is_final_answer = True
-                else:
-                    raise AgentError("\n".join(content.get("traceback", [])), self.logger)
-            elif msg_type == "status" and content.get("execution_state") == "idle":
-                break
-        return CodeOutput(output=result, logs="".join(outputs), is_final_answer=is_final_answer)
+        try:
+            return run_code_over_websocket(code, ws, self.logger, timeout=timeout)
+        except RemoteExecutionError as exc:
+            if not self._kernel_alive():
+                raise KernelGoneError(str(exc)) from exc
+            if str(exc).startswith("Kernel entered "):
+                raise KernelRestartedError(str(exc)) from exc
+            raise
 
     def _fatal_output(self) -> CodeOutput:
         return CodeOutput(output=self.fatal_error, logs="", is_final_answer=True)
@@ -301,10 +266,23 @@ class ResilientKernelMixin:
         if self.fatal_error:
             return self._fatal_output()
         restarts_before = self.kernel_restarts
-        self._ensure_session()
-        if self.fatal_error:
-            return self._fatal_output()
         try:
+            if self._execution_failure:
+                try:
+                    self._restart_kernel()
+                except requests.HTTPError as exc:
+                    if exc.response is not None and exc.response.status_code == 404:
+                        raise KernelGoneError(str(exc)) from exc
+                    raise AgentError(
+                        f"Kernel recovery failed; retry on the next step: {exc}", self.logger
+                    ) from exc
+                except Exception as exc:
+                    raise AgentError(
+                        f"Kernel recovery failed; retry on the next step: {exc}", self.logger
+                    ) from exc
+            self._ensure_session()
+            if self.fatal_error:
+                return self._fatal_output()
             output = self._raw_execute(code)
             if self.kernel_restarts > restarts_before:
                 # The kernel had died since the previous step; the code above ran in a
@@ -316,12 +294,27 @@ class ResilientKernelMixin:
                     is_final_answer=output.is_final_answer,
                 )
             return output
+        except (TimeoutError, RemoteExecutionError) as exc:
+            self._execution_failure = str(exc) or type(exc).__name__
+            try:
+                self._restart_kernel()
+            except Exception as recovery_error:
+                self.logger.log_error(f"Kernel restart/setup failed: {recovery_error}")
+            notice = (
+                KERNEL_RESTARTED_MESSAGE
+                if not self._execution_failure
+                else "Kernel recovery will be retried before the next execution."
+            )
+            raise AgentError(f"{exc}. {notice}", self.logger) from exc
         except KernelRestartedError:
             self.kernel_restarts += 1
             try:
                 self._apply_setup()
             except (KernelGoneError, GatewayUnreachableError, KernelRestartedError):
                 self._recover_kernel()
+            except (TimeoutError, RemoteExecutionError, AgentError) as exc:
+                self._execution_failure = str(exc) or type(exc).__name__
+                self.logger.log_error(f"Kernel setup restoration failed: {exc}")
             if self.fatal_error:
                 return self._fatal_output()
             raise AgentError(KERNEL_RESTARTED_MESSAGE, self.logger) from None
@@ -342,9 +335,22 @@ class ResilientDockerExecutor(ResilientKernelMixin, DockerExecutor):
     def install_packages(self, additional_imports: list[str]) -> list[str]:
         allowed, skipped = filter_install_requests(additional_imports)
         if skipped:
+            record_dependency_event(
+                "guard_skipped", component="framework", phase="setup", packages=skipped
+            )
             self.logger.log(f"Skipping pip install of pinned/project packages: {skipped}")
         if allowed:
-            super().install_packages(allowed)
+            code = (
+                "import sys\n"
+                "from bioagents.sandbox.dependency_events import dependency_scope, run_install_command\n"
+                "with dependency_scope(component='framework', phase='setup', reason='tool_requirements'):\n"
+                f"    _bioagents_install = run_install_command([sys.executable, '-m', 'pip', 'install', *{allowed!r}], reason='tool_requirements', capture_output=True, text=True, timeout=180)\n"
+                "print(_bioagents_install.stdout)\n"
+                "if _bioagents_install.returncode:\n"
+                "    print(_bioagents_install.stderr)\n"
+                "    raise RuntimeError('Dependency installation failed with exit code ' + str(_bioagents_install.returncode))\n"
+            )
+            self.run_code_raise_errors(code)
         return list(additional_imports)
 
     def send_tools(self, tools: dict[str, Tool]) -> None:
@@ -379,7 +385,7 @@ class ResilientDockerExecutor(ResilientKernelMixin, DockerExecutor):
             "locals().update(vars_dict)\n"
         )
         try:
-            self._raw_execute(self._variables_code)
+            self._raw_execute(self._variables_code, timeout=30.0)
         except (KernelGoneError, GatewayUnreachableError, KernelRestartedError):
             self._recover_kernel()  # setup_code() replays the variables on the new kernel
 

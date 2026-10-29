@@ -8,7 +8,11 @@ repos:
       - id: end-of-file-fixer
         exclude: ^ace/
       - id: check-yaml
-        exclude: ^(benchmarks/STELLA/tasks\.yaml$|ace/|playbooks/)
+        exclude: ^(benchmarks/STELLA/tasks\.yaml$|ace/|playbooks/|docker-compose\.sandbox\.yml$)
+      - id: check-yaml
+        name: Check Compose override YAML syntax
+        args: [--unsafe]
+        files: ^docker-compose\.sandbox\.yml$
       - id: check-toml
         exclude: ^ace/
       - id: check-json
@@ -60,6 +64,7 @@ repos:
           types-PyYAML,
           types-requests,
           types-setuptools,
+          types-docker,
         ]
         args: [--ignore-missing-imports, --show-error-codes]
         files: ^bioagents/

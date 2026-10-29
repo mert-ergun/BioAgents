@@ -52,8 +52,12 @@ def test_catalogue_search_uses_local_markdown(tmp_path: Path):
     assert all(entry["section"] for entry in results)
 
 
-def test_wrapper_falls_back_to_catalogue():
+def test_wrapper_falls_back_to_catalogue(monkeypatch):
     """When the SDK is missing, results should come from the markdown catalogue."""
+    # Isolate from the repo's custom tool registry, whose hits are ranked first.
+    monkeypatch.setattr(
+        ToolUniverseWrapper, "_search_custom_registry", staticmethod(lambda query, limit=5: [])
+    )
     wrapper = ToolUniverseWrapper(tool_factory=None, catalog=DummyCatalogue())
 
     payload = json.loads(wrapper.find_tools("sequence alignment", limit=1))

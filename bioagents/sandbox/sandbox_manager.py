@@ -14,6 +14,8 @@ import shutil
 import subprocess  # nosec B404
 from pathlib import Path
 
+from bioagents.sandbox.dependency_events import track_dependencies
+
 logger = logging.getLogger(__name__)
 
 SANDBOX_BASE_DIR = Path(os.getenv("BIOAGENTS_SANDBOX_DIR", "sandbox_workdir"))
@@ -34,6 +36,7 @@ class SandboxManager:
     def workdir(self) -> Path:
         return self.workspace_dir
 
+    @track_dependencies(component="shell", phase="execution")
     def run_command(
         self,
         command: str,

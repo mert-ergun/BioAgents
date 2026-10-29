@@ -25,6 +25,11 @@ def set_workflow_deadline(deadline: float | None) -> None:
     _workflow_deadline = deadline
 
 
+def remaining_workflow_seconds() -> float | None:
+    """Expose remaining wall time so retry backoff cannot outlive the workflow."""
+    return None if _workflow_deadline is None else max(0.0, _workflow_deadline - time.monotonic())
+
+
 def _effective_timeout(static_timeout: float) -> float:
     """Return the tighter of *static_timeout* and the remaining workflow budget.
 

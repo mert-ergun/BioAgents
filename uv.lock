@@ -337,6 +337,7 @@ source = { editable = "." }
 dependencies = [
     { name = "accelerate" },
     { name = "biopython" },
+    { name = "defusedxml" },
     { name = "docker" },
     { name = "fastapi" },
     { name = "gemmi" },
@@ -389,6 +390,7 @@ dev = [
 requires-dist = [
     { name = "accelerate", specifier = ">=0.34.0" },
     { name = "biopython", specifier = ">=1.86" },
+    { name = "defusedxml", specifier = ">=0.7.1" },
     { name = "docker", specifier = ">=7.1.0" },
     { name = "fair-esm", marker = "extra == 'esm'", specifier = ">=2.0.0" },
     { name = "fastapi", specifier = ">=0.115.0" },
