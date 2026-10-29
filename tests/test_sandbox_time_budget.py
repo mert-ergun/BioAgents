@@ -319,3 +319,14 @@ def test_checkpoint_defaults_and_env_directory(tmp_path, monkeypatch):
 def test_checkpoint_rejects_unsafe_names(tmp_path, name):
     with pytest.raises(ValueError):
         checkpoint.save_checkpoint(name, 1, directory=tmp_path)
+
+
+def test_tool_universe_docking_budget_clamped_below_cell(monkeypatch):
+    from bioagents.tools.tool_universe import _tool_time_budget
+
+    monkeypatch.setenv("BIOAGENTS_IN_SANDBOX_CELL", "1")
+    monkeypatch.setenv(time_budget.CELL_TIMEOUT_ENV, "1800")
+    assert _tool_time_budget("AutoDock_Vina_dock") < 1800.0
+
+    monkeypatch.setenv("BIOAGENTS_IN_SANDBOX_CELL", "0")
+    assert _tool_time_budget("AutoDock_Vina_dock") == 1800.0

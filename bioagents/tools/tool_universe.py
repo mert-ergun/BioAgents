@@ -120,9 +120,19 @@ def _tool_time_budget(tool_name: str | None) -> float:
         return BLAST_TIMEOUT_SEC + 60.0
 
     matches = [(len(marker), budget) for marker, budget in _TOOL_BUDGETS_SEC if marker in lowered]
-    if matches:
-        return max(matches)[1]
-    return _DEFAULT_TOOL_BUDGET_SEC
+    if not matches:
+        return _DEFAULT_TOOL_BUDGET_SEC
+    budget = max(matches)[1]
+    # A docking budget equal to the cell deadline would take the kernel down with the
+    # call (issue #67), so inside a sandbox cell it is clamped below that deadline.
+    try:
+        from bioagents.sandbox import time_budget
+
+        if time_budget.in_sandbox_cell():
+            return time_budget.tool_cell_budget(tool_name, requested=budget)
+    except Exception as exc:
+        logger.debug("Could not clamp %s budget to the sandbox cell: %s", tool_name, exc)
+    return budget
 
 
 try:  # pragma: no cover - optional dependency
