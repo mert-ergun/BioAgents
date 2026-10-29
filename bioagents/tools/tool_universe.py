@@ -31,6 +31,15 @@ except ModuleNotFoundError as exc:
     ) from exc
 
 from bioagents.limits import BLAST_CELL_BUDGET_SEC, BLAST_TIMEOUT_SEC
+from bioagents.tools.tool_discovery import (
+    METADATA_MISMATCH_NOTE,
+    SOURCE_CATALOG,
+    SOURCE_SDK,
+    annotate_entry,
+    get_local_tool,
+    merge_ranked,
+    search_local_tools,
+)
 from bioagents.tools.tool_policy import ToolPolicy, get_default_policy
 
 logger = logging.getLogger(__name__)
@@ -234,6 +243,11 @@ class ToolUniverseWrapper:
         "llm": "Tool_Finder_LLM",
         "embedding": "Tool_Finder",
     }
+    HYBRID: ClassVar[str] = "hybrid"
+    VALID_STRATEGIES: ClassVar[tuple[str, ...]] = ("hybrid", "keyword", "llm", "embedding")
+    # Semantic finders tried, in order, by the hybrid strategy. ``llm`` costs an LLM
+    # call per search, so it is opt-in via BIOAGENTS_TOOL_UNIVERSE_SEMANTIC_FINDERS.
+    DEFAULT_SEMANTIC_FINDERS: ClassVar[tuple[str, ...]] = ("embedding",)
 
     def __init__(
         self,
@@ -245,8 +259,44 @@ class ToolUniverseWrapper:
         self._catalog = catalog or ToolUniverseCatalogue()
         self._client = None
         self._lock = Lock()
-        self._default_finder = os.getenv("BIOAGENTS_TOOL_UNIVERSE_FINDER", "keyword").lower()
         self._policy = policy or get_default_policy()
+        self._default_finder = self._configured_default_finder()
+        self._semantic_finders = self._configured_semantic_finders()
+        # Finders that failed to load or run, with the reason; hybrid skips them.
+        self._unavailable_finders: dict[str, str] = {}
+
+    @classmethod
+    def _configured_default_finder(cls) -> str:
+        raw = os.getenv("BIOAGENTS_TOOL_UNIVERSE_FINDER", "").strip().lower()
+        if not raw:
+            return cls.HYBRID
+        if raw not in cls.VALID_STRATEGIES:
+            logger.warning(
+                "BIOAGENTS_TOOL_UNIVERSE_FINDER=%r is not a valid strategy (valid: %s); "
+                "using '%s'.",
+                raw,
+                ", ".join(cls.VALID_STRATEGIES),
+                cls.HYBRID,
+            )
+            return cls.HYBRID
+        return raw
+
+    @classmethod
+    def _configured_semantic_finders(cls) -> tuple[str, ...]:
+        raw = os.getenv("BIOAGENTS_TOOL_UNIVERSE_SEMANTIC_FINDERS", "")
+        chosen: list[str] = []
+        for item in raw.split(","):
+            name = item.strip().lower()
+            if name in ("embedding", "llm"):
+                if name not in chosen:
+                    chosen.append(name)
+            elif name:
+                logger.warning(
+                    "Ignoring semantic finder %r in BIOAGENTS_TOOL_UNIVERSE_SEMANTIC_FINDERS "
+                    "(valid: embedding, llm).",
+                    name,
+                )
+        return tuple(chosen) or cls.DEFAULT_SEMANTIC_FINDERS
 
     @staticmethod
     def _search_custom_registry(query: str, limit: int = 5) -> list[dict[str, Any]]:
@@ -275,6 +325,7 @@ class ToolUniverseWrapper:
                         "parameter": {"type": "object", "properties": params},
                         "required": required,
                         "source": "custom_registry",
+                        "validated": bool(getattr(tool_def, "validated", False)),
                     }
                 )
             return results
@@ -402,15 +453,89 @@ class ToolUniverseWrapper:
 
         raise TypeError("arguments must be a dict, JSON string, or None")
 
-    def _resolve_finder(self, finder: str | None) -> str:
-        mode = (finder or self._default_finder or "keyword").lower()
-        if mode not in self.FINDER_TO_TOOL:
-            logger.warning(
-                "Unknown ToolUniverse finder strategy '%s'; falling back to 'keyword'.",
-                mode,
-            )
-            mode = "keyword"
-        return mode
+    def _resolve_finder(self, finder: str | None) -> tuple[str, str | None]:
+        """Return ``(strategy, warning)``; an unknown strategy is reported, not hidden."""
+        requested = (finder or "").strip().lower()
+        if not requested or requested == "default":
+            return self._default_finder, None
+        if requested in self.VALID_STRATEGIES:
+            return requested, None
+        warning = (
+            f"Unknown finder strategy '{finder}'; valid strategies are "
+            f"{', '.join(self.VALID_STRATEGIES)}. Used '{self._default_finder}' instead."
+        )
+        logger.warning("ToolUniverse: %s", warning)
+        return self._default_finder, warning
+
+    def _run_sdk_finder(
+        self, client: Any, mode: str, description: str, limit: int
+    ) -> list[dict[str, Any]]:
+        """Run one SDK finder and normalise its output; raises on SDK failure."""
+        payload = {
+            "name": self.FINDER_TO_TOOL[mode],
+            "arguments": {
+                "description": description,
+                "limit": limit,
+                "return_call_result": True,
+            },
+        }
+        result = self._resolve_result(client.run(payload), _DEFAULT_TOOL_BUDGET_SEC)
+        # A finder that cannot load (e.g. no embedding model) answers with an error
+        # payload rather than raising; treat it as a failure so it is reported.
+        error_payload = result
+        if isinstance(result, str) and result.lstrip().startswith("{"):
+            try:
+                error_payload = json.loads(result)
+            except json.JSONDecodeError:
+                error_payload = None
+        if (
+            isinstance(error_payload, dict)
+            and error_payload.get("error")
+            and not error_payload.get("tools")
+        ):
+            raise RuntimeError(str(error_payload["error"]))
+        return self._normalize_find_tools_sdk_result(result)
+
+    def _run_hybrid(
+        self, client: Any, description: str, limit: int, notes: list[str]
+    ) -> tuple[list[tuple[str, list[dict[str, Any]]]], list[str]]:
+        """Run the first working semantic finder plus keyword; return result groups."""
+        groups: list[tuple[str, list[dict[str, Any]]]] = []
+        used: list[str] = []
+        for mode in self._semantic_finders:
+            if mode in self._unavailable_finders:
+                notes.append(f"'{mode}' finder skipped: {self._unavailable_finders[mode]}")
+                continue
+            try:
+                hits = self._run_sdk_finder(client, mode, description, limit)
+            except Exception as exc:
+                reason = f"failed to load or run ({exc})"
+                self._unavailable_finders[mode] = reason
+                logger.warning(
+                    "ToolUniverse '%s' finder unavailable (%s); hybrid search falls back "
+                    "to the remaining finders and keyword.",
+                    mode,
+                    exc,
+                )
+                notes.append(f"'{mode}' finder {reason}")
+                continue
+            used.append(mode)
+            if hits:
+                groups.append((mode, hits))
+                break
+            notes.append(f"'{mode}' finder returned no results")
+
+        try:
+            keyword_hits = self._run_sdk_finder(client, "keyword", description, limit)
+            used.append("keyword")
+            groups.append(("keyword", keyword_hits))
+        except Exception as exc:
+            logger.warning("ToolUniverse keyword finder failed: %s", exc)
+            notes.append(f"'keyword' finder failed ({exc})")
+
+        if not any(mode in used for mode in self._semantic_finders):
+            notes.append("no semantic finder was available; results are keyword-only")
+        return groups, used
 
     @staticmethod
     def _coerce_tool_entry(item: Any) -> dict[str, Any]:
@@ -515,83 +640,112 @@ class ToolUniverseWrapper:
         """
         Run the Tool Finder tool (or the local fallback) to identify relevant tools.
 
-        Also searches the local custom tool registry and merges results so that
-        tools created by the ToolBuilder agent are always discoverable.
+        Results combine, in this order: tools built at runtime (custom registry),
+        utilities shipped with BioAgents (``source: local``), and ToolUniverse hits.
+        Every entry carries ``source``, ``validated`` and ``metadata_warnings``.
 
         Args:
             description: A natural language description of the needed capability.
             limit: Maximum number of tools to return.
-            finder: One of ``keyword`` (default), ``llm``, or ``embedding``.
+            finder: One of ``hybrid`` (default), ``keyword``, ``llm`` or ``embedding``.
+                ``hybrid`` merges the first available semantic finder with keyword
+                hits and degrades to keyword-only, with a note, when none loads.
+                ``None`` uses ``BIOAGENTS_TOOL_UNIVERSE_FINDER``.
         """
         limit = max(1, int(limit))
-        finder_mode = self._resolve_finder(finder)
+        finder_mode, finder_warning = self._resolve_finder(finder)
+        notes: list[str] = [finder_warning] if finder_warning else []
 
-        # Always search custom registry first — these are purpose-built tools
-        custom_hits = self._search_custom_registry(description, limit=limit)
+        # Runtime-built and shipped tools first: they run locally and need no API key.
+        custom_hits = self._policy.filter_find_results(
+            self._search_custom_registry(description, limit=limit), limit=limit
+        )
+        local_hits = custom_hits + search_local_tools(description, limit=limit)
 
         if self.client_available:
+            groups: list[tuple[str, list[dict[str, Any]]]] | None
+            finders_used: list[str] = []
             try:
                 client = self._ensure_client()
-
-                logger.info(f"ToolUniverse search query: '{description}' (limit={limit})")
-
-                payload = {
-                    "name": self.FINDER_TO_TOOL[finder_mode],
-                    "arguments": {
-                        "description": description,
-                        "limit": limit,
-                        "return_call_result": True,
-                    },
-                }
-                result = self._resolve_result(client.run(payload), _DEFAULT_TOOL_BUDGET_SEC)
-                normalized = self._normalize_find_tools_sdk_result(result)
+                logger.info("ToolUniverse search query: '%s' (limit=%d)", description, limit)
+                if finder_mode == self.HYBRID:
+                    groups, finders_used = self._run_hybrid(client, description, limit, notes)
+                    groups = groups or None
+                else:
+                    hits = self._run_sdk_finder(client, finder_mode, description, limit)
+                    groups, finders_used = [(finder_mode, hits)], [finder_mode]
             except Exception as exc:
                 logger.warning(
                     "ToolUniverse SDK search failed (%s); falling back to catalog.",
                     exc,
                 )
-                normalized = None
+                groups = None
 
-            if normalized is not None:
-                seen_names = {h["name"] for h in custom_hits}
-                merged = list(custom_hits)
-                for tool_entry in normalized:
-                    if tool_entry.get("name") not in seen_names:
-                        merged.append(tool_entry)
-                merged = merged[:limit]
-
-                merged = self._policy.filter_find_results(merged, limit=limit)
-
+            if groups is not None:
+                sdk_hits = merge_ranked(groups)
+                sdk_hits = self._policy.filter_find_results(sdk_hits, limit=limit)
+                merged = self._merge_annotated(local_hits, sdk_hits, limit, SOURCE_SDK)
                 return self._format_response(
-                    {
-                        "source": "sdk",
-                        "finder": finder_mode,
-                        "query": description,
-                        "result": merged,
-                    }
+                    self._with_notes(
+                        {
+                            "source": "sdk",
+                            "finder": finder_mode,
+                            "finders_used": finders_used,
+                            "query": description,
+                            "result": merged,
+                        },
+                        notes,
+                    )
                 )
 
             # SDK failed — fall through to catalog fallback
 
-        fallback_hits = self._catalog.search(description, limit)
-        seen_names = {h["name"] for h in custom_hits}
-        merged = list(custom_hits)
-        for hit in fallback_hits:
-            if hit.get("name") not in seen_names:
-                merged.append(hit)
-        merged = merged[:limit]
-
-        merged = self._policy.filter_find_results(merged, limit=limit)
-
-        return self._format_response(
-            {
-                "source": "catalog",
-                "finder": "markdown_fallback",
-                "query": description,
-                "results": merged,
-                "note": "Install the 'tooluniverse' package to run live tool searches.",
-            }
+        fallback_hits = self._policy.filter_find_results(
+            self._catalog.search(description, limit), limit=limit
         )
+        merged = self._merge_annotated(local_hits, fallback_hits, limit, SOURCE_CATALOG)
+        return self._format_response(
+            self._with_notes(
+                {
+                    "source": "catalog",
+                    "finder": "markdown_fallback",
+                    "query": description,
+                    "results": merged,
+                    "note": "Install the 'tooluniverse' package to run live tool searches.",
+                },
+                notes,
+            )
+        )
+
+    @staticmethod
+    def _merge_annotated(
+        local_hits: list[dict[str, Any]],
+        remote_hits: list[dict[str, Any]],
+        limit: int,
+        remote_source: str,
+    ) -> list[dict[str, Any]]:
+        """Local hits first, then remote ones; dedupe by name, cap, and audit each."""
+        seen: set[str] = set()
+        merged: list[dict[str, Any]] = []
+        for entry in [*local_hits, *remote_hits]:
+            name = entry.get("name")
+            if not name or name in seen:
+                continue
+            seen.add(name)
+            merged.append(annotate_entry(entry, remote_source))
+            if len(merged) >= limit:
+                break
+        return merged
+
+    @staticmethod
+    def _with_notes(payload: dict[str, Any], notes: list[str]) -> dict[str, Any]:
+        """Attach finder warnings and the metadata-mismatch note when relevant."""
+        if notes:
+            payload["warnings"] = notes
+        tools = payload.get("result") or payload.get("results") or []
+        if any(entry.get("metadata_warnings") for entry in tools):
+            payload["metadata_note"] = METADATA_MISMATCH_NOTE
+        return payload
 
     def execute_tool(self, tool_name: str, arguments: str | dict[str, Any] | None = None) -> str:
         """
@@ -602,6 +756,19 @@ class ToolUniverseWrapper:
             arguments: JSON string or dictionary of tool arguments.
         """
         parsed_args = self._parse_arguments(arguments)
+
+        # Shipped workspace utilities (file_tools) are surfaced by find_tools; run them
+        # directly so an agent that found one there can actually call it.
+        local_tool = get_local_tool(tool_name)
+        if local_tool is not None:
+            try:
+                result = local_tool.invoke(parsed_args)
+            except Exception as exc:
+                logger.warning("Local tool '%s' failed: %s", tool_name, exc)
+                return self._format_response({"tool": tool_name, "error": str(exc)})
+            return self._format_response(
+                {"tool": tool_name, "result": result, "implementation": "local"}
+            )
 
         policy_result = self._policy.evaluate(tool_name, parsed_args)
         if not policy_result.allowed:
@@ -667,7 +834,7 @@ DEFAULT_WRAPPER = ToolUniverseWrapper()
 
 
 @tool
-def tool_universe_find_tools(description: str, limit: int = 5, strategy: str = "keyword") -> str:
+def tool_universe_find_tools(description: str, limit: int = 5, strategy: str = "") -> str:
     """
     Search ToolUniverse for tools that match the provided description.
 
@@ -678,20 +845,27 @@ def tool_universe_find_tools(description: str, limit: int = 5, strategy: str = "
     Args:
         description: Natural language description of the capability you need.
         limit: Maximum number of tools to return (default 5).
-        strategy: Search method — must be one of ``keyword``, ``llm``, or ``embedding``.
-            Defaults to ``keyword``. Any other value is silently replaced with ``keyword``.
+        strategy: Search method — one of ``hybrid``, ``keyword``, ``llm`` or
+            ``embedding``. Leave empty for the configured default (``hybrid``: a
+            semantic finder merged with keyword hits, keyword-only when no semantic
+            finder loads). An unknown value is replaced by the default and reported
+            in the result's ``warnings``.
 
     Returns:
         A JSON string listing the matching tools. Each entry carries ``name``,
         ``description`` and a ``parameter`` JSON-schema block describing the arguments
-        that tool expects. Pass the exact ``name`` and matching arguments to
-        ``tool_universe_call_tool`` to run it. An empty result list means no tool
+        that tool expects, plus ``source`` (``custom_registry``, ``local`` or ``sdk``),
+        ``validated`` and ``metadata_warnings``. A non-empty ``metadata_warnings``
+        means the registry's name, description and parameters disagree: verify the
+        tool before trusting it. ``local`` tools ship with BioAgents (reading, writing
+        and listing workspace files); use them rather than building new ones. Pass the
+        exact ``name`` and matching arguments to ``tool_universe_call_tool`` to run it. An empty result list means no tool
         matched — it does NOT mean the task is impossible, so try a different
         description or use a specialist agent. On failure returns a string starting
         with "Error".
     """
     try:
-        return DEFAULT_WRAPPER.find_tools(description, limit=int(limit), finder=strategy)
+        return DEFAULT_WRAPPER.find_tools(description, limit=int(limit), finder=strategy or None)
     except Exception as exc:  # pragma: no cover - defensive
         logger.exception("ToolUniverse search failed")
         return f"Error searching ToolUniverse: {exc}"

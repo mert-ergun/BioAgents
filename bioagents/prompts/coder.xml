@@ -276,6 +276,9 @@ import scanpy as sc
       tool_list = tools_data["result"]  # This is a list of tool dicts
 
       # If you forget to use ["result"], you'll get errors like "None" or wrong data structure
+      # Each tool dict also has "source" ("custom_registry", "local" or "sdk"), "validated" and
+      # "metadata_warnings". Non-empty metadata_warnings means the registry's name, description
+      # and parameters disagree: verify the tool before relying on it and report it.
 
       # Step 3: Extract tool name and check its parameter schema
       if tool_list and len(tool_list) > 0:

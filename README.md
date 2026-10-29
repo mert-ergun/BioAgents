@@ -484,6 +484,8 @@ provider block is required.
 | `LANGCHAIN_TRACING_V2`         | Enable LangSmith tracing (`true` / `false`)                                   |
 | `LANGCHAIN_API_KEY`            | LangSmith API key                                                              |
 | `LANGCHAIN_PROJECT`            | LangSmith project name (default `bioagents`)                                  |
+| `BIOAGENTS_TOOL_UNIVERSE_FINDER` | Tool discovery strategy: `hybrid` (default; semantic + keyword, keyword-only with a logged reason if no semantic finder loads), `keyword`, `llm`, `embedding` |
+| `BIOAGENTS_TOOL_UNIVERSE_SEMANTIC_FINDERS` | Semantic finders `hybrid` tries, in order (default `embedding`; e.g. `embedding,llm`) |
 | `BOLTZ_MCP_SERVER_HOST`        | Boltz ToolUniverse MCP endpoint (optional)                                    |
 | `EXPERT_FEEDBACK_MCP_SERVER_URL` | Expert feedback MCP endpoint (optional)                                     |
 | `HF_TOKEN`                     | Hugging Face token — needed for gated ESM-2 checkpoints                       |
