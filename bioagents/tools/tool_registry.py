@@ -14,18 +14,27 @@ import importlib.util
 import inspect
 import json
 import logging
+import os
 import re
+import shutil
 import sys
+import tempfile
+from contextlib import contextmanager, suppress
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
-from threading import Lock
+from threading import RLock
 from typing import TYPE_CHECKING, Any, cast
 
 from bioagents.tools.result_status import tool_result_status
 
+try:  # POSIX advisory locking; unavailable on e.g. Windows.
+    import fcntl
+except ImportError:  # pragma: no cover - platform dependent
+    fcntl = None  # type: ignore[assignment]
+
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Iterable, Iterator
 
 logger = logging.getLogger(__name__)
 
@@ -170,6 +179,9 @@ class ToolRegistry:
     """
 
     REGISTRY_FILE = "registry.json"
+    BACKUP_SUFFIX = ".bak"
+    LOCK_SUFFIX = ".lock"
+    DEFAULT_FILE_MODE = 0o644
 
     def __init__(self, tools_dir: Path | None = None):
         """Initialize the tool registry.
@@ -182,7 +194,9 @@ class ToolRegistry:
 
         self._registry: dict[str, ToolDefinition] = {}
         self._loaded_modules: dict[str, Any] = {}
-        self._lock = Lock()
+        # Re-entrant: public methods hold it while calling _save_registry().
+        self._lock = RLock()
+        self._file_lock_depth = 0
 
         self._load_registry()
 
@@ -190,40 +204,249 @@ class ToolRegistry:
         """Get path to registry JSON file."""
         return self.tools_dir / self.REGISTRY_FILE
 
+    def _backup_path(self) -> Path:
+        """Get path to the last-known-good registry copy."""
+        return self.tools_dir / f"{self.REGISTRY_FILE}{self.BACKUP_SUFFIX}"
+
+    def _lock_path(self) -> Path:
+        """Get path to the cross-process advisory lock file."""
+        return self.tools_dir / f"{self.REGISTRY_FILE}{self.LOCK_SUFFIX}"
+
+    @contextmanager
+    def _locked(self) -> Iterator[None]:
+        """Hold the thread lock plus an exclusive cross-process file lock.
+
+        Registry writers live in several OS processes (supervisor agents,
+        ToolBuilder, the Docker-mounted sandbox), so a threading lock alone
+        cannot serialise read-modify-write cycles. The file lock is an
+        advisory ``flock`` and degrades to a no-op where unavailable.
+        """
+        with self._lock:
+            if self._file_lock_depth > 0:
+                # flock is per open file description; re-locking from a new fd
+                # in the same process would deadlock, so only lock once.
+                self._file_lock_depth += 1
+                try:
+                    yield
+                finally:
+                    self._file_lock_depth -= 1
+                return
+
+            fd = self._acquire_file_lock()
+            self._file_lock_depth = 1
+            try:
+                yield
+            finally:
+                self._file_lock_depth = 0
+                if fd is not None:
+                    try:
+                        fcntl.flock(fd, fcntl.LOCK_UN)
+                    finally:
+                        os.close(fd)
+
+    def _acquire_file_lock(self) -> int | None:
+        """Open the lock file and take an exclusive flock; None if unsupported."""
+        if fcntl is None:
+            return None
+        lock_path = self._lock_path()
+        fd: int | None = None
+        try:
+            try:
+                fd = os.open(lock_path, os.O_RDWR | os.O_CREAT, 0o666)
+            except PermissionError:
+                # Lock file owned by another uid (e.g. sandbox); flock works on
+                # read-only descriptors too.
+                fd = os.open(lock_path, os.O_RDONLY)
+            fcntl.flock(fd, fcntl.LOCK_EX)
+            return fd
+        except OSError as e:
+            if fd is not None:
+                os.close(fd)
+            logger.warning(
+                "Could not acquire registry file lock %s (%s); "
+                "continuing without cross-process locking",
+                lock_path,
+                e,
+            )
+            return None
+
     def _load_registry(self) -> None:
-        """Load registry from disk."""
+        """Load registry from disk, recovering from corruption if possible."""
+        with self._locked():
+            tools_data = self._read_registry_file()
+            if tools_data is None:
+                return
+            self._registry = self._parse_tools(tools_data)
+            logger.info(f"Loaded {len(self._registry)} tools from registry")
+
+    @staticmethod
+    def _parse_tools(
+        tools_data: dict[str, Any],
+        fallback: dict[str, ToolDefinition] | None = None,
+    ) -> dict[str, ToolDefinition]:
+        """Convert raw registry entries into ToolDefinitions."""
+        parsed: dict[str, ToolDefinition] = {}
+        for name, tool_data in tools_data.items():
+            try:
+                parsed[name] = ToolDefinition.from_dict(dict(tool_data))
+            except Exception as e:
+                logger.warning(f"Failed to load tool '{name}': {e}")
+                if fallback and name in fallback:
+                    parsed[name] = fallback[name]
+        return parsed
+
+    @staticmethod
+    def _extract_tools(data: Any) -> dict[str, Any]:
+        """Return the ``tools`` mapping from a registry document or raise."""
+        if not isinstance(data, dict):
+            raise ValueError("registry root is not a JSON object")
+        tools = data.get("tools", {})
+        if not isinstance(tools, dict):
+            raise ValueError("registry 'tools' entry is not a JSON object")
+        return tools
+
+    def _read_registry_file(self) -> dict[str, Any] | None:
+        """Read the on-disk ``tools`` mapping. Caller must hold ``_locked()``.
+
+        Returns None when no registry exists or it is unrecoverable. On
+        corruption the bad file is preserved, recovery is attempted (first
+        JSON document for "Extra data" errors, then the ``.bak`` copy), and a
+        repaired registry is written back.
+        """
         registry_path = self._registry_path()
         if not registry_path.exists():
             logger.info("No existing registry found, starting fresh")
-            return
+            return None
 
         try:
-            with registry_path.open("r", encoding="utf-8") as f:
-                data = json.load(f)
+            text = registry_path.read_text(encoding="utf-8")
+            return self._extract_tools(json.loads(text))
+        except (OSError, UnicodeDecodeError) as e:
+            logger.error("Failed to read registry %s: %s", registry_path, e)
+            return None
+        except ValueError as e:  # includes json.JSONDecodeError
+            logger.error("Tool registry %s is corrupt (%s); attempting recovery", registry_path, e)
+            error = e
 
-            for name, tool_data in data.get("tools", {}).items():
-                try:
-                    self._registry[name] = ToolDefinition.from_dict(tool_data)
-                except Exception as e:
-                    logger.warning(f"Failed to load tool '{name}': {e}")
+        corrupt_path = self._preserve_corrupt_file(registry_path)
+        recovered = self._recover(text, error)
+        if recovered is None:
+            logger.error(
+                "Could not recover tool registry %s; custom tools are unavailable "
+                "(corrupt copy kept at %s)",
+                registry_path,
+                corrupt_path,
+            )
+            return None
 
-            logger.info(f"Loaded {len(self._registry)} tools from registry")
-        except Exception as e:
-            logger.error(f"Failed to load registry: {e}")
+        tools, source = recovered
+        logger.warning(
+            "Recovered %d tools for registry %s from %s (corrupt copy kept at %s)",
+            len(tools),
+            registry_path,
+            source,
+            corrupt_path,
+        )
+        self._write_registry_data(tools)
+        return tools
 
-    def _save_registry(self) -> None:
-        """Save registry to disk."""
+    def _recover(self, text: str, error: ValueError) -> tuple[dict[str, Any], str] | None:
+        """Try to salvage registry contents after a parse failure."""
+        if isinstance(error, json.JSONDecodeError) and error.msg == "Extra data":
+            try:
+                data, _ = json.JSONDecoder().raw_decode(text.lstrip())
+                return self._extract_tools(data), "first JSON document"
+            except ValueError as e:
+                logger.warning("Could not salvage first JSON document: %s", e)
+
+        backup_path = self._backup_path()
+        if backup_path.exists():
+            try:
+                data = json.loads(backup_path.read_text(encoding="utf-8"))
+                return self._extract_tools(data), str(backup_path)
+            except (OSError, ValueError) as e:
+                logger.error("Registry backup %s is also unusable: %s", backup_path, e)
+        return None
+
+    def _preserve_corrupt_file(self, registry_path: Path) -> Path | None:
+        """Copy a corrupt registry aside so it can be inspected later."""
+        stamp = datetime.now().strftime("%Y%m%dT%H%M%S%f")
+        corrupt_path = registry_path.with_name(f"{registry_path.name}.corrupt-{stamp}")
+        try:
+            shutil.copy2(registry_path, corrupt_path)
+            return corrupt_path
+        except OSError as e:
+            logger.error("Failed to preserve corrupt registry %s: %s", registry_path, e)
+            return None
+
+    def _sync_from_disk(self, keep: Iterable[str] = ()) -> None:
+        """Merge the on-disk registry into memory. Caller must hold ``_locked()``.
+
+        On-disk entries win so other processes' registrations and deletions are
+        not clobbered, except for names in ``keep`` (the entries this process
+        is changing right now): for those the in-memory state is authoritative,
+        including absence, so a tool deleted in memory stays deleted.
+        """
+        tools_data = self._read_registry_file()
+        if tools_data is None:
+            return
+
+        keep_names = set(keep)
+        merged = self._parse_tools(
+            {n: d for n, d in tools_data.items() if n not in keep_names},
+            fallback=self._registry,
+        )
+        for name in keep_names:
+            if name in self._registry:
+                merged[name] = self._registry[name]
+        self._registry = merged
+
+    def _save_registry(self, changed: Iterable[str] = ()) -> None:
+        """Merge with the on-disk registry and persist it atomically.
+
+        Args:
+            changed: Names of tools modified in memory by the current operation.
+        """
+        with self._locked():
+            self._sync_from_disk(keep=changed)
+            self._write_registry_data(
+                {name: tool.to_dict() for name, tool in self._registry.items()}
+            )
+
+    def _write_registry_data(self, tools: dict[str, Any]) -> None:
+        """Atomically write registry.json and refresh the ``.bak`` copy."""
         data = {
             "version": "1.0",
             "updated_at": datetime.now().isoformat(),
-            "tools": {name: tool.to_dict() for name, tool in self._registry.items()},
+            "tools": tools,
         }
-
         try:
-            with self._registry_path().open("w", encoding="utf-8") as f:
-                json.dump(data, f, indent=2, ensure_ascii=False)
+            payload = json.dumps(data, indent=2, ensure_ascii=False)
+            self._atomic_write(self._registry_path(), payload)
+            self._atomic_write(self._backup_path(), payload)
         except Exception as e:
-            logger.error(f"Failed to save registry: {e}")
+            logger.error(f"Failed to save registry {self._registry_path()}: {e}")
+
+    def _atomic_write(self, path: Path, payload: str) -> None:
+        """Write ``payload`` to a temp file in the same dir, fsync, then rename."""
+        try:
+            mode = path.stat().st_mode & 0o777
+        except OSError:
+            mode = self.DEFAULT_FILE_MODE
+
+        fd, tmp_name = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".tmp")
+        tmp_path = Path(tmp_name)
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                f.write(payload)
+                f.flush()
+                os.fsync(f.fileno())
+            tmp_path.chmod(mode)
+            tmp_path.replace(path)
+        except BaseException:
+            with suppress(OSError):
+                tmp_path.unlink()
+            raise
 
     def register_tool(
         self,
@@ -239,7 +462,8 @@ class ToolRegistry:
         Returns:
             True if registration succeeded
         """
-        with self._lock:
+        with self._locked():
+            self._sync_from_disk()
             if definition.name in self._registry and not overwrite:
                 logger.warning(f"Tool '{definition.name}' already exists")
                 return False
@@ -255,7 +479,7 @@ class ToolRegistry:
 
             definition.updated_at = datetime.now().isoformat()
             self._registry[definition.name] = definition
-            self._save_registry()
+            self._save_registry(changed=[definition.name])
 
             logger.info(f"Registered tool: {definition.name}")
             return True
@@ -269,7 +493,8 @@ class ToolRegistry:
         Returns:
             True if tool was removed
         """
-        with self._lock:
+        with self._locked():
+            self._sync_from_disk()
             if name not in self._registry:
                 return False
 
@@ -281,7 +506,7 @@ class ToolRegistry:
             if name in self._loaded_modules:
                 del self._loaded_modules[name]
 
-            self._save_registry()
+            self._save_registry(changed=[name])
             logger.info(f"Unregistered tool: {name}")
             return True
 
@@ -431,7 +656,7 @@ class ToolRegistry:
             if func is None:
                 tool.validated = False
                 tool.validation_error = tool.validation_error or "Failed to load function"
-                self._save_registry()
+                self._save_registry(changed=[name])
                 return False
 
             if test_args is not None:
@@ -446,7 +671,7 @@ class ToolRegistry:
             tool.validated = True
             tool.validation_error = None
             tool.updated_at = datetime.now().isoformat()
-            self._save_registry()
+            self._save_registry(changed=[name])
 
             logger.info(f"Tool '{name}' validated successfully")
             return True
@@ -454,7 +679,7 @@ class ToolRegistry:
         except Exception as e:
             tool.validated = False
             tool.validation_error = str(e)
-            self._save_registry()
+            self._save_registry(changed=[name])
             logger.error(f"Tool '{name}' validation failed: {e}")
             return False
 
@@ -464,7 +689,7 @@ class ToolRegistry:
         if tool:
             tool.usage_count += 1
             tool.last_used = datetime.now().isoformat()
-            self._save_registry()
+            self._save_registry(changed=[name])
 
     def get_categories(self) -> list[str]:
         """Get all unique tool categories."""
