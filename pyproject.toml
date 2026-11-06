@@ -89,6 +89,7 @@ exclude = ["tests*", "docs*", "data*", "config*", "notebooks*"]
 
 [tool.setuptools.package-data]
 "bioagents.sandbox" = ["requirements/*.txt"]
+"bioagents.tools" = ["selected_tools.json"]
 
 [dependency-groups]
 dev = [

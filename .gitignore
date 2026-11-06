@@ -263,6 +263,7 @@ dependency_events*.jsonl
 /oracle/
 /scripts/setup_nvidia_cdi.sh
 /use_cases/task[1-5]_*.yaml
+/use_cases/task[6-7]_*.yaml
 
 # Custom tool sources are versioned together with registry.json.
 # Registry persistence sidecars (backup, lock, corrupt copies, temp files).
