@@ -4,6 +4,7 @@ import hashlib
 import json
 import logging
 import re
+from collections.abc import Mapping
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
@@ -19,6 +20,7 @@ from bioagents.agents.helpers import (
 )
 from bioagents.llms.llm_provider import get_llm
 from bioagents.prompts.prompt_loader import load_prompt
+from bioagents.tools.selected_runtime import bind_agent_node, bind_agent_tools, tools_for_agent
 
 logger = logging.getLogger(__name__)
 
@@ -60,7 +62,7 @@ RESEARCH_AGENT_MEMORY_PROMPT = (
 MAX_SUB_AGENT_TOOL_ROUNDS = 1
 
 
-def _tool_call_signature(tc: dict) -> str:
+def _tool_call_signature(tc: Mapping[str, Any]) -> str:
     """Create a hashable signature for a tool call to detect duplicates."""
     name = tc.get("name", "")
     args = tc.get("args", {})
@@ -124,7 +126,7 @@ def parse_sub_tasks(content) -> list[str]:
     return tasks[:4]
 
 
-def create_research_agent(tools: list):
+def create_research_agent(tools: list | None = None):
     """
     Create the Research Agent with tool-executing loop and parallel sub-agent support.
 
@@ -135,7 +137,8 @@ def create_research_agent(tools: list):
         Agent node function that returns shared-memory-compatible dict
     """
     llm = get_llm(prompt_name="research")
-    llm_with_tools = llm.bind_tools(tools)
+    tools = tools_for_agent("research", tools)
+    llm_with_tools = bind_agent_tools(llm, tools)
 
     tool_names: list[str] = [resolve_tool_name(t) for t in tools]
 
@@ -525,8 +528,10 @@ def create_research_agent(tools: list):
         tu_recent_failures = 0
         for msg in reversed(messages[-30:]):
             if isinstance(msg, ToolMessage):
-                tc = get_content_text(msg.content).lower()
-                if "tooluniverse" in tc and ("failed" in tc or "error" in tc):
+                tool_result_text = get_content_text(msg.content).lower()
+                if "tooluniverse" in tool_result_text and (
+                    "failed" in tool_result_text or "error" in tool_result_text
+                ):
                     tu_recent_failures += 1
 
         for i, (resp, sub_task) in enumerate(results):
@@ -664,4 +669,4 @@ def create_research_agent(tools: list):
             task_extractor=lambda _: "merge research results",
         )
 
-    return research_node
+    return bind_agent_node(research_node)

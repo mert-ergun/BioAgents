@@ -27,6 +27,8 @@ from bioagents.tools.tool_retry import (
     should_retry,
 )
 
+pytestmark = pytest.mark.usefixtures("all_tools_profile")
+
 
 def test_stub_tools_are_absent_from_every_agent_inventory():
     inventory = agent_tool_names()

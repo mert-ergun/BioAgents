@@ -1,0 +1,29 @@
+{
+  "local_tools": [
+    "prepare_receptor",
+    "prepare_ligand",
+    "identify_binding_site",
+    "run_docking",
+    "analyze_docking_results",
+    "run_blast_search",
+    "download_structure_file",
+    "fetch_uniprot_fasta",
+    "search_pubmed",
+    "create_scatter_plot",
+    "genmol"
+  ],
+  "tool_universe_tools": [
+    "ESM2_score_missense_variant",
+    "COSMIC_get_mutations_by_gene",
+    "ClinVar_search_variants",
+    "Enamine_search_smiles",
+    "ChEMBL_search_activities",
+    "ChEMBL_search_molecules",
+    "ChEMBL_get_target_activities",
+    "ChEMBL_search_similar_molecules",
+    "ZINC_search_by_smiles"
+  ],
+  "tool_universe_aliases": {
+    "genmol": "NvidiaNIM_genmol"
+  }
+}

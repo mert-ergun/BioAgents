@@ -16,6 +16,7 @@ from bioagents.benchmarks.use_case_models import (
 from bioagents.sandbox import dependency_events as events
 from bioagents.tools import tool_builder_tools as tools
 from bioagents.tools.tool_registry import ToolDefinition, ToolRegistry
+from bioagents.tools.tool_selection import ToolSelection, selection_scope
 
 
 @pytest.fixture
@@ -24,7 +25,8 @@ def audit_run(tmp_path, monkeypatch):
     monkeypatch.setenv("BIOAGENTS_DEPENDENCY_EVENTS_DIR", str(tmp_path))
     monkeypatch.delenv("BIOAGENTS_USE_CASE_ID", raising=False)
     monkeypatch.delenv(events.DISABLE_INSTALLS_ENV, raising=False)
-    return events.RunAudit("b" * 32, tmp_path)
+    with selection_scope(ToolSelection("selected", ("tsne_fingerprint_scatter",))):
+        yield events.RunAudit("b" * 32, tmp_path)
 
 
 def _events(tmp_path):

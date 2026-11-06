@@ -110,6 +110,9 @@ class ResilientKernelMixin:
     FINAL_ANSWER_EXCEPTION = RemotePythonExecutor.FINAL_ANSWER_EXCEPTION
 
     def _init_resilience(self) -> None:
+        from bioagents.tools.tool_selection import get_selection
+
+        self._tool_selection = get_selection()
         self._tools_code: str = ""
         self._variables_code: str = ""
         self._recoveries = 0
@@ -262,6 +265,9 @@ class ResilientKernelMixin:
 
     def resilient_run(self, code: str) -> CodeOutput:
         """Run agent code with session restoration and bounded kernel recovery."""
+        from bioagents.sandbox.tool_access import check_generated_tool_access
+
+        check_generated_tool_access(code, self._tool_selection)
         if self.fatal_error:
             return self._fatal_output()
         restarts_before = self.kernel_restarts

@@ -4,8 +4,7 @@ from langchain_core.messages import SystemMessage
 
 from bioagents.agents.helpers import create_retry_response, prepare_messages_for_agent
 from bioagents.llms.llm_provider import get_llm
-from bioagents.tools.file_tools import get_file_tools
-from bioagents.tools.web_tools import get_web_tools
+from bioagents.tools.selected_runtime import bind_agent_node, bind_agent_tools, tools_for_agent
 
 DATA_ACQUISITION_AGENT_PROMPT = (
     "You are an expert biological data acquisition agent. Your role is to download and "
@@ -62,8 +61,8 @@ def create_data_acquisition_agent():
         A function that can be used as a LangGraph node
     """
     llm = get_llm()
-    tools = get_web_tools() + get_file_tools()
-    llm_with_tools = llm.bind_tools(tools)
+    tools = tools_for_agent("data_acquisition")
+    llm_with_tools = bind_agent_tools(llm, tools)
     tool_names = [t.name for t in tools]
 
     def agent_node(state):
@@ -79,4 +78,4 @@ def create_data_acquisition_agent():
             "DataAcquisition", messages_with_system, tool_names, llm_with_tools
         )
 
-    return agent_node
+    return bind_agent_node(agent_node)

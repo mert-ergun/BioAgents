@@ -89,6 +89,7 @@ exclude = ["tests*", "docs*", "data*", "config*", "notebooks*"]
 
 [tool.setuptools.package-data]
 "bioagents.sandbox" = ["requirements/*.txt"]
+"bioagents.tools" = ["selected_tools.json"]
 
 [dependency-groups]
 dev = [
@@ -99,6 +100,7 @@ dev = [
     "types-requests>=2.33.0.20260408",
     "types-pyyaml>=6.0.12.20260408",
     "types-networkx>=3.6.1.20260408",
+    "types-docker>=7.1.0,<7.2",
 ]
 
 [tool.ruff]

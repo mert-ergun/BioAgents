@@ -6,7 +6,7 @@ from langchain_core.messages import SystemMessage
 
 from bioagents.llms.llm_provider import get_llm
 from bioagents.prompts.prompt_loader import load_prompt
-from bioagents.tools.tool_builder_tools import get_tool_builder_tools
+from bioagents.tools.selected_runtime import bind_agent_node, bind_agent_tools, tools_for_agent
 
 logger = logging.getLogger(__name__)
 
@@ -22,8 +22,8 @@ def create_tool_builder_agent():
     from bioagents.agents.helpers import create_retry_response, prepare_messages_for_agent
 
     llm = get_llm(prompt_name="tool_builder")
-    tools = get_tool_builder_tools()
-    llm_with_tools = llm.bind_tools(tools)
+    tools = tools_for_agent("tool_builder")
+    llm_with_tools = bind_agent_tools(llm, tools)
     tool_names = [t.name for t in tools]
 
     def tool_builder_node(state):
@@ -36,4 +36,4 @@ def create_tool_builder_agent():
             "ToolBuilder", messages_with_system, tool_names, llm_with_tools
         )
 
-    return tool_builder_node
+    return bind_agent_node(tool_builder_node)

@@ -24,7 +24,7 @@ from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
 from threading import RLock
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any
 
 from bioagents.tools.result_status import tool_result_status
 
@@ -518,7 +518,9 @@ class ToolRegistry:
 
     def get_tool(self, name: str) -> ToolDefinition | None:
         """Get a tool definition by name."""
-        return self._registry.get(name)
+        from bioagents.tools.tool_selection import is_tool_enabled
+
+        return self._registry.get(name) if is_tool_enabled(name) else None
 
     def list_tools(
         self,
@@ -534,7 +536,9 @@ class ToolRegistry:
         Returns:
             List of tool definitions
         """
-        tools = list(self._registry.values())
+        from bioagents.tools.tool_selection import is_tool_enabled
+
+        tools = [entry for entry in self._registry.values() if is_tool_enabled(entry.name)]
 
         if category:
             tools = [t for t in tools if t.category == category]
@@ -564,7 +568,7 @@ class ToolRegistry:
         query_tokens = set(query.lower().split())
         scored_tools: list[tuple[ToolDefinition, float]] = []
 
-        for tool in self._registry.values():
+        for tool in self.list_tools():
             text = f"{tool.name} {tool.description} {tool.category}".lower()
             text_tokens = set(text.split())
 
@@ -591,6 +595,10 @@ class ToolRegistry:
         Returns:
             The callable tool function, or None if load failed
         """
+        from bioagents.tools.tool_selection import is_tool_enabled
+
+        if not is_tool_enabled(name):
+            return None
         if force_reload and name in self._loaded_modules:
             module_name = f"bioagents_custom_tool_{name}"
             if module_name in sys.modules:
@@ -601,7 +609,7 @@ class ToolRegistry:
             module = self._loaded_modules[name]
             func_name = self._registry[name]._safe_name()
             func = getattr(module, func_name, None)
-            return cast("Callable[..., Any]", func) if callable(func) else None
+            return _guard_registry_function(name, func) if callable(func) else None
 
         tool = self._registry.get(name)
         if not tool:
@@ -635,7 +643,7 @@ class ToolRegistry:
             if not callable(func):
                 logger.error("Tool '%s' must define a callable named '%s'", name, func_name)
                 return None
-            return cast("Callable[..., Any]", func)
+            return _guard_registry_function(name, func)
 
         except Exception as e:
             logger.error(f"Failed to load tool '{name}': {e}")
@@ -751,3 +759,21 @@ def get_registry() -> ToolRegistry:
     if _registry is None:
         _registry = ToolRegistry()
     return _registry
+
+
+def _guard_registry_function(name: str, function: Callable[..., Any]) -> Callable[..., Any]:
+    """Recheck cached callables when another run uses a narrower selection."""
+    from functools import wraps
+
+    from bioagents.tools.tool_selection import get_selection, is_tool_enabled, unavailable_tool
+
+    if get_selection().mode == "all":
+        return function
+
+    @wraps(function)
+    def guarded(*args, **kwargs):
+        if not is_tool_enabled(name):
+            return unavailable_tool(name)
+        return function(*args, **kwargs)
+
+    return guarded

@@ -9,7 +9,7 @@ from langchain_core.messages import SystemMessage
 
 from bioagents.agents.helpers import create_retry_response, prepare_messages_for_agent
 from bioagents.llms.llm_provider import get_llm
-from bioagents.tools.docking_tools import get_docking_tools
+from bioagents.tools.selected_runtime import bind_agent_node, bind_agent_tools, tools_for_agent
 
 DOCKING_AGENT_PROMPT = (
     "You are an expert molecular docking agent. Your role is to perform real molecular "
@@ -56,8 +56,8 @@ def create_docking_agent():
         A function that can be used as a LangGraph node.
     """
     llm = get_llm()
-    tools = get_docking_tools()
-    llm_with_tools = llm.bind_tools(tools)
+    tools = tools_for_agent("docking")
+    llm_with_tools = bind_agent_tools(llm, tools)
     tool_names = [t.name for t in tools]
 
     def agent_node(state):
@@ -68,4 +68,4 @@ def create_docking_agent():
 
         return create_retry_response("Docking", messages_with_system, tool_names, llm_with_tools)
 
-    return agent_node
+    return bind_agent_node(agent_node)

@@ -172,7 +172,7 @@ def test_list_workspace_files_accepts_doubled_prefix(layout):
 
 
 @pytest.fixture
-def path_tool(layout, tmp_path, monkeypatch):
+def path_tool(layout, tmp_path, monkeypatch, all_tools_profile):
     registry = ToolRegistry(tools_dir=tmp_path / "tools")
     definition = ToolDefinition(
         name="echo_paths",

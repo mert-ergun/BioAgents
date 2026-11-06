@@ -2,7 +2,7 @@
 
 import logging
 from functools import partial
-from typing import Annotated, Literal
+from typing import TYPE_CHECKING, Annotated, Any, Literal
 
 from langchain_core.messages import BaseMessage, HumanMessage
 from langgraph.graph import END, StateGraph
@@ -44,6 +44,7 @@ from bioagents.learning.ace_integration import (
 from bioagents.references.reference_extractor import extract_references_from_messages
 from bioagents.references.reference_manager import ReferenceManager
 from bioagents.tools.agent_manifest import build_agent_tool_map
+from bioagents.tools.selected_runtime import with_new_tool_selection
 from bioagents.tools.smol_tool_wrappers import (
     ToolUniverseExecuteTool,
     ToolUniverseSearchTool,
@@ -51,6 +52,9 @@ from bioagents.tools.smol_tool_wrappers import (
 )
 from bioagents.tools.tool_policy import ToolPolicy, get_default_policy
 from bioagents.truncating_tool_node import make_approval_tool_node
+
+if TYPE_CHECKING:
+    from collections.abc import Hashable
 
 logger = logging.getLogger(__name__)
 
@@ -600,6 +604,7 @@ ALL_MEMBERS = [
 ]
 
 
+@with_new_tool_selection
 def create_graph(
     _initialize_references: bool = True,
     checkpointer=None,
@@ -708,7 +713,8 @@ def create_graph(
     visualization_tool_node = make_approval_tool_node(viz_tools, policy=active_policy)
     docking_tool_node = make_approval_tool_node(docking_tools, policy=active_policy)
 
-    workflow = StateGraph(AgentState)
+    # Preserve the legacy dict subclass and its class defaults at the graph boundary.
+    workflow: StateGraph[Any] = StateGraph(AgentState)
 
     workflow.add_node("supervisor", partial(agent_node, agent=supervisor_agent, name="Supervisor"))
     workflow.add_node("research", partial(agent_node, agent=research_agent, name="Research"))
@@ -887,7 +893,7 @@ def create_graph(
     workflow.add_node("user_input", user_input_node)
     workflow.add_edge("user_input", "supervisor")
 
-    routing_map = {m: m for m in ALL_MEMBERS}
+    routing_map: dict[Hashable, str] = {m: m for m in ALL_MEMBERS}
     routing_map["summary"] = "summary"
     workflow.add_conditional_edges("supervisor", route_supervisor, routing_map)
 

@@ -12,6 +12,7 @@ from smolagents import CodeAgent, Tool
 from bioagents.llms.adapters import LangChainModelAdapter
 from bioagents.llms.llm_provider import get_llm
 from bioagents.prompts.prompt_loader import load_prompt
+from bioagents.prompts.tool_context import apply_tool_context
 from bioagents.sandbox.coder_executor import create_executor
 from bioagents.sandbox.coder_helpers import (
     DEFAULT_CODER_IMPORTS,
@@ -30,7 +31,7 @@ from bioagents.sandbox.coder_helpers import (
     summarize_code_agent_steps,
 )
 from bioagents.sandbox.time_budget import set_recovery_roots
-from bioagents.tools.smol_tool_wrappers import ToolUniverseExecuteTool, ToolUniverseSearchTool
+from bioagents.tools.selected_runtime import bind_agent_node, code_agent_tools
 
 logger = logging.getLogger("BioAgents")
 
@@ -123,8 +124,7 @@ def create_coder_agent(
     Returns:
         A CodeAgent instance that can generate and execute Python code via Jupyter notebooks
     """
-    if tools is None:
-        tools = [ToolUniverseSearchTool(), ToolUniverseExecuteTool()]
+    tools = code_agent_tools(tools)
 
     if additional_imports is None:
         additional_imports = DEFAULT_CODER_IMPORTS
@@ -134,7 +134,7 @@ def create_coder_agent(
     executor = create_executor("coder", additional_imports)
 
     # Escape Jinja2 template syntax in instructions to avoid conflicts
-    escaped_instructions = CODER_AGENT_PROMPT.replace("{", "{{").replace("}", "}}")
+    escaped_instructions = apply_tool_context(load_prompt("coder"))
 
     from bioagents.sandbox.coder_helpers import PermissiveList
 
@@ -255,4 +255,4 @@ def create_coder_node(agent: CodeAgent) -> Callable:
                 "next": "supervisor",
             }
 
-    return coder_node
+    return bind_agent_node(coder_node)

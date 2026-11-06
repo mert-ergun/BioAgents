@@ -7,6 +7,8 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, Tool
 
 from bioagents.agents.research_agent import create_research_agent
 
+pytestmark = pytest.mark.usefixtures("all_tools_profile")
+
 _FINAL_RESEARCH_JSON = (
     '{"fetched_sequences":[],"literature_findings":"done","data_sources":[],'
     '"completeness":"full","next_steps":"","status":"success","error":null}'

@@ -7,6 +7,18 @@ import pytest
 
 
 @pytest.fixture
+def all_tools_profile(monkeypatch):
+    """Exercise the full catalogue without changing the operator's profile."""
+    from bioagents.tools import tool_selection
+
+    profile = tool_selection.ToolSelection("all")
+    monkeypatch.setenv("BIOAGENTS_TOOL_MODE", "all")
+    monkeypatch.setattr(tool_selection, "_PROCESS_SELECTION", profile)
+    with tool_selection.selection_scope(profile):
+        yield
+
+
+@pytest.fixture
 def mock_llm():
     """Fixture providing a mock LLM instance."""
     llm = Mock()

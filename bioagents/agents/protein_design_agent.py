@@ -22,6 +22,7 @@ from langchain_core.tools import BaseTool
 from bioagents.agents.helpers import resolve_tool_name
 from bioagents.llms.llm_provider import get_llm
 from bioagents.prompts.prompt_loader import load_prompt
+from bioagents.tools.selected_runtime import bind_agent_node, bind_agent_tools, tools_for_agent
 
 logger = logging.getLogger(__name__)
 
@@ -60,7 +61,7 @@ Return ONLY valid JSON. Do not wrap in markdown code blocks.
 """
 
 
-def create_protein_design_agent(tools):
+def create_protein_design_agent(tools=None):
     """
     Create the Protein Design Agent with tool-executing loop.
 
@@ -76,7 +77,8 @@ def create_protein_design_agent(tools):
     )
 
     llm = get_llm(prompt_name="protein_design")
-    llm_with_tools = llm.bind_tools(tools)
+    tools = tools_for_agent("protein_design", tools)
+    llm_with_tools = bind_agent_tools(llm, tools)
     tool_names = [t.name for t in tools]
 
     tools_dict = {}
@@ -98,4 +100,4 @@ def create_protein_design_agent(tools):
             "ProteinDesign", messages_with_system, tool_names, llm_with_tools
         )
 
-    return protein_design_node
+    return bind_agent_node(protein_design_node)

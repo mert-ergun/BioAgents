@@ -20,7 +20,7 @@ def _make_state(content="Test query"):
 
 class TestLiteratureAgent:
     @patch("bioagents.agents.literature_agent.get_llm")
-    @patch("bioagents.agents.literature_agent.get_literature_tools")
+    @patch("bioagents.agents.literature_agent.tools_for_agent")
     def test_create_agent_returns_callable(self, mock_tools, mock_llm):
         mock_tools.return_value = []
         mock_llm.return_value = _make_mock_llm()
@@ -31,7 +31,7 @@ class TestLiteratureAgent:
         assert callable(agent)
 
     @patch("bioagents.agents.literature_agent.get_llm")
-    @patch("bioagents.agents.literature_agent.get_literature_tools")
+    @patch("bioagents.agents.literature_agent.tools_for_agent")
     def test_node_returns_messages(self, mock_tools, mock_llm):
         mock_tools.return_value = []
         mock_llm.return_value = _make_mock_llm()
@@ -44,7 +44,7 @@ class TestLiteratureAgent:
         assert len(result["messages"]) > 0
 
     @patch("bioagents.agents.literature_agent.get_llm")
-    @patch("bioagents.agents.literature_agent.get_literature_tools")
+    @patch("bioagents.agents.literature_agent.tools_for_agent")
     def test_retry_on_empty_response(self, mock_tools, mock_llm):
         mock_tools.return_value = []
         llm = _make_mock_llm()
@@ -64,7 +64,7 @@ class TestLiteratureAgent:
 
 class TestWebBrowserAgent:
     @patch("bioagents.agents.web_browser_agent.get_llm")
-    @patch("bioagents.agents.web_browser_agent.get_web_tools")
+    @patch("bioagents.agents.web_browser_agent.tools_for_agent")
     def test_create_agent_returns_callable(self, mock_tools, mock_llm):
         mock_tools.return_value = []
         mock_llm.return_value = _make_mock_llm()
@@ -74,7 +74,7 @@ class TestWebBrowserAgent:
         assert callable(create_web_browser_agent())
 
     @patch("bioagents.agents.web_browser_agent.get_llm")
-    @patch("bioagents.agents.web_browser_agent.get_web_tools")
+    @patch("bioagents.agents.web_browser_agent.tools_for_agent")
     def test_node_returns_messages(self, mock_tools, mock_llm):
         mock_tools.return_value = []
         mock_llm.return_value = _make_mock_llm()
@@ -86,7 +86,7 @@ class TestWebBrowserAgent:
         assert len(result["messages"]) > 0
 
     @patch("bioagents.agents.web_browser_agent.get_llm")
-    @patch("bioagents.agents.web_browser_agent.get_web_tools")
+    @patch("bioagents.agents.web_browser_agent.tools_for_agent")
     def test_retry_on_empty_response(self, mock_tools, mock_llm):
         mock_tools.return_value = []
         llm = _make_mock_llm()
@@ -101,11 +101,9 @@ class TestWebBrowserAgent:
 
 class TestPaperReplicationAgent:
     @patch("bioagents.agents.paper_replication_agent.get_llm")
-    @patch("bioagents.agents.paper_replication_agent.get_git_tools")
-    @patch("bioagents.agents.paper_replication_agent.get_web_tools")
-    def test_create_agent_returns_callable(self, mock_web, mock_git, mock_llm):
-        mock_web.return_value = []
-        mock_git.return_value = []
+    @patch("bioagents.agents.paper_replication_agent.tools_for_agent")
+    def test_create_agent_returns_callable(self, mock_tools, mock_llm):
+        mock_tools.return_value = []
         mock_llm.return_value = _make_mock_llm()
 
         from bioagents.agents.paper_replication_agent import create_paper_replication_agent
@@ -113,11 +111,9 @@ class TestPaperReplicationAgent:
         assert callable(create_paper_replication_agent())
 
     @patch("bioagents.agents.paper_replication_agent.get_llm")
-    @patch("bioagents.agents.paper_replication_agent.get_git_tools")
-    @patch("bioagents.agents.paper_replication_agent.get_web_tools")
-    def test_node_returns_messages(self, mock_web, mock_git, mock_llm):
-        mock_web.return_value = []
-        mock_git.return_value = []
+    @patch("bioagents.agents.paper_replication_agent.tools_for_agent")
+    def test_node_returns_messages(self, mock_tools, mock_llm):
+        mock_tools.return_value = []
         mock_llm.return_value = _make_mock_llm()
 
         from bioagents.agents.paper_replication_agent import create_paper_replication_agent
@@ -127,11 +123,9 @@ class TestPaperReplicationAgent:
         assert len(result["messages"]) > 0
 
     @patch("bioagents.agents.paper_replication_agent.get_llm")
-    @patch("bioagents.agents.paper_replication_agent.get_git_tools")
-    @patch("bioagents.agents.paper_replication_agent.get_web_tools")
-    def test_retry_on_empty_response(self, mock_web, mock_git, mock_llm):
-        mock_web.return_value = []
-        mock_git.return_value = []
+    @patch("bioagents.agents.paper_replication_agent.tools_for_agent")
+    def test_retry_on_empty_response(self, mock_tools, mock_llm):
+        mock_tools.return_value = []
         llm = _make_mock_llm()
         llm.invoke.side_effect = [AIMessage(content=""), AIMessage(content="Done")]
         mock_llm.return_value = llm
@@ -144,11 +138,9 @@ class TestPaperReplicationAgent:
 
 class TestDataAcquisitionAgent:
     @patch("bioagents.agents.data_acquisition_agent.get_llm")
-    @patch("bioagents.agents.data_acquisition_agent.get_file_tools")
-    @patch("bioagents.agents.data_acquisition_agent.get_web_tools")
-    def test_create_agent_returns_callable(self, mock_web, mock_file, mock_llm):
-        mock_web.return_value = []
-        mock_file.return_value = []
+    @patch("bioagents.agents.data_acquisition_agent.tools_for_agent")
+    def test_create_agent_returns_callable(self, mock_tools, mock_llm):
+        mock_tools.return_value = []
         mock_llm.return_value = _make_mock_llm()
 
         from bioagents.agents.data_acquisition_agent import create_data_acquisition_agent
@@ -156,11 +148,9 @@ class TestDataAcquisitionAgent:
         assert callable(create_data_acquisition_agent())
 
     @patch("bioagents.agents.data_acquisition_agent.get_llm")
-    @patch("bioagents.agents.data_acquisition_agent.get_file_tools")
-    @patch("bioagents.agents.data_acquisition_agent.get_web_tools")
-    def test_node_returns_messages(self, mock_web, mock_file, mock_llm):
-        mock_web.return_value = []
-        mock_file.return_value = []
+    @patch("bioagents.agents.data_acquisition_agent.tools_for_agent")
+    def test_node_returns_messages(self, mock_tools, mock_llm):
+        mock_tools.return_value = []
         mock_llm.return_value = _make_mock_llm()
 
         from bioagents.agents.data_acquisition_agent import create_data_acquisition_agent
@@ -170,11 +160,9 @@ class TestDataAcquisitionAgent:
         assert len(result["messages"]) > 0
 
     @patch("bioagents.agents.data_acquisition_agent.get_llm")
-    @patch("bioagents.agents.data_acquisition_agent.get_file_tools")
-    @patch("bioagents.agents.data_acquisition_agent.get_web_tools")
-    def test_retry_on_empty_response(self, mock_web, mock_file, mock_llm):
-        mock_web.return_value = []
-        mock_file.return_value = []
+    @patch("bioagents.agents.data_acquisition_agent.tools_for_agent")
+    def test_retry_on_empty_response(self, mock_tools, mock_llm):
+        mock_tools.return_value = []
         llm = _make_mock_llm()
         llm.invoke.side_effect = [AIMessage(content=""), AIMessage(content="Got data")]
         mock_llm.return_value = llm
@@ -187,7 +175,7 @@ class TestDataAcquisitionAgent:
 
 class TestGenomicsAgent:
     @patch("bioagents.agents.genomics_agent.get_llm")
-    @patch("bioagents.agents.genomics_agent.get_genomics_tools")
+    @patch("bioagents.agents.genomics_agent.tools_for_agent")
     def test_create_agent_returns_callable(self, mock_tools, mock_llm):
         mock_tools.return_value = []
         mock_llm.return_value = _make_mock_llm()
@@ -197,7 +185,7 @@ class TestGenomicsAgent:
         assert callable(create_genomics_agent())
 
     @patch("bioagents.agents.genomics_agent.get_llm")
-    @patch("bioagents.agents.genomics_agent.get_genomics_tools")
+    @patch("bioagents.agents.genomics_agent.tools_for_agent")
     def test_node_returns_messages(self, mock_tools, mock_llm):
         mock_tools.return_value = []
         mock_llm.return_value = _make_mock_llm()
@@ -209,7 +197,7 @@ class TestGenomicsAgent:
         assert len(result["messages"]) > 0
 
     @patch("bioagents.agents.genomics_agent.get_llm")
-    @patch("bioagents.agents.genomics_agent.get_genomics_tools")
+    @patch("bioagents.agents.genomics_agent.tools_for_agent")
     def test_retry_on_empty_response(self, mock_tools, mock_llm):
         mock_tools.return_value = []
         llm = _make_mock_llm()
@@ -224,7 +212,7 @@ class TestGenomicsAgent:
 
 class TestTranscriptomicsAgent:
     @patch("bioagents.agents.transcriptomics_agent.get_llm")
-    @patch("bioagents.agents.transcriptomics_agent.get_transcriptomics_tools")
+    @patch("bioagents.agents.transcriptomics_agent.tools_for_agent")
     def test_create_agent_returns_callable(self, mock_tools, mock_llm):
         mock_tools.return_value = []
         mock_llm.return_value = _make_mock_llm()
@@ -234,7 +222,7 @@ class TestTranscriptomicsAgent:
         assert callable(create_transcriptomics_agent())
 
     @patch("bioagents.agents.transcriptomics_agent.get_llm")
-    @patch("bioagents.agents.transcriptomics_agent.get_transcriptomics_tools")
+    @patch("bioagents.agents.transcriptomics_agent.tools_for_agent")
     def test_node_returns_messages(self, mock_tools, mock_llm):
         mock_tools.return_value = []
         mock_llm.return_value = _make_mock_llm()
@@ -246,7 +234,7 @@ class TestTranscriptomicsAgent:
         assert len(result["messages"]) > 0
 
     @patch("bioagents.agents.transcriptomics_agent.get_llm")
-    @patch("bioagents.agents.transcriptomics_agent.get_transcriptomics_tools")
+    @patch("bioagents.agents.transcriptomics_agent.tools_for_agent")
     def test_retry_on_empty_response(self, mock_tools, mock_llm):
         mock_tools.return_value = []
         llm = _make_mock_llm()
@@ -261,7 +249,7 @@ class TestTranscriptomicsAgent:
 
 class TestStructuralBiologyAgent:
     @patch("bioagents.agents.structural_biology_agent.get_llm")
-    @patch("bioagents.agents.structural_biology_agent.get_structural_tools")
+    @patch("bioagents.agents.structural_biology_agent.tools_for_agent")
     def test_create_agent_returns_callable(self, mock_tools, mock_llm):
         mock_tools.return_value = []
         mock_llm.return_value = _make_mock_llm()
@@ -271,7 +259,7 @@ class TestStructuralBiologyAgent:
         assert callable(create_structural_biology_agent())
 
     @patch("bioagents.agents.structural_biology_agent.get_llm")
-    @patch("bioagents.agents.structural_biology_agent.get_structural_tools")
+    @patch("bioagents.agents.structural_biology_agent.tools_for_agent")
     def test_node_returns_messages(self, mock_tools, mock_llm):
         mock_tools.return_value = []
         mock_llm.return_value = _make_mock_llm()
@@ -283,7 +271,7 @@ class TestStructuralBiologyAgent:
         assert len(result["messages"]) > 0
 
     @patch("bioagents.agents.structural_biology_agent.get_llm")
-    @patch("bioagents.agents.structural_biology_agent.get_structural_tools")
+    @patch("bioagents.agents.structural_biology_agent.tools_for_agent")
     def test_retry_on_empty_response(self, mock_tools, mock_llm):
         mock_tools.return_value = []
         llm = _make_mock_llm()
@@ -298,7 +286,7 @@ class TestStructuralBiologyAgent:
 
 class TestPhylogeneticsAgent:
     @patch("bioagents.agents.phylogenetics_agent.get_llm")
-    @patch("bioagents.agents.phylogenetics_agent.get_genomics_tools")
+    @patch("bioagents.agents.phylogenetics_agent.tools_for_agent")
     def test_create_agent_returns_callable(self, mock_tools, mock_llm):
         mock_tools.return_value = []
         mock_llm.return_value = _make_mock_llm()
@@ -308,7 +296,7 @@ class TestPhylogeneticsAgent:
         assert callable(create_phylogenetics_agent())
 
     @patch("bioagents.agents.phylogenetics_agent.get_llm")
-    @patch("bioagents.agents.phylogenetics_agent.get_genomics_tools")
+    @patch("bioagents.agents.phylogenetics_agent.tools_for_agent")
     def test_node_returns_messages(self, mock_tools, mock_llm):
         mock_tools.return_value = []
         mock_llm.return_value = _make_mock_llm()
@@ -320,7 +308,7 @@ class TestPhylogeneticsAgent:
         assert len(result["messages"]) > 0
 
     @patch("bioagents.agents.phylogenetics_agent.get_llm")
-    @patch("bioagents.agents.phylogenetics_agent.get_genomics_tools")
+    @patch("bioagents.agents.phylogenetics_agent.tools_for_agent")
     def test_retry_on_empty_response(self, mock_tools, mock_llm):
         mock_tools.return_value = []
         llm = _make_mock_llm()
@@ -352,7 +340,7 @@ class TestDockingAgent:
         assert "messages" in result
         assert len(result["messages"]) > 0
 
-    @patch("bioagents.agents.docking_agent.get_docking_tools")
+    @patch("bioagents.agents.docking_agent.tools_for_agent")
     @patch("bioagents.agents.docking_agent.get_llm")
     def test_retry_on_empty_response(self, mock_llm, mock_tools):
         mock_tools.return_value = []
@@ -442,7 +430,7 @@ class TestToolValidatorAgent:
 
 class TestToolDiscoveryAgent:
     @patch("bioagents.agents.tool_discovery_agent.get_llm")
-    @patch("bioagents.agents.tool_discovery_agent.get_tool_builder_tools")
+    @patch("bioagents.agents.tool_discovery_agent.tools_for_agent")
     def test_create_agent_returns_callable(self, mock_tools, mock_llm):
         mock_tools.return_value = []
         mock_llm.return_value = _make_mock_llm()
@@ -452,7 +440,7 @@ class TestToolDiscoveryAgent:
         assert callable(create_tool_discovery_agent())
 
     @patch("bioagents.agents.tool_discovery_agent.get_llm")
-    @patch("bioagents.agents.tool_discovery_agent.get_tool_builder_tools")
+    @patch("bioagents.agents.tool_discovery_agent.tools_for_agent")
     def test_node_returns_messages(self, mock_tools, mock_llm):
         mock_tools.return_value = []
         mock_llm.return_value = _make_mock_llm()
@@ -464,7 +452,7 @@ class TestToolDiscoveryAgent:
         assert len(result["messages"]) > 0
 
     @patch("bioagents.agents.tool_discovery_agent.get_llm")
-    @patch("bioagents.agents.tool_discovery_agent.get_tool_builder_tools")
+    @patch("bioagents.agents.tool_discovery_agent.tools_for_agent")
     def test_retry_on_empty_response(self, mock_tools, mock_llm):
         mock_tools.return_value = []
         llm = _make_mock_llm()
@@ -552,7 +540,7 @@ class TestResultCheckerAgent:
 
 class TestShellAgent:
     @patch("bioagents.agents.shell_agent.get_llm")
-    @patch("bioagents.agents.shell_agent.get_shell_tools")
+    @patch("bioagents.agents.shell_agent.tools_for_agent")
     def test_create_agent_returns_callable(self, mock_tools, mock_llm):
         mock_tools.return_value = []
         mock_llm.return_value = _make_mock_llm()
@@ -562,7 +550,7 @@ class TestShellAgent:
         assert callable(create_shell_agent())
 
     @patch("bioagents.agents.shell_agent.get_llm")
-    @patch("bioagents.agents.shell_agent.get_shell_tools")
+    @patch("bioagents.agents.shell_agent.tools_for_agent")
     def test_node_returns_messages(self, mock_tools, mock_llm):
         mock_tools.return_value = []
         mock_llm.return_value = _make_mock_llm()
@@ -574,7 +562,7 @@ class TestShellAgent:
         assert len(result["messages"]) > 0
 
     @patch("bioagents.agents.shell_agent.get_llm")
-    @patch("bioagents.agents.shell_agent.get_shell_tools")
+    @patch("bioagents.agents.shell_agent.tools_for_agent")
     def test_retry_on_empty_response(self, mock_tools, mock_llm):
         mock_tools.return_value = []
         llm = _make_mock_llm()
@@ -589,7 +577,7 @@ class TestShellAgent:
 
 class TestGitAgent:
     @patch("bioagents.agents.git_agent.get_llm")
-    @patch("bioagents.agents.git_agent.get_git_tools")
+    @patch("bioagents.agents.git_agent.tools_for_agent")
     def test_create_agent_returns_callable(self, mock_tools, mock_llm):
         mock_tools.return_value = []
         mock_llm.return_value = _make_mock_llm()
@@ -599,7 +587,7 @@ class TestGitAgent:
         assert callable(create_git_agent())
 
     @patch("bioagents.agents.git_agent.get_llm")
-    @patch("bioagents.agents.git_agent.get_git_tools")
+    @patch("bioagents.agents.git_agent.tools_for_agent")
     def test_node_returns_messages(self, mock_tools, mock_llm):
         mock_tools.return_value = []
         mock_llm.return_value = _make_mock_llm()
@@ -611,7 +599,7 @@ class TestGitAgent:
         assert len(result["messages"]) > 0
 
     @patch("bioagents.agents.git_agent.get_llm")
-    @patch("bioagents.agents.git_agent.get_git_tools")
+    @patch("bioagents.agents.git_agent.tools_for_agent")
     def test_retry_on_empty_response(self, mock_tools, mock_llm):
         mock_tools.return_value = []
         llm = _make_mock_llm()
@@ -626,7 +614,7 @@ class TestGitAgent:
 
 class TestEnvironmentAgent:
     @patch("bioagents.agents.environment_agent.get_llm")
-    @patch("bioagents.agents.environment_agent.get_environment_tools")
+    @patch("bioagents.agents.environment_agent.tools_for_agent")
     def test_create_agent_returns_callable(self, mock_tools, mock_llm):
         mock_tools.return_value = []
         mock_llm.return_value = _make_mock_llm()
@@ -636,7 +624,7 @@ class TestEnvironmentAgent:
         assert callable(create_environment_agent())
 
     @patch("bioagents.agents.environment_agent.get_llm")
-    @patch("bioagents.agents.environment_agent.get_environment_tools")
+    @patch("bioagents.agents.environment_agent.tools_for_agent")
     def test_node_returns_messages(self, mock_tools, mock_llm):
         mock_tools.return_value = []
         mock_llm.return_value = _make_mock_llm()
@@ -648,7 +636,7 @@ class TestEnvironmentAgent:
         assert len(result["messages"]) > 0
 
     @patch("bioagents.agents.environment_agent.get_llm")
-    @patch("bioagents.agents.environment_agent.get_environment_tools")
+    @patch("bioagents.agents.environment_agent.tools_for_agent")
     def test_retry_on_empty_response(self, mock_tools, mock_llm):
         mock_tools.return_value = []
         llm = _make_mock_llm()
@@ -663,7 +651,7 @@ class TestEnvironmentAgent:
 
 class TestVisualizationAgent:
     @patch("bioagents.agents.visualization_agent.get_llm")
-    @patch("bioagents.agents.visualization_agent.get_visualization_tools")
+    @patch("bioagents.agents.visualization_agent.tools_for_agent")
     def test_create_agent_returns_callable(self, mock_tools, mock_llm):
         mock_tools.return_value = []
         mock_llm.return_value = _make_mock_llm()
@@ -673,7 +661,7 @@ class TestVisualizationAgent:
         assert callable(create_visualization_agent())
 
     @patch("bioagents.agents.visualization_agent.get_llm")
-    @patch("bioagents.agents.visualization_agent.get_visualization_tools")
+    @patch("bioagents.agents.visualization_agent.tools_for_agent")
     def test_node_returns_messages(self, mock_tools, mock_llm):
         mock_tools.return_value = []
         mock_llm.return_value = _make_mock_llm()
@@ -685,7 +673,7 @@ class TestVisualizationAgent:
         assert len(result["messages"]) > 0
 
     @patch("bioagents.agents.visualization_agent.get_llm")
-    @patch("bioagents.agents.visualization_agent.get_visualization_tools")
+    @patch("bioagents.agents.visualization_agent.tools_for_agent")
     def test_retry_on_empty_response(self, mock_tools, mock_llm):
         mock_tools.return_value = []
         llm = _make_mock_llm()

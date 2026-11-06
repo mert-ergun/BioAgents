@@ -378,12 +378,17 @@ def test_no_env_file_enables_ace_in_the_repo() -> None:
                     assert value not in ("true", "1", "yes"), f"{name} enables ACE"
 
 
-def test_playbook_dir_is_not_created_outside_the_repo(monkeypatch) -> None:
+def test_playbook_dir_is_not_created_outside_the_repo(tmp_path, monkeypatch) -> None:
     """Regression: the old default resolved to <repo>/../bioagents/playbooks."""
-    monkeypatch.delenv("ACE_PLAYBOOK_DIR", raising=False)
-    stray = REPO_ROOT.parent / "bioagents" / "playbooks"
+    from bioagents.learning import playbook_manager
 
-    get_playbook_dir()
+    checkout = tmp_path / "renamed-checkout"
+    checkout.mkdir()
+    monkeypatch.setattr(playbook_manager, "_REPO_ROOT", checkout)
+    monkeypatch.delenv("ACE_PLAYBOOK_DIR", raising=False)
+    stray = checkout.parent / "bioagents" / "playbooks"
+
+    assert get_playbook_dir() == checkout / "playbooks"
 
     assert not stray.exists(), f"playbooks leaked outside the checkout: {stray}"
 

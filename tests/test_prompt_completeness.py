@@ -9,6 +9,8 @@ import pytest
 
 from bioagents.prompts.prompt_loader import load_prompt
 
+pytestmark = pytest.mark.usefixtures("all_tools_profile")
+
 PROMPTS_DIR = Path(__file__).resolve().parents[1] / "bioagents" / "prompts"
 PROMPT_NAMES = sorted(p.stem for p in PROMPTS_DIR.glob("*.xml"))
 

@@ -14,6 +14,8 @@ from bioagents.agents.report_agent import create_report_agent
 from bioagents.agents.research_agent import create_research_agent
 from bioagents.agents.supervisor_agent import RouteResponse, create_supervisor_agent
 
+pytestmark = pytest.mark.usefixtures("all_tools_profile")
+
 
 class MockTool(Tool):
     """Mock tool for testing smolagents-based agents."""

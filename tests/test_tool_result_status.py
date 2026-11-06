@@ -81,7 +81,7 @@ def test_cyclic_or_excessively_nested_envelopes_fail_closed(monkeypatch):
         "def another_function():\n    return 42\n",
     ],
 )
-def test_registry_never_loads_an_unrelated_callable_as_the_tool(tmp_path, code):
+def test_registry_never_loads_an_unrelated_callable_as_the_tool(tmp_path, code, _selected_broken):
     registry = ToolRegistry(tools_dir=tmp_path)
     definition = ToolDefinition(
         name="broken",
@@ -155,3 +155,12 @@ def test_all_published_tools_can_be_exposed_to_coder_without_running_them(monkey
     assert {tool.name for tool in tools} == {entry.name for entry in registry.list_tools()}
     # Constructing wrappers must not import/execute the underlying scientific tools.
     assert not registry._loaded_modules
+
+
+@pytest.fixture
+def _selected_broken():
+    """Exercise malformed callable validation, independently of selection denial."""
+    from bioagents.tools.tool_selection import ToolSelection, selection_scope
+
+    with selection_scope(ToolSelection("selected", ("broken",))):
+        yield

@@ -13,6 +13,7 @@ from bioagents.agents.helpers import (
 )
 from bioagents.llms.llm_provider import get_llm
 from bioagents.prompts.prompt_loader import load_prompt
+from bioagents.tools.selected_runtime import bind_agent_node
 
 logger = logging.getLogger(__name__)
 
@@ -105,7 +106,7 @@ def create_summary_agent():
 
         return result
 
-    return summary_node
+    return bind_agent_node(summary_node)
 
 
 def format_memory_for_summary(memory: dict) -> str:

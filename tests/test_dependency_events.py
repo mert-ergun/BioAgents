@@ -17,6 +17,7 @@ from bioagents.benchmarks.use_case_models import UseCase
 from bioagents.sandbox import dependency_events as events
 from bioagents.tools import tool_builder_tools as tools
 from bioagents.tools.tool_registry import ToolDefinition, ToolRegistry
+from bioagents.tools.tool_selection import ToolSelection, selection_scope
 
 
 @pytest.fixture
@@ -25,7 +26,8 @@ def audit_run(tmp_path, monkeypatch):
     monkeypatch.setenv("BIOAGENTS_DEPENDENCY_EVENTS_DIR", str(tmp_path))
     monkeypatch.delenv("BIOAGENTS_USE_CASE_ID", raising=False)
     events.enable_dependency_tracking()
-    return events.RunAudit("a" * 32, tmp_path)
+    with selection_scope(ToolSelection("selected", ("needs_package",))):
+        yield events.RunAudit("a" * 32, tmp_path)
 
 
 def installer(tmp_path, name="pip", exit_code=0):

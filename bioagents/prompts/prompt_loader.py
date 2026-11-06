@@ -218,7 +218,9 @@ class PromptLoader:
             if examples_text:
                 sections.append(examples_text)
 
-        return "\n\n".join(sections)
+        from bioagents.prompts.tool_context import apply_tool_context
+
+        return apply_tool_context("\n\n".join(sections), include_catalogue=False)
 
     def _render_unconsumed(self, parent: ET.Element, consumed: set[str]) -> list[str]:
         """Render child elements a dedicated formatter did not handle.

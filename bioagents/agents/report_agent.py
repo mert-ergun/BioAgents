@@ -9,6 +9,7 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from bioagents.agents.helpers import invoke_with_retry, prepare_messages_for_agent
 from bioagents.llms.llm_provider import get_llm
 from bioagents.prompts.prompt_loader import load_prompt
+from bioagents.tools.selected_runtime import bind_agent_node
 
 logger = logging.getLogger(__name__)
 
@@ -109,7 +110,7 @@ def create_report_agent():
                 "messages": [AIMessage(content=err_txt, name="Report")],
             }
 
-    return report_node
+    return bind_agent_node(report_node)
 
 
 def format_memory_for_report(memory: dict) -> str:

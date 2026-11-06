@@ -87,6 +87,14 @@ def build_agent_tool_map(session_context_tool: BaseTool | None = None) -> dict[s
     Returns:
         Mapping of graph node name to the list of tools that agent receives.
     """
+    from bioagents.tools.tool_selection import get_selection
+
+    selection = get_selection()
+    if selection.mode == "selected":
+        from bioagents.tools.selected_runtime import selected_tool_map
+
+        return {role: list(tools) for role, tools in selected_tool_map(selection).items()}
+
     from bioagents.tools.analysis_tools import (
         analyze_amino_acid_composition,
         calculate_isoelectric_point,
@@ -216,9 +224,19 @@ def describe_agent_tools(max_tools_per_agent: int = 40) -> str:
         suffix = f" (+{len(names) - len(shown)} more)" if len(names) > len(shown) else ""
         lines.append(f"- {agent}: {', '.join(shown)}{suffix}")
 
+    from bioagents.tools.tool_selection import get_selection
+
+    selection = get_selection()
     lines.append("")
-    lines.append(
-        "Agents without this list (coder, ml, dl) write and execute Python in a sandbox: "
-        "use them for computation, parsing and analysis that no dedicated tool covers."
-    )
+    if selection.mode == "selected":
+        for role in ("coder", "ml", "dl"):
+            lines.append(f"- {role}: {', '.join(selection.names)}")
+        lines.append(
+            "Code-writing agents also execute ordinary Python in a sandbox. Only the listed registered tools are available."
+        )
+    else:
+        lines.append(
+            "Agents without this list (coder, ml, dl) write and execute Python in a sandbox: "
+            "use them for computation, parsing and analysis that no dedicated tool covers."
+        )
     return "\n".join(lines)

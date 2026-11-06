@@ -4,6 +4,7 @@ from langchain_core.messages import SystemMessage
 
 from bioagents.agents.helpers import invoke_with_retry, prepare_messages_for_agent
 from bioagents.llms.llm_provider import get_llm
+from bioagents.tools.selected_runtime import bind_agent_node
 
 PROMPT_OPTIMIZER_AGENT_PROMPT = (
     "You are an expert prompt optimization agent. Your role is to analyze agent failures "
@@ -35,4 +36,4 @@ def create_prompt_optimizer_agent():
 
         return invoke_with_retry("PromptOptimizer", llm, messages_with_system)
 
-    return agent_node
+    return bind_agent_node(agent_node)
