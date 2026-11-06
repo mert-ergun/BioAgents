@@ -4,6 +4,7 @@ import hashlib
 import json
 import logging
 import re
+from collections.abc import Mapping
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
@@ -61,7 +62,7 @@ RESEARCH_AGENT_MEMORY_PROMPT = (
 MAX_SUB_AGENT_TOOL_ROUNDS = 1
 
 
-def _tool_call_signature(tc: dict) -> str:
+def _tool_call_signature(tc: Mapping[str, Any]) -> str:
     """Create a hashable signature for a tool call to detect duplicates."""
     name = tc.get("name", "")
     args = tc.get("args", {})
@@ -527,8 +528,10 @@ def create_research_agent(tools: list | None = None):
         tu_recent_failures = 0
         for msg in reversed(messages[-30:]):
             if isinstance(msg, ToolMessage):
-                tc = get_content_text(msg.content).lower()
-                if "tooluniverse" in tc and ("failed" in tc or "error" in tc):
+                tool_result_text = get_content_text(msg.content).lower()
+                if "tooluniverse" in tool_result_text and (
+                    "failed" in tool_result_text or "error" in tool_result_text
+                ):
                     tu_recent_failures += 1
 
         for i, (resp, sub_task) in enumerate(results):

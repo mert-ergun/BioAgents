@@ -381,6 +381,7 @@ dev = [
     { name = "mypy" },
     { name = "pre-commit" },
     { name = "ruff" },
+    { name = "types-docker" },
     { name = "types-networkx" },
     { name = "types-pyyaml" },
     { name = "types-requests" },
@@ -431,6 +432,7 @@ dev = [
     { name = "mypy", specifier = ">=1.14.1" },
     { name = "pre-commit", specifier = ">=4.0.1" },
     { name = "ruff", specifier = ">=0.14.4" },
+    { name = "types-docker", specifier = ">=7.1.0,<7.2" },
     { name = "types-networkx", specifier = ">=3.6.1.20260408" },
     { name = "types-pyyaml", specifier = ">=6.0.12.20260408" },
     { name = "types-requests", specifier = ">=2.33.0.20260408" },
@@ -5515,6 +5517,20 @@ wheels = [
 ]
 
 [[package]]
+name = "types-docker"
+version = "7.1.0.20260712"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "types-paramiko" },
+    { name = "types-requests" },
+    { name = "urllib3" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/b6/8b/f360f8d37368a24b815a841e1a0a2c82960bcd6ec88d3552838ef263e49f/types_docker-7.1.0.20260712.tar.gz", hash = "sha256:bb9e8ccb30941546beff5ac30b9b3bd0ffe1f676eb3e5f84d97fd8655234882a", size = 34246, upload-time = "2026-07-12T05:14:33.121Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/ec/b6/08e86105093595ded1ccaac79e415517379a7e17a1f607c8f5f0bf958352/types_docker-7.1.0.20260712-py3-none-any.whl", hash = "sha256:339dc9605151b035150688a56029fb0a53fb71c1710347828f9c3f0d0f39f3bd", size = 48278, upload-time = "2026-07-12T05:14:32.08Z" },
+]
+
+[[package]]
 name = "types-networkx"
 version = "3.6.1.20260408"
 source = { registry = "https://pypi.org/simple" }
@@ -5524,6 +5540,18 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/a9/06/fe448df6a42cc938d36fa6e88cb0c6a269059cd4ce05347ec52da306e007/types_networkx-3.6.1.20260408.tar.gz", hash = "sha256:63f94902b2d99d6d4f448eb1bc23b8a327d4022f5098bc0d22d42b13003b106e", size = 73828, upload-time = "2026-04-08T04:34:38.471Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/60/1d/870a15630dc37a85aa0364bf623fad6ef9ef7cad14be62a0bab7541839f5/types_networkx-3.6.1.20260408-py3-none-any.whl", hash = "sha256:dc957f12bc9ffe7cab6704ccb719722fc5e508a491273c49b45c8786162a6f08", size = 162537, upload-time = "2026-04-08T04:34:37.385Z" },
+]
+
+[[package]]
+name = "types-paramiko"
+version = "5.0.0.20261021"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "cryptography" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/d0/a7/7db34c1210c2ad499b1032b6d604b445a180da788f3250ffa35040258c7c/types_paramiko-5.0.0.20261021.tar.gz", hash = "sha256:17c54761b448caa60cf31cdbb06944e24b841f218b2f301967c140c637ec21b2", size = 28793, upload-time = "2026-10-21T06:42:08.764Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/1f/d6/d80512657293d66dcc686e3c529b861ed3f2360ad67d6a550ff954465ab0/types_paramiko-5.0.0.20261021-py3-none-any.whl", hash = "sha256:b3e72859ebc6983b668a5aa4e986f1e748454c4dc0c427b671bb93898be1289f", size = 37163, upload-time = "2026-10-21T06:42:07.795Z" },
 ]
 
 [[package]]
