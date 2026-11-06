@@ -4,9 +4,7 @@ from langchain_core.messages import SystemMessage
 
 from bioagents.agents.helpers import create_retry_response, prepare_messages_for_agent
 from bioagents.llms.llm_provider import get_llm
-from bioagents.tools.git_tools import get_git_tools
-from bioagents.tools.pdf_tools import extract_pdf_text_spacy_layout
-from bioagents.tools.web_tools import get_web_tools
+from bioagents.tools.selected_runtime import bind_agent_node, bind_agent_tools, tools_for_agent
 
 PAPER_REPLICATION_AGENT_PROMPT = (
     "You are an expert paper replication agent. Your role is to orchestrate full paper "
@@ -29,8 +27,8 @@ def create_paper_replication_agent():
         A function that can be used as a LangGraph node
     """
     llm = get_llm()
-    tools = get_web_tools() + get_git_tools() + [extract_pdf_text_spacy_layout]
-    llm_with_tools = llm.bind_tools(tools)
+    tools = tools_for_agent("paper_replication")
+    llm_with_tools = bind_agent_tools(llm, tools)
     tool_names = [t.name for t in tools]
 
     def agent_node(state):
@@ -46,4 +44,4 @@ def create_paper_replication_agent():
             "PaperReplication", messages_with_system, tool_names, llm_with_tools
         )
 
-    return agent_node
+    return bind_agent_node(agent_node)

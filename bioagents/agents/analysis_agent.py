@@ -10,6 +10,7 @@ from bioagents.agents.agent_executor import execute_agent_with_tools, safe_json_
 from bioagents.agents.helpers import resolve_tool_name
 from bioagents.llms.llm_provider import get_llm
 from bioagents.prompts.prompt_loader import load_prompt
+from bioagents.tools.selected_runtime import bind_agent_node, bind_agent_tools, tools_for_agent
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +47,7 @@ ALWAYS end with valid JSON output.
 """
 
 
-def create_analysis_agent(tools: list):
+def create_analysis_agent(tools: list | None = None):
     """
     Create the Analysis Agent with tool-executing loop.
 
@@ -57,7 +58,8 @@ def create_analysis_agent(tools: list):
         Agent node function
     """
     llm = get_llm(prompt_name="analysis")
-    llm_with_tools = llm.bind_tools(tools)
+    tools = tools_for_agent("analysis", tools)
+    llm_with_tools = bind_agent_tools(llm, tools)
 
     tools_dict = {}
     for tool in tools:
@@ -144,4 +146,4 @@ def create_analysis_agent(tools: list):
                 "messages": [AIMessage(content=f"[AGENT_ERROR] Analysis failed: {e}")],
             }
 
-    return analysis_node
+    return bind_agent_node(analysis_node)

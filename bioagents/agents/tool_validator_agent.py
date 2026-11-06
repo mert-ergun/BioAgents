@@ -4,6 +4,7 @@ from langchain_core.messages import SystemMessage
 
 from bioagents.agents.helpers import invoke_with_retry, prepare_messages_for_agent
 from bioagents.llms.llm_provider import get_llm
+from bioagents.tools.selected_runtime import bind_agent_node
 
 TOOL_VALIDATOR_AGENT_PROMPT = (
     "You are an expert tool validation agent. Your role is to validate tool calls before "
@@ -35,4 +36,4 @@ def create_tool_validator_agent():
 
         return invoke_with_retry("ToolValidator", llm, messages_with_system)
 
-    return agent_node
+    return bind_agent_node(agent_node)

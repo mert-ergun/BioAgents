@@ -44,6 +44,7 @@ from bioagents.learning.ace_integration import (
 from bioagents.references.reference_extractor import extract_references_from_messages
 from bioagents.references.reference_manager import ReferenceManager
 from bioagents.tools.agent_manifest import build_agent_tool_map
+from bioagents.tools.selected_runtime import with_new_tool_selection
 from bioagents.tools.smol_tool_wrappers import (
     ToolUniverseExecuteTool,
     ToolUniverseSearchTool,
@@ -600,6 +601,7 @@ ALL_MEMBERS = [
 ]
 
 
+@with_new_tool_selection
 def create_graph(
     _initialize_references: bool = True,
     checkpointer=None,

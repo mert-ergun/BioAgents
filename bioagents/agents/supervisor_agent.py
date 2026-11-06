@@ -3,11 +3,11 @@
 import json
 import logging
 import uuid
-from functools import lru_cache
 from typing import Literal
 
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain_core.runnables import RunnableLambda
 from pydantic import BaseModel, Field
 
 from bioagents.agents.helpers import extract_best_content
@@ -33,6 +33,8 @@ from bioagents.agents.supervisor_helpers import (
 )
 from bioagents.llms.llm_provider import get_llm, get_structured_output_kwargs_for_routing
 from bioagents.prompts.prompt_loader import load_prompt
+from bioagents.prompts.tool_context import selected_system_messages
+from bioagents.tools.selected_runtime import bind_agent_node
 
 logger = logging.getLogger(__name__)
 
@@ -82,9 +84,8 @@ class RouteResponse(BaseModel):
 SUPERVISOR_PROMPT = load_prompt("supervisor")
 
 
-@lru_cache(maxsize=1)
 def _agent_tool_inventory() -> str:
-    """Render the agent→tool inventory for the supervisor, cached per process.
+    """Render the agent-to-tool inventory from the current session snapshot.
 
     Built from the shared manifest so it always reflects the real wiring. Returns an
     empty string if the manifest cannot be built — the supervisor must keep routing even
@@ -115,7 +116,7 @@ def create_supervisor_agent(members: list[str]):
 
     prompt = ChatPromptTemplate.from_messages(
         [
-            ("system", SUPERVISOR_PROMPT),
+            ("system", load_prompt("supervisor")),
             MessagesPlaceholder(variable_name="messages"),
             (
                 "system",
@@ -125,9 +126,12 @@ def create_supervisor_agent(members: list[str]):
         ]
     )
 
-    supervisor_chain = prompt | llm.with_structured_output(
+    routing_llm = llm.with_structured_output(
         RouteResponse,
         **get_structured_output_kwargs_for_routing(),
+    )
+    supervisor_chain = prompt | RunnableLambda(
+        lambda value: routing_llm.invoke(selected_system_messages(value.to_messages()))
     )
 
     def supervisor_node(state):
@@ -584,4 +588,4 @@ def create_supervisor_agent(members: list[str]):
             "messages": handoff_messages,
         }
 
-    return supervisor_node
+    return bind_agent_node(supervisor_node)

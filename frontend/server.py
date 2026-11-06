@@ -2360,15 +2360,32 @@ def _agent_registry_with_live_tools() -> dict:
     try:
         live = agent_tool_names()
     except Exception:
+        from bioagents.tools.tool_selection import get_selection
+
+        if get_selection().mode == "selected":
+            raise
         logger.warning("Could not load the agent tool manifest; serving curated tool lists.")
         return AGENT_REGISTRY
 
     registry = {}
     for name, entry in AGENT_REGISTRY.items():
         merged = dict(entry)
-        if name in live:
+        from bioagents.tools.tool_selection import get_selection
+
+        selection = get_selection()
+        if selection.mode == "selected":
+            from bioagents.prompts.tool_context import redact_tool_references
+
+            merged = {
+                key: redact_tool_references(value, selection) if isinstance(value, str) else value
+                for key, value in merged.items()
+            }
+        if selection.mode == "selected" and name in {"coder", "ml", "dl"}:
+            merged["tools"] = list(selection.names)
+            merged["execution"] = "writes and runs Python in a sandbox"
+        elif name in live:
             merged["tools"] = live[name]
-        elif name in NON_TOOL_AGENTS:
+        elif name in NON_TOOL_AGENTS or selection.mode == "selected":
             merged["tools"] = []
             merged["execution"] = "writes and runs Python in a sandbox"
         registry[name] = merged

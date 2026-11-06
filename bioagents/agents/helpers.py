@@ -186,6 +186,9 @@ def create_retry_response(
     Returns:
         Dict with 'messages' key containing the response
     """
+    from bioagents.prompts.tool_context import selected_system_messages
+
+    messages_with_system = selected_system_messages(messages_with_system)
     for attempt in range(MAX_RETRIES + 1):
         logger.info(
             "Invoking LLM for %s (attempt %d/%d)",
@@ -433,6 +436,9 @@ def invoke_with_retry(
     Returns:
         Dict with 'messages' key containing the response
     """
+    from bioagents.prompts.tool_context import selected_system_messages
+
+    messages_with_system = selected_system_messages(messages_with_system)
     for attempt in range(max_retries + 1):
         response = llm.invoke(messages_with_system)
 

@@ -19,6 +19,7 @@ from bioagents.agents.helpers import (
 )
 from bioagents.llms.llm_provider import get_llm
 from bioagents.prompts.prompt_loader import load_prompt
+from bioagents.tools.selected_runtime import bind_agent_node, bind_agent_tools, tools_for_agent
 
 logger = logging.getLogger(__name__)
 
@@ -124,7 +125,7 @@ def parse_sub_tasks(content) -> list[str]:
     return tasks[:4]
 
 
-def create_research_agent(tools: list):
+def create_research_agent(tools: list | None = None):
     """
     Create the Research Agent with tool-executing loop and parallel sub-agent support.
 
@@ -135,7 +136,8 @@ def create_research_agent(tools: list):
         Agent node function that returns shared-memory-compatible dict
     """
     llm = get_llm(prompt_name="research")
-    llm_with_tools = llm.bind_tools(tools)
+    tools = tools_for_agent("research", tools)
+    llm_with_tools = bind_agent_tools(llm, tools)
 
     tool_names: list[str] = [resolve_tool_name(t) for t in tools]
 
@@ -664,4 +666,4 @@ def create_research_agent(tools: list):
             task_extractor=lambda _: "merge research results",
         )
 
-    return research_node
+    return bind_agent_node(research_node)

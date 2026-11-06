@@ -11,6 +11,7 @@ from smolagents import CodeAgent
 from bioagents.llms.adapters import LangChainModelAdapter
 from bioagents.llms.llm_provider import get_llm
 from bioagents.prompts.prompt_loader import load_prompt
+from bioagents.prompts.tool_context import apply_tool_context
 from bioagents.sandbox.coder_executor import create_executor
 from bioagents.sandbox.coder_helpers import (
     DEFAULT_DL_IMPORTS,
@@ -23,7 +24,7 @@ from bioagents.sandbox.coder_helpers import (
     format_coder_result,
 )
 from bioagents.sandbox.time_budget import set_recovery_roots
-from bioagents.tools.smol_tool_wrappers import ToolUniverseExecuteTool, ToolUniverseSearchTool
+from bioagents.tools.selected_runtime import bind_agent_node, code_agent_tools
 
 logger = logging.getLogger("BioAgents")
 
@@ -46,8 +47,7 @@ def create_dl_agent(
     Returns:
         A CodeAgent instance that can generate and execute Python code via Jupyter notebooks
     """
-    if tools is None:
-        tools = [ToolUniverseSearchTool(), ToolUniverseExecuteTool()]
+    tools = code_agent_tools(tools)
 
     if additional_imports is None:
         additional_imports = DEFAULT_DL_IMPORTS
@@ -57,7 +57,7 @@ def create_dl_agent(
     executor = create_executor("dl", additional_imports)
 
     # Escape Jinja2 template syntax in instructions to avoid conflicts
-    escaped_instructions = DL_AGENT_PROMPT.replace("{", "{{").replace("}", "}}")
+    escaped_instructions = apply_tool_context(load_prompt("dl_agent"))
 
     from bioagents.sandbox.coder_helpers import PermissiveList
 
@@ -193,4 +193,4 @@ def create_dl_node(agent: CodeAgent) -> Callable:
                 ],
             }
 
-    return dl_node
+    return bind_agent_node(dl_node)

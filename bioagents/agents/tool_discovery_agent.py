@@ -4,7 +4,7 @@ from langchain_core.messages import SystemMessage
 
 from bioagents.agents.helpers import create_retry_response, prepare_messages_for_agent
 from bioagents.llms.llm_provider import get_llm
-from bioagents.tools.tool_builder_tools import get_tool_builder_tools
+from bioagents.tools.selected_runtime import bind_agent_node, bind_agent_tools, tools_for_agent
 
 TOOL_DISCOVERY_AGENT_PROMPT = (
     "You are an expert tool discovery agent. Your role is to search for available tools, "
@@ -23,8 +23,8 @@ def create_tool_discovery_agent():
         A function that can be used as a LangGraph node
     """
     llm = get_llm()
-    tools = get_tool_builder_tools()
-    llm_with_tools = llm.bind_tools(tools)
+    tools = tools_for_agent("tool_discovery")
+    llm_with_tools = bind_agent_tools(llm, tools)
     tool_names = [t.name for t in tools]
 
     def agent_node(state):
@@ -40,4 +40,4 @@ def create_tool_discovery_agent():
             "ToolDiscovery", messages_with_system, tool_names, llm_with_tools
         )
 
-    return agent_node
+    return bind_agent_node(agent_node)
