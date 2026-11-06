@@ -506,6 +506,19 @@ def create_executor(agent_type: str, additional_imports: list) -> Any:
                     "BIOAGENTS_TOOL_SELECTION_SNAPSHOT": selection.to_json(),
                 }
             )
+            # Pass only credentials required by the selected SDK backends.
+            if selection.mode == "selected":
+                backends = set(selection.tool_universe_tools) | set(
+                    dict(selection.aliases).values()
+                )
+                for backend in backends:
+                    for key in sdk_entries().get(backend, {}).get("required_api_keys", []):
+                        if (
+                            isinstance(key, str)
+                            and ("KEY" in key or "TOKEN" in key)
+                            and os.getenv(key)
+                        ):
+                            container_run_kwargs["environment"][key] = os.environ[key]
             run_id = os.getenv("BIOAGENTS_RUN_ID", "")
             from bioagents.sandbox.dependency_events import current_audit, dependency_environment
 
