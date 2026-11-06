@@ -41,6 +41,9 @@ def execute_agent_with_tools(
         messages = [SystemMessage(content=system_prompt), *full_message_history]
     else:
         messages = [SystemMessage(content=system_prompt), user_message]
+    from bioagents.prompts.tool_context import selected_system_messages
+
+    messages = selected_system_messages(messages)
     tool_calls_used: list[str] = []
     iteration = 0
 
@@ -72,7 +75,11 @@ def execute_agent_with_tools(
                     tool_call.get("id") or tool_call.get("tool_call_id") or str(uuid.uuid4())
                 )
 
-                if tool_name and tool_name in tools_dict:
+                from bioagents.tools.tool_selection import is_tool_enabled, unavailable_tool
+
+                if tool_name and not is_tool_enabled(tool_name):
+                    tool_output = json.dumps(unavailable_tool(tool_name))
+                elif tool_name and tool_name in tools_dict:
                     try:
                         logger.info(f"Executing tool: {tool_name} with args: {tool_args}")
                         tool_result = tools_dict[tool_name](**tool_args)
@@ -86,7 +93,7 @@ def execute_agent_with_tools(
                         logger.warning(f"Tool {tool_name} failed: {e}", exc_info=True)
                         tool_output = f"Error executing {tool_name}: {e!s}"
                 else:
-                    tool_output = f"Tool '{tool_name}' not found in available tools"
+                    tool_output = json.dumps(unavailable_tool(tool_name or "unknown"))
                     logger.warning(f"Tool not found: {tool_name}")
 
                 try:

@@ -212,6 +212,15 @@ def _summary(description: str) -> str:
 
 def get_local_tool(name: str) -> Any | None:
     """Return the shipped LangChain tool called ``name``, if any."""
+    from bioagents.tools.selected_runtime import named_tool
+    from bioagents.tools.tool_catalog import describe_tool
+    from bioagents.tools.tool_selection import get_selection
+
+    selection = get_selection()
+    if selection.mode == "selected":
+        if name not in selection.local_tools:
+            return None
+        return named_tool(describe_tool(name, selection), selection)
     return _local_tool_objects().get(name)
 
 

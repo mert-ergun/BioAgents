@@ -430,11 +430,27 @@ class LazyExecutor:
             self._executor.cleanup()
 
 
+class SelectedLocalPythonExecutor(LocalPythonExecutor):
+    """Apply the same registered-tool import guard to local generated cells."""
+
+    def __init__(self, *args, **kwargs):
+        from bioagents.tools.tool_selection import get_selection
+
+        self._tool_selection = get_selection()
+        super().__init__(*args, **kwargs)
+
+    def __call__(self, code_action):
+        from bioagents.sandbox.tool_access import check_generated_tool_access
+
+        check_generated_tool_access(code_action, self._tool_selection)
+        return super().__call__(code_action)
+
+
 def _local_executor(additional_imports: list) -> LocalPythonExecutor:
     apply_local_executor_runtime_env()
     from bioagents.sandbox.coder_helpers import PermissiveList
 
-    return LocalPythonExecutor(
+    return SelectedLocalPythonExecutor(
         additional_authorized_imports=PermissiveList(additional_imports),
         additional_functions=_extra_builtins(),
     )
@@ -480,6 +496,16 @@ def create_executor(agent_type: str, additional_imports: list) -> Any:
                     "--KernelGatewayApp.allow_origin=*",
                 ],
             }
+            from bioagents.tools.tool_catalog import sdk_entries
+            from bioagents.tools.tool_selection import get_selection
+
+            selection = get_selection()
+            container_run_kwargs["environment"].update(
+                {
+                    "BIOAGENTS_TOOL_MODE": selection.mode,
+                    "BIOAGENTS_TOOL_SELECTION_SNAPSHOT": selection.to_json(),
+                }
+            )
             run_id = os.getenv("BIOAGENTS_RUN_ID", "")
             from bioagents.sandbox.dependency_events import current_audit, dependency_environment
 
@@ -573,7 +599,9 @@ def create_executor(agent_type: str, additional_imports: list) -> Any:
                 "Set USE_LOCAL_EXECUTOR=true only if in-process execution is intended."
             ) from e
 
-    return LazyExecutor(factory)
+    from bioagents.tools.selected_runtime import bind_agent_node
+
+    return LazyExecutor(bind_agent_node(factory))
 
 
 def cleanup_run_containers(run_id: str) -> list[str]:

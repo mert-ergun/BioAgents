@@ -9,11 +9,14 @@ import logging
 import os
 import re
 from concurrent.futures import ThreadPoolExecutor
+from contextvars import copy_context
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from collections.abc import Callable
     from typing import ClassVar
+
+    from bioagents.tools.tool_selection import ToolSelection
 
 import importlib
 from dataclasses import dataclass
@@ -268,6 +271,7 @@ class ToolUniverseWrapper:
         self._tool_factory = tool_factory
         self._catalog = catalog or ToolUniverseCatalogue()
         self._client = None
+        self._client_selection: ToolSelection | None = None
         self._lock = Lock()
         self._policy = policy or get_default_policy()
         self._default_finder = self._configured_default_finder()
@@ -370,7 +374,8 @@ class ToolUniverseWrapper:
             # Not a `with` block: shutdown(wait=True) would block past the timeout.
             pool = ThreadPoolExecutor(max_workers=1)
             try:
-                fut = pool.submit(func, **arguments)
+                context = copy_context()
+                fut = pool.submit(lambda: context.run(func, **arguments))
                 try:
                     result = fut.result(timeout=hard_cap)
                 except FuturesTimeout:
@@ -391,27 +396,52 @@ class ToolUniverseWrapper:
         return self._tool_factory is not None
 
     def _ensure_client(self):
-        if not self.client_available:
-            raise RuntimeError(
-                "The 'tooluniverse' package is not installed. Install it to call live tools."
-            )
+        from bioagents.tools.tool_selection import get_selection
 
-        if self._client is not None:
+        selection = get_selection()
+        if self._client is not None and self._client_selection == selection:
             return self._client
-
         with self._lock:
-            if self._client is None:
-                logger.info("Loading ToolUniverse SDK (this may take a moment)...")
+            if self._client is None or self._client_selection != selection:
                 if not callable(self._tool_factory):
-                    raise RuntimeError(
-                        "Tool factory is not callable (tooluniverse package missing)."
+                    raise RuntimeError("ToolUniverse is not installed")
+                client = self._tool_factory()
+                if client is None:
+                    raise RuntimeError("ToolUniverse client initialization failed")
+                if selection.mode == "selected":
+                    targets = sorted(
+                        set(selection.tool_universe_tools) | set(dict(selection.aliases).values())
                     )
-                self._client = self._tool_factory()
-                if self._client is not None:
-                    self._client.load_tools()
+                    client.load_tools(include_tools=targets)
                 else:
-                    raise RuntimeError("Failed to load ToolUniverse SDK")
+                    client.load_tools()
+                self._client = client
+                self._client_selection = selection
         return self._client
+
+    def _execute_selected_sdk(self, backend: str, arguments: dict, selection) -> str:
+        """Internal SDK route; callers cannot add a backend to the frozen allowlist."""
+        from bioagents.tools.tool_selection import selection_scope, unavailable_tool
+
+        permitted = set(selection.tool_universe_tools) | set(dict(selection.aliases).values())
+        if selection.mode != "selected" or backend not in permitted:
+            return self._format_response(unavailable_tool(backend))
+        public = next((name for name, target in selection.aliases if target == backend), backend)
+        policy = self._policy.evaluate(public, arguments)
+        if not policy.allowed:
+            return self._format_response(
+                {"tool": public, "error": policy.reason, "execution_state": "not_started"}
+            )
+        with selection_scope(selection):
+            try:
+                client = self._ensure_client()
+                result = self._resolve_result(
+                    client.run({"name": backend, "arguments": arguments}),
+                    _tool_time_budget(backend),
+                )
+                return self._format_response({"tool": public, "result": result})
+            except Exception as exc:
+                return self._format_response({"tool": public, "status": "error", "error": str(exc)})
 
     @staticmethod
     def _resolve_result(result: Any, timeout_sec: float | None = None) -> Any:
@@ -662,6 +692,39 @@ class ToolUniverseWrapper:
                 hits and degrades to keyword-only, with a note, when none loads.
                 ``None`` uses ``BIOAGENTS_TOOL_UNIVERSE_FINDER``.
         """
+        from bioagents.tools.tool_selection import get_selection
+
+        selection = get_selection()
+        if selection.mode == "selected":
+            from bioagents.prompts.tool_context import redact_tool_references
+            from bioagents.tools.selected_runtime import selected_metadata
+
+            tokens = set(description.lower().split())
+            entries = []
+            for metadata in selected_metadata(selection):
+                text = f"{metadata['name']} {metadata['description']}".lower()
+                score = sum(token in text for token in tokens)
+                if score:
+                    entries.append(
+                        (
+                            score,
+                            {
+                                "name": metadata["name"],
+                                "description": redact_tool_references(
+                                    metadata["description"], selection
+                                ),
+                                "parameter": metadata["schema"],
+                                "source": metadata["source"],
+                            },
+                        )
+                    )
+            entries.sort(key=lambda entry: (-entry[0], entry[1]["name"]))
+            return self._format_response(
+                {
+                    "source": "selected_catalogue",
+                    "results": [entry for _, entry in entries[: max(1, int(limit))]],
+                }
+            )
         limit = max(1, int(limit))
         finder_mode, finder_warning = self._resolve_finder(finder)
         notes: list[str] = [finder_warning] if finder_warning else []
@@ -765,6 +828,20 @@ class ToolUniverseWrapper:
             tool_name: Exact identifier of the tool to invoke.
             arguments: JSON string or dictionary of tool arguments.
         """
+        from bioagents.tools.tool_selection import get_selection, unavailable_tool
+
+        selection = get_selection()
+        if selection.mode == "selected":
+            if not selection.allows(tool_name):
+                return self._format_response(unavailable_tool(tool_name))
+            from bioagents.tools.selected_runtime import execute_selected
+
+            result = execute_selected(tool_name, self._parse_arguments(arguments), selection)
+            return (
+                result
+                if isinstance(result, str)
+                else self._format_response({"tool": tool_name, "result": result})
+            )
         parsed_args = self._parse_arguments(arguments)
 
         # Shipped workspace utilities (file_tools) are surfaced by find_tools; run them

@@ -251,6 +251,15 @@ class ToolPolicy:
             )
 
         tool_name = tool_name.strip()
+        from bioagents.tools.tool_selection import is_tool_enabled
+
+        if not is_tool_enabled(tool_name):
+            return ToolPolicyResult(
+                allowed=False,
+                reason="Tool is unavailable in the current introduction list",
+                requires_approval=False,
+                category="tool_selection",
+            )
 
         if tool_name in ALWAYS_SAFE_TOOLS:
             self.stats.auto_approved += 1
@@ -362,6 +371,9 @@ class ToolPolicy:
         Removes clearly unrelated tools from discovery results so agents
         never see them in the first place.
         """
+        from bioagents.tools.tool_selection import is_tool_enabled
+
+        tools = [entry for entry in tools if is_tool_enabled(entry.get("name", ""))]
         if self.strictness == "permissive":
             return tools[:limit]
 

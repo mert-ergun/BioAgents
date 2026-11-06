@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import uuid
 from typing import Any
@@ -83,21 +84,96 @@ def truncate_tool_messages_payload(payload: Any, max_chars: int = MAX_TOOL_OUTPU
     return payload
 
 
+def _requested_calls(input: Any) -> list:
+    if isinstance(input, list):
+        if input and isinstance(input[-1], dict) and input[-1].get("type") == "tool_call":
+            return input
+        messages = input
+    else:
+        messages = (
+            input.get("messages", []) if isinstance(input, dict) else getattr(input, "messages", [])
+        )
+    last = messages[-1] if messages else None
+    return last.tool_calls if isinstance(last, AIMessage) else []
+
+
+def _defer_tool_batch(calls: list, blocked_index: int, denial: ToolMessage) -> dict:
+    """Close all call IDs without executing a partially available batch."""
+    messages = []
+    for index, call in enumerate(calls):
+        if index == blocked_index:
+            messages.append(denial)
+        else:
+            messages.append(
+                ToolMessage(
+                    content=json.dumps(
+                        {
+                            "status": "error",
+                            "error_code": "batch_deferred",
+                            "message": "No calls in this batch executed. Check the current tool introduction list and submit only available tools.",
+                            "execution_state": "not_started",
+                            "retryable": False,
+                        }
+                    ),
+                    name=call.get("name", "unknown"),
+                    tool_call_id=call.get("id") or str(uuid.uuid4()),
+                    status="error",
+                )
+            )
+    return {"messages": messages}
+
+
+def _selection_denial(input: Any, selection, tool_names: set[str]) -> dict | None:
+    from bioagents.tools.tool_selection import unavailable_tool
+
+    calls = _requested_calls(input)
+    for index, call in enumerate(calls):
+        name = call.get("name", "unknown")
+        if not selection.allows(name) or name not in tool_names:
+            return _defer_tool_batch(
+                calls,
+                index,
+                ToolMessage(
+                    content=json.dumps(unavailable_tool(name)),
+                    name=name,
+                    tool_call_id=call.get("id") or str(uuid.uuid4()),
+                    status="error",
+                ),
+            )
+    return None
+
+
 class TruncatingToolRunnable(Runnable):
     """ToolNode wrapper that caps tool outputs before they are merged into state."""
 
     def __init__(self, tools: list):
         super().__init__()
+        from bioagents.tools.tool_selection import get_selection
+
+        self._selection = get_selection()
+        self._tool_names = {tool.name for tool in tools}
         self._inner = ToolNode(tools)
         self._max_chars = MAX_TOOL_OUTPUT_CHARS
 
     def invoke(self, input: Any, config: RunnableConfig | None = None, **kwargs: Any) -> Any:
-        out = invoke_with_retry(self._inner.invoke, input, config, **kwargs)
-        return truncate_tool_messages_payload(out, self._max_chars)
+        from bioagents.tools.tool_selection import selection_scope
+
+        with selection_scope(self._selection):
+            denial = _selection_denial(input, self._selection, self._tool_names)
+            if denial is not None:
+                return denial
+            out = invoke_with_retry(self._inner.invoke, input, config, **kwargs)
+            return truncate_tool_messages_payload(out, self._max_chars)
 
     async def ainvoke(self, input: Any, config: RunnableConfig | None = None, **kwargs: Any) -> Any:
-        out = await ainvoke_with_retry(self._inner.ainvoke, input, config, **kwargs)
-        return truncate_tool_messages_payload(out, self._max_chars)
+        from bioagents.tools.tool_selection import selection_scope
+
+        with selection_scope(self._selection):
+            denial = _selection_denial(input, self._selection, self._tool_names)
+            if denial is not None:
+                return denial
+            out = await ainvoke_with_retry(self._inner.ainvoke, input, config, **kwargs)
+            return truncate_tool_messages_payload(out, self._max_chars)
 
 
 def make_truncating_tool_node(tools: list) -> TruncatingToolRunnable:
@@ -121,65 +197,69 @@ class ApprovalToolRunnable(Runnable):
         policy: ToolPolicy | None = None,
     ):
         super().__init__()
+        from bioagents.tools.tool_selection import get_selection
+
+        self._selection = get_selection()
+        self._tool_names = {tool.name for tool in tools}
         self._inner = ToolNode(tools)
         self._max_chars = MAX_TOOL_OUTPUT_CHARS
         self._policy = policy or get_default_policy()
 
     def invoke(self, input: Any, config: RunnableConfig | None = None, **kwargs: Any) -> Any:
+        from bioagents.tools.tool_selection import selection_scope
+
+        with selection_scope(self._selection):
+            return self._invoke(input, config, **kwargs)
+
+    def _invoke(self, input: Any, config: RunnableConfig | None = None, **kwargs: Any) -> Any:
         """Execute tools with policy check and truncation."""
-        messages = input.get("messages", []) if isinstance(input, dict) else []
+        denial = _selection_denial(input, self._selection, self._tool_names)
+        if denial is not None:
+            return denial
+        for tc in _requested_calls(input):
+            tool_name = tc.get("name", "unknown")
+            tool_args = tc.get("args", {})
+            policy_result = self._policy.evaluate(tool_name, tool_args)
 
-        last_msg = messages[-1] if messages else None
-        if (
-            isinstance(last_msg, AIMessage)
-            and hasattr(last_msg, "tool_calls")
-            and last_msg.tool_calls
-        ):
-            for tc in last_msg.tool_calls:
-                tool_name = tc.get("name", "unknown")
-                tool_args = tc.get("args", {})
+            if not policy_result.allowed:
+                logger.warning(
+                    "Policy blocked tool '%s': %s",
+                    tool_name,
+                    policy_result.reason,
+                )
+                denial_msg = ToolMessage(
+                    content=(
+                        f"[POLICY_BLOCKED] Tool '{tool_name}' was blocked: "
+                        f"{policy_result.reason}. Try a different approach."
+                    ),
+                    tool_call_id=tc.get("id", str(uuid.uuid4())),
+                    name=tool_name,
+                    status="error",
+                )
+                return {"messages": [denial_msg]}
 
-                policy_result = self._policy.evaluate(tool_name, tool_args)
-
-                if not policy_result.allowed:
-                    logger.warning(
-                        "Policy blocked tool '%s': %s",
-                        tool_name,
-                        policy_result.reason,
-                    )
-                    denial_msg = ToolMessage(
-                        content=(
-                            f"[POLICY_BLOCKED] Tool '{tool_name}' was blocked: "
-                            f"{policy_result.reason}. Try a different approach."
-                        ),
-                        tool_call_id=tc.get("id", str(uuid.uuid4())),
-                        name=tool_name,
-                        status="error",
-                    )
-                    return {"messages": [denial_msg]}
-
-                if policy_result.requires_approval:
-                    # Block with the approval info so the frontend can show the approval UI.
-                    request_id = str(uuid.uuid4())
-                    logger.info(
-                        "Tool '%s' requires approval (request_id=%s): %s",
-                        tool_name,
-                        request_id,
-                        policy_result.reason,
-                    )
-                    denial_msg = ToolMessage(
-                        content=(
-                            f"[APPROVAL_REQUIRED] Tool '{tool_name}' requires user approval. "
-                            f"Reason: {policy_result.reason}. "
-                            f"Risk level: {policy_result.risk_level}. "
-                            f"If approved, retry the tool call. "
-                            f"[approval_request_id={request_id}]"
-                        ),
-                        tool_call_id=tc.get("id", str(uuid.uuid4())),
-                        name=tool_name,
-                        status="error",
-                    )
-                    return {"messages": [denial_msg]}
+            if policy_result.requires_approval:
+                # Block with the approval info so the frontend can show the approval UI.
+                request_id = str(uuid.uuid4())
+                logger.info(
+                    "Tool '%s' requires approval (request_id=%s): %s",
+                    tool_name,
+                    request_id,
+                    policy_result.reason,
+                )
+                denial_msg = ToolMessage(
+                    content=(
+                        f"[APPROVAL_REQUIRED] Tool '{tool_name}' requires user approval. "
+                        f"Reason: {policy_result.reason}. "
+                        f"Risk level: {policy_result.risk_level}. "
+                        f"If approved, retry the tool call. "
+                        f"[approval_request_id={request_id}]"
+                    ),
+                    tool_call_id=tc.get("id", str(uuid.uuid4())),
+                    name=tool_name,
+                    status="error",
+                )
+                return {"messages": [denial_msg]}
 
         # Execute the tools, retrying transient failures so a blip is not the agent's answer.
         out = invoke_with_retry(self._inner.invoke, input, config, **kwargs)
