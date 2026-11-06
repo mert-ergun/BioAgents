@@ -11,6 +11,8 @@ from bioagents.tools import tool_builder_tools as tools
 from bioagents.tools.code_api_check import check_generated_code
 from bioagents.tools.tool_registry import ToolRegistry
 
+pytestmark = pytest.mark.usefixtures("all_tools_profile")
+
 FAKE_PACKAGE = "bioagents_fake_chem_fixture"
 
 

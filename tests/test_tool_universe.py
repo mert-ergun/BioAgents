@@ -3,6 +3,8 @@
 import json
 from pathlib import Path
 
+import pytest
+
 from bioagents.tools import tool_universe as tu_module
 from bioagents.tools.tool_universe import ToolUniverseCatalogue, ToolUniverseWrapper
 
@@ -153,3 +155,12 @@ def test_normalize_find_tools_prompt_string_yields_empty():
     """Legacy single-string prompt output cannot be indexed as tool dicts; normalize to []."""
     w = ToolUniverseWrapper(tool_factory=None, catalog=DummyCatalogue())
     assert w._normalize_find_tools_sdk_result("not json, just prompts") == []
+
+
+@pytest.fixture(autouse=True)
+def _unrestricted_catalogue_contract():
+    """Legacy catalogue tests explicitly exercise the all-mode contract."""
+    from bioagents.tools.tool_selection import ToolSelection, selection_scope
+
+    with selection_scope(ToolSelection("all")):
+        yield

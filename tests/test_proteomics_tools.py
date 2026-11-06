@@ -10,8 +10,10 @@ from bioagents.tools.proteomics_tools import fetch_uniprot_fasta
 class TestFetchUniprotFasta:
     """Tests for the fetch_uniprot_fasta tool."""
 
-    def test_fetch_valid_protein(self):
+    @patch("bioagents.tools.proteomics_tools.requests.get")
+    def test_fetch_valid_protein(self, mock_get, mock_uniprot_response):
         """Test fetching a valid protein sequence."""
+        mock_get.return_value = mock_uniprot_response
         result = fetch_uniprot_fasta.invoke({"protein_id": "P04637"})
 
         assert isinstance(result, str)
@@ -19,15 +21,21 @@ class TestFetchUniprotFasta:
         assert "P04637" in result or "P53_HUMAN" in result
         assert len(result) > 100  # Should have sequence data
 
-    def test_fetch_invalid_protein(self):
+    @patch("bioagents.tools.proteomics_tools.requests.get")
+    def test_fetch_invalid_protein(self, mock_get):
         """Test fetching an invalid protein ID."""
+        response = Mock(status_code=404)
+        response.raise_for_status.side_effect = requests.exceptions.HTTPError(response=response)
+        mock_get.return_value = response
         result = fetch_uniprot_fasta.invoke({"protein_id": "INVALID_ID_12345"})
 
         assert isinstance(result, str)
         assert "Error" in result or "not found" in result.lower()
 
-    def test_fetch_alternate_protein_id(self):
+    @patch("bioagents.tools.proteomics_tools.requests.get")
+    def test_fetch_alternate_protein_id(self, mock_get, mock_uniprot_response):
         """Test fetching with alternate protein ID format."""
+        mock_get.return_value = mock_uniprot_response
         result = fetch_uniprot_fasta.invoke({"protein_id": "P53_HUMAN"})
 
         assert isinstance(result, str)

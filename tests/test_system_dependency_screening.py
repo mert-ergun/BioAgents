@@ -4,9 +4,13 @@ import json
 from types import SimpleNamespace
 from unittest.mock import Mock
 
+import pytest
+
 from bioagents.tools import tool_builder_tools as tools
 from bioagents.tools.dependency_inference import extract_system_dependencies_from_code
 from bioagents.tools.tool_registry import ToolDefinition, ToolRegistry
+
+pytestmark = pytest.mark.usefixtures("all_tools_profile")
 
 
 def _definition(**overrides):

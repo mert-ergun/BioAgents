@@ -306,3 +306,12 @@ def test_custom_registry_provenance_and_validated_flag(monkeypatch):
     assert by_name["list_workspace_files"]["validated"] is False
     assert by_name["list_local_directory"]["source"] == "local"
     assert by_name["list_local_directory"]["validated"] is True
+
+
+@pytest.fixture(autouse=True)
+def _unrestricted_catalogue_contract():
+    """Legacy catalogue tests explicitly exercise the all-mode contract."""
+    from bioagents.tools.tool_selection import ToolSelection, selection_scope
+
+    with selection_scope(ToolSelection("all")):
+        yield

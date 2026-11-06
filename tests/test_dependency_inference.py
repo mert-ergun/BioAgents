@@ -9,6 +9,15 @@ import pytest
 from bioagents.tools import tool_builder_tools as tools
 from bioagents.tools.dependency_inference import extract_system_dependencies_from_code
 from bioagents.tools.tool_registry import ToolRegistry
+from bioagents.tools.tool_selection import ToolSelection, selection_scope
+
+
+@pytest.fixture
+def fixture_tool_selection():
+    """Enable only the temporary registry tools exercised by these tests."""
+    names = ("directory_listing", "list_workspace_files", "missing_import")
+    with selection_scope(ToolSelection("selected", names)):
+        yield
 
 
 @pytest.mark.parametrize(
@@ -47,7 +56,9 @@ def test_literal_executable_calls_and_aliases_are_recognized(code, expected):
     assert extract_system_dependencies_from_code(code) == expected
 
 
-def test_directory_error_never_triggers_installer_after_registration(tmp_path, monkeypatch):
+def test_directory_error_never_triggers_installer_after_registration(
+    tmp_path, monkeypatch, fixture_tool_selection
+):
     registry = ToolRegistry(tools_dir=tmp_path)
     monkeypatch.setattr(tools, "get_registry", lambda: registry)
     response = json.loads(
@@ -73,7 +84,9 @@ def test_directory_error_never_triggers_installer_after_registration(tmp_path, m
     install.assert_not_called()
 
 
-def test_published_workspace_utility_never_attempts_system_installs(tmp_path, monkeypatch):
+def test_published_workspace_utility_never_attempts_system_installs(
+    tmp_path, monkeypatch, fixture_tool_selection
+):
     from bioagents.tools.tool_registry import ToolDefinition
 
     path = Path(__file__).resolve().parents[1] / "bioagents/tools/custom_tools/registry.json"
@@ -156,7 +169,7 @@ def test_wrapper_permanent_errors_are_not_retried(monkeypatch):
     assert llm.invoke.call_count == 1
 
 
-def test_load_validation_failure_keeps_the_import_reason(tmp_path):
+def test_load_validation_failure_keeps_the_import_reason(tmp_path, fixture_tool_selection):
     from bioagents.tools.tool_registry import ToolDefinition
 
     registry = ToolRegistry(tools_dir=tmp_path)

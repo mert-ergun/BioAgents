@@ -11,6 +11,8 @@ from bioagents.tools.tool_registry import (
     ToolRegistry,
 )
 
+pytestmark = pytest.mark.usefixtures("all_tools_profile")
+
 _NEW_AGENT_PATCHES = [
     "bioagents.graph.create_web_browser_agent",
     "bioagents.graph.create_literature_agent",

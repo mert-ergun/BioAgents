@@ -11,6 +11,8 @@ import pytest
 
 from bioagents.tools.tool_registry import ToolDefinition, ToolParameter, ToolRegistry
 
+pytestmark = pytest.mark.usefixtures("all_tools_profile")
+
 PROCESS_COUNT = 4
 TOOLS_PER_PROCESS = 5
 

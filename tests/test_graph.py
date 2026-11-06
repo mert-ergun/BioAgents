@@ -2,6 +2,7 @@
 
 from unittest.mock import Mock, patch
 
+import pytest
 from langchain_core.messages import AIMessage, HumanMessage
 
 from bioagents.graph import (
@@ -261,6 +262,7 @@ class TestCreateGraph:
     @patch("bioagents.graph.create_dl_agent")
     @patch("bioagents.graph.create_ml_agent")
     @patch("bioagents.graph.create_coder_agent")
+    @pytest.mark.usefixtures("all_tools_profile")
     def test_create_graph_agent_creation_with_tools(
         self,
         mock_dl,

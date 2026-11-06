@@ -20,6 +20,8 @@ from bioagents.tools.tool_builder_wrappers import (
 )
 from bioagents.tools.tool_registry import ToolDefinition, ToolParameter, ToolRegistry
 
+pytestmark = pytest.mark.usefixtures("all_tools_profile")
+
 
 def interrupt_graph(payload):
     graph = StateGraph(dict)

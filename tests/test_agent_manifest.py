@@ -17,7 +17,13 @@ MANIFEST = agent_tool_names()
 
 def test_every_agent_in_the_manifest_owns_at_least_one_tool() -> None:
     empty = [agent for agent, tools in MANIFEST.items() if not tools]
-    assert not empty, f"agents declared as tool-using but given no tools: {empty}"
+    from bioagents.tools.tool_selection import get_selection
+
+    selection = get_selection()
+    if selection.mode == "all":
+        assert not empty, f"agents declared as tool-using but given no tools: {empty}"
+    else:
+        assert {name for names in MANIFEST.values() for name in names} == set(selection.names)
 
 
 def test_manifest_and_non_tool_agents_do_not_overlap() -> None:
@@ -56,6 +62,11 @@ def test_find_agents_with_tool_locates_owners() -> None:
 
 def test_esm_scoring_is_reachable_by_some_agent() -> None:
     """task4 asked for ESM mutation fitness; no agent held an ESM tool at the time."""
+    from bioagents.tools.tool_selection import is_tool_enabled
+
+    if not is_tool_enabled("score_mutations_esm"):
+        assert not find_agents_with_tool("score_mutations_esm")
+        return
     assert find_agents_with_tool("score_mutations_esm"), (
         "no agent can score mutations with ESM — the capability is unreachable"
     )
